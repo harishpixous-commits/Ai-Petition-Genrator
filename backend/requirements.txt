@@ -1,0 +1,27 @@
+fastapi>=0.115
+uvicorn[standard]>=0.32
+pydantic>=2.9
+pydantic-settings>=2.6
+langgraph>=0.6
+langgraph-checkpoint-sqlite>=2.0.10
+aiosqlite>=0.20
+httpx>=0.27
+websockets>=13.0
+PyYAML>=6.0
+python-docx>=1.1
+
+# Government knowledge layer. sqlite-vec adds vector search to the SQLite this
+# service already runs; FTS5 for the lexical half ships with SQLite itself, so
+# there is no database server to deploy. The three extractors are only needed to
+# INGEST documents — retrieval and the petition flow work without them.
+sqlite-vec>=0.1.9
+pypdf>=5.0
+lxml>=5.0
+
+# Attachment uploads. FastAPI needs it to parse multipart/form-data; without it
+# the attachment endpoints raise at import time rather than at request time.
+python-multipart>=0.0.9
+# Reads the text layer of an attached PDF. Also the OCR hook, when a Tesseract
+# binary is present — there is none on this machine, and photographs are
+# reported as unreadable rather than guessed at.
+PyMuPDF>=1.24

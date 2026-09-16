@@ -1,0 +1,21 @@
+[project]
+name = "citizen-petition-assistant"
+version = "1.0.0"
+description = "Collects a citizen's details and grievance by voice or text and produces a petition document."
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = "-q"
+filterwarnings = [
+    "ignore::DeprecationWarning:websockets.*",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+ignore = ["E501"]

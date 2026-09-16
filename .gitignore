@@ -1,0 +1,44 @@
+# Credentials. The .env holds live API keys for Anthropic, Gemini, Groq and
+# Sarvam. .env.example carries the same settings with every value left empty,
+# and that IS committed — it is the documentation for what has to be set.
+.env
+.env.*
+!.env.example
+
+# Local state. This is the important one.
+#
+# backend/var holds the checkpoint database, and a checkpoint is the whole
+# petition: the citizen's name, address, Aadhaar number and the grievance in
+# their own words. The generated Word and PDF files beside it carry the same
+# details, and so does anything a citizen uploaded as an attachment. None of it
+# belongs in a repository, and no rule here should ever be relaxed to "just
+# this once" for a sample.
+var/
+backend/var/
+
+# Virtual environments and caches.
+.venv/
+venv/
+backend/.venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Databases, wherever they end up.
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.db
+
+# Node, if a tool ever pulls it in. The application itself has no build step.
+node_modules/
+
+# Editor and operating-system leftovers.
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp

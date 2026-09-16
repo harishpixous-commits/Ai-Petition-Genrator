@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Operator status — Citizen Petition Assistant</title>
+<!--
+  The operator's screen. Deliberately plain, deliberately English, and
+  deliberately not linked from the citizen's page: this is machine status, and a
+  corpus document count on a petition form is noise at best.
+
+  It answers two questions and no others. Is the knowledge base loaded and
+  internally consistent? Which capabilities are actually working today?
+-->
+<style>
+:root{--navy:#183b43;--blue:#087e83;--bg:#f5f7f7;--surface:#fff;--line:#dce5e6;
+      --line-soft:#edf1f2;--ink:#1c3440;--muted:#6b7b84;--ok:#247d60;
+      --ok-soft:#ecf7f1;--warn:#8a610e;--warn-soft:#fff7e8;--bad:#b6403a;
+      --bad-soft:#fdf0ef;--r:10px}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+     font:14px/1.6 "Segoe UI",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+header{background:var(--navy);color:#fff;padding:18px max(20px,calc((100vw - 1100px)/2))}
+header h1{margin:0;font-size:17px;letter-spacing:-.3px}
+header p{margin:3px 0 0;font-size:11.5px;opacity:.72}
+main{max-width:1100px;margin:0 auto;padding:22px 20px 40px}
+h2{margin:26px 0 12px;font-size:12px;font-weight:700;letter-spacing:.7px;
+   text-transform:uppercase;color:var(--muted)}
+h2:first-child{margin-top:0}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);
+      padding:18px 20px;margin-bottom:14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px}
+.metric{padding:12px 14px;border:1px solid var(--line-soft);border-radius:8px;
+        background:#fbfcfc}
+.metric b{display:block;font-size:24px;font-weight:700;line-height:1.2;letter-spacing:-.6px}
+.metric span{display:block;margin-top:3px;font-size:10.5px;color:var(--muted)}
+.metric.flag b{color:var(--warn)}
+.pill{display:inline-block;padding:2px 9px;border-radius:100px;font-size:10px;
+      font-weight:700;letter-spacing:.3px;text-transform:uppercase}
+.ok{background:var(--ok-soft);color:var(--ok)}
+.warn{background:var(--warn-soft);color:var(--warn)}
+.bad{background:var(--bad-soft);color:var(--bad)}
+.idle{background:#eef2f3;color:var(--muted)}
+.note{margin:12px 0 0;padding:10px 12px;border-radius:8px;background:#fbfcfc;
+      border-left:2px solid var(--line);font-size:11.5px;line-height:1.6;color:var(--muted)}
+.note.warn{background:var(--warn-soft);border-left-color:var(--warn);color:var(--warn)}
+table{width:100%;border-collapse:collapse}
+td,th{padding:9px 8px;border-bottom:1px solid var(--line-soft);text-align:left;
+      font-size:12px;vertical-align:top}
+th{font-size:10px;letter-spacing:.4px;text-transform:uppercase;color:var(--muted);font-weight:700}
+tr:last-child td{border-bottom:0}
+td.cap{font-weight:700;white-space:nowrap}
+td.detail{color:var(--muted);font-size:11.5px}
+.kv{display:flex;flex-wrap:wrap;gap:6px 26px;font-size:11.5px;color:var(--muted)}
+.kv b{color:var(--ink);font-weight:700}
+.conflict{padding:10px 12px;margin-top:8px;border-radius:8px;background:var(--warn-soft);
+          border-left:2px solid var(--warn)}
+.conflict p{margin:0 0 5px;font-size:11.5px;color:var(--warn)}
+.conflict ul{margin:0;padding-left:18px}
+.conflict li{font-size:11px;color:var(--ink)}
+footer{margin-top:24px;font-size:10.5px;color:var(--muted);line-height:1.7}
+code{background:#eef2f3;padding:1px 5px;border-radius:4px;font-size:11px}
+#error{display:none;padding:14px 16px;border-radius:var(--r);background:var(--bad-soft);
+       color:var(--bad);font-size:12.5px;border:1px solid #edcec9}
+/* At phone width the capability table is wider than the screen: `nowrap` on
+   the name column plus a long detail sentence forces it. Stacked into blocks
+   instead — an operator checking a status on a phone reads it top to bottom
+   anyway, and a page that scrolls sideways reads as broken. */
+@media (max-width:560px){
+  .grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  thead{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+  table,tbody,tr,td{display:block;width:100%}
+  tr{padding:10px 0;border-bottom:1px solid var(--line-soft)}
+  tr:last-child{border-bottom:0}
+  td{border:0;padding:2px 0}
+  td.cap{white-space:normal}
+  code{overflow-wrap:anywhere}
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>Operator status</h1>
+  <p>Citizen Petition Assistant — machine and corpus. No citizen data appears on this page.</p>
+</header>
+
+<main>
+  <div id="error"></div>
+  <div id="body" hidden>
+
+    <h2>Knowledge base</h2>
+    <div class="card">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+        <span class="pill" id="kbHealth">—</span>
+        <span class="kv" id="kbPath"></span>
+      </div>
+      <div class="grid">
+        <div class="metric"><b id="mDocs">0</b><span>Indexed documents</span></div>
+        <div class="metric"><b id="mOfficial">0</b><span>Official</span></div>
+        <div class="metric flag"><b id="mUnverified">0</b><span>Unknown / unverified</span></div>
+        <div class="metric"><b id="mSuperseded">0</b><span>Superseded</span></div>
+        <div class="metric flag"><b id="mConflicts">0</b><span>Active conflicts</span></div>
+        <div class="metric"><b id="mChunks">0</b><span>Indexed passages</span></div>
+      </div>
+      <p class="note" id="kbNote"></p>
+      <div class="kv" style="margin-top:12px">
+        <span>Embeddings <b id="embProvider">—</b></span>
+        <span>Dimension <b id="embDim">—</b></span>
+        <span>Vector search <b id="embVector">—</b></span>
+        <span>Last ingestion <b id="lastIngest">never</b></span>
+      </div>
+      <div id="conflictList"></div>
+    </div>
+
+    <h2>Capabilities</h2>
+    <div class="card">
+      <table>
+        <thead><tr><th>Capability</th><th>State</th><th>Detail</th></tr></thead>
+        <tbody id="caps"></tbody>
+      </table>
+    </div>
+
+    <footer>
+      <p>Generated <span id="generated">—</span> · access <code id="access">—</code></p>
+      <p>Load documents with <code>python scripts/ingest.py add &lt;file&gt; --official --provenance "…"</code>.
+         Verify the PDF engine with <code>python scripts/verify_pdf.py</code>.</p>
+    </footer>
+  </div>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[<>&"]/g, c =>
+  ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" })[c]);
+
+// A token may be supplied as ?token=… so an operator can bookmark the page on a
+// machine that is not the server itself. It is never stored.
+const TOKEN = new URLSearchParams(location.search).get("token") || "";
+
+const CLASS = {
+  ready: "ok", available: "ok", empty: "idle", not_ready: "idle",
+  not_installed: "idle", degraded: "warn", workstation_only: "warn",
+  attention: "warn", unavailable: "bad", not_available: "bad", disabled: "idle",
+};
+const WORD = {
+  ready: "Ready", available: "Available", not_installed: "Not installed",
+  not_ready: "Not ready", workstation_only: "Workstation only",
+  unavailable: "Unavailable", not_available: "Not available",
+  degraded: "Degraded", empty: "Empty", attention: "Needs attention",
+  disabled: "Disabled",
+};
+
+function pill(state) {
+  return `<span class="pill ${CLASS[state] || "idle"}">${esc(WORD[state] || state)}</span>`;
+}
+
+async function load() {
+  let data;
+  try {
+    const response = await fetch("/api/operator/status", {
+      headers: TOKEN ? { "x-operator-token": TOKEN } : {},
+    });
+    if (response.status === 404) {
+      throw new Error(
+        "This screen is not reachable from here. It answers only on the server " +
+        "itself unless OPERATOR_TOKEN is set — then add ?token=… to the URL.");
+    }
+    if (!response.ok) throw new Error(`The service answered ${response.status}.`);
+    data = await response.json();
+  } catch (err) {
+    $("error").style.display = "block";
+    $("error").textContent = err.message;
+    return;
+  }
+
+  $("body").hidden = false;
+  const k = data.knowledge;
+
+  $("kbHealth").outerHTML = pill(k.health).replace("<span", '<span id="kbHealth"');
+  $("kbPath").innerHTML = k.path ? `<span>${esc(k.path)}</span>` : "";
+  $("mDocs").textContent = k.documents ?? 0;
+  $("mOfficial").textContent = k.official_documents ?? 0;
+  $("mUnverified").textContent = k.unverified_documents ?? 0;
+  $("mSuperseded").textContent = k.superseded_documents ?? 0;
+  $("mConflicts").textContent = k.unresolved_conflicts ?? 0;
+  $("mChunks").textContent = k.chunks ?? 0;
+  $("kbNote").textContent = k.note || "";
+  $("kbNote").className = "note" + (k.health === "ready" || k.health === "empty" ? "" : " warn");
+
+  const e = k.embeddings || {};
+  // "local" is a hashed bag-of-words, not a trained model. Saying only its name
+  // reads like success, so the screen says what it is.
+  $("embProvider").textContent = e.provider
+    ? (e.semantic ? e.provider : `${e.provider} (lexical, not semantic)`) : "—";
+  $("embDim").textContent = e.dimension ?? "—";
+  $("embVector").textContent = e.vector_search ? "on" : "off (lexical only)";
+  $("lastIngest").textContent = k.last_ingested_at
+    ? new Date(k.last_ingested_at).toLocaleString() : "never";
+
+  $("conflictList").innerHTML = (k.conflicts || []).map(c => `
+    <div class="conflict">
+      <p>${esc(c.message)}</p>
+      <ul>${(c.documents || []).map(d =>
+        `<li>${esc(d.title)}${d.date ? ` · ${esc(d.date)}` : " · no date"}
+         <code>${esc(d.document_id)}</code></li>`).join("")}</ul>
+    </div>`).join("");
+
+  $("caps").innerHTML = Object.values(data.capabilities || {}).map(c => `
+    <tr>
+      <td class="cap">${esc(c.name)}</td>
+      <td>${pill(c.state)}</td>
+      <td class="detail">${esc(c.detail)}</td>
+    </tr>`).join("");
+
+  $("generated").textContent = new Date(data.generated_at).toLocaleString();
+  $("access").textContent = data.access;
+}
+
+load();
+setInterval(load, 30000);
+</script>
+</body>
+</html>

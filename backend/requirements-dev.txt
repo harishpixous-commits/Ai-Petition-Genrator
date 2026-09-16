@@ -1,0 +1,13 @@
+-r requirements.txt
+
+pytest>=8.3
+pytest-asyncio>=0.24
+ruff>=0.8
+
+# Rasterises a generated PDF to PNG so Tamil shaping can be checked by eye.
+# See scripts/render_sample.py.
+pymupdf>=1.24
+
+# Drives the interface in a headless browser for scripts/screenshots.py.
+# After installing: python -m playwright install chromium
+playwright>=1.48

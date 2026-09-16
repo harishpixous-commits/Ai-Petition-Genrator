@@ -1,0 +1,440 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#133b40">
+<meta name="description" content="Prepare a clear, well-structured citizen petition in English or Tamil, with guided questions and document downloads.">
+<title>Citizen Petition Assistant</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23163b6d'/%3E%3Cpath d='M9 8h11l4 4v12a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2V10a2 2 0 0 1 2-2z' fill='%23fff'/%3E%3Cpath d='M11 15h10M11 19h7' stroke='%23163b6d' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<a class="skip-link" href="#mainContent" id="skipLink">Skip to content</a>
+
+<header class="app">
+  <a class="brand" href="#home" data-route="home" aria-label="Citizen Petition Assistant home">
+    <div class="emblem" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M7 3h7l4 4v13H6a1 1 0 0 1-1-1V5a2 2 0 0 1 2-2Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M14 3v5h4M9 12h5M9 16h6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></div>
+    <div class="brand-text">
+      <h1 id="ui-title">Citizen Petition Assistant</h1>
+      <p id="ui-subtitle">AI Assisted Petition Preparation</p>
+    </div>
+  </a>
+
+  <nav class="main-nav" aria-label="Main navigation">
+    <a href="#home" data-route="home" id="navHome" aria-current="page">Home</a>
+    <a href="#create" data-route="create" id="navCreate">Create Petition</a>
+    <a href="#petitions" data-route="petitions" id="navPetitions">My Petitions</a>
+  </nav>
+
+  <div class="header-actions">
+    <button class="hbtn help-btn" id="helpBtn" type="button" aria-label="How to prepare a petition" title="How to prepare a petition"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.7"/><path d="M9.6 9a2.5 2.5 0 0 1 4.7 1.2c0 1.6-2.3 1.8-2.3 3.3M12 17v.1" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg><span class="txt" id="helpText">How it works</span></button>
+    <label class="sr-only" for="lang" id="ui-langLabel">Language</label>
+    <select class="lang" id="lang">
+      <option value="en">English</option>
+      <option value="ta">தமிழ்</option>
+    </select>
+    <button class="hbtn" id="mic" type="button">
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3" stroke="currentColor" stroke-width="1.7"/><path d="M6 11a6 6 0 0 0 12 0M12 17v4m-3 0h6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg><span class="txt" id="micText">Voice</span>
+    </button>
+    <button class="hbtn primary" id="new" type="button">
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span class="txt" id="newText">New Petition</span>
+    </button>
+  </div>
+</header>
+
+<div id="mainContent" tabindex="-1">
+<section class="home-page app-page" id="homePage" aria-labelledby="homeTitle">
+  <div class="home-hero">
+    <div class="home-hero-copy">
+      <p class="eyebrow" id="homeEyebrow">A SIMPLE WAY TO BE HEARD</p>
+      <h2 id="homeTitle">Your concerns.<br>A well-prepared petition.</h2>
+      <p class="home-description" id="homeDescription">Turn the details of your concern into a clear petition. Get guided help in English or Tamil, review every detail, and keep your documents in one place.</p>
+      <div class="home-capabilities" aria-label="Available features">
+        <span><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m5 12 4 4L19 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span id="homeLanguage">English &amp; Tamil</span></span>
+        <span><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m5 12 4 4L19 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span id="homeReview">Review before downloading</span></span>
+      </div>
+    </div>
+    <div class="home-illustration" aria-hidden="true">
+      <div class="hero-orbit orbit-one"></div><div class="hero-orbit orbit-two"></div>
+      <div class="hero-sheet sheet-back"></div>
+      <div class="hero-sheet sheet-front">
+        <div class="hero-sheet-heading"><span class="hero-document-mark"><svg viewBox="0 0 24 24" fill="none"><path d="M7 3h7l4 4v13H6a1 1 0 0 1-1-1V5a2 2 0 0 1 2-2Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M14 3v5h4M9 12h5M9 16h6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></span><div><i></i><i></i></div></div>
+        <div class="hero-sheet-lines"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        <div class="hero-sheet-sign"><svg viewBox="0 0 100 26" fill="none"><path d="M3 21C20 0 22 3 18 17s14-7 16-5-2 12 7 5 9 0 15-4 16 6 36-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></div>
+      </div>
+      <div class="hero-check"><svg viewBox="0 0 24 24" fill="none"><path d="m5 12 4 4L19 6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      <div class="hero-caption" id="homeIllustrationCaption">From your words to a clear document</div>
+    </div>
+  </div>
+
+  <div class="home-actions">
+    <a class="home-action-card create-action" href="#create" data-route="create" id="homeCreateBtn">
+      <span class="home-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></span>
+      <div><span class="action-eyebrow" id="homeCreateEyebrow">START SOMETHING NEW</span><h3 id="homeCreateTitle">Create a petition</h3><p id="homeCreateDescription">A guided conversation, a complete draft, and a document ready for your review.</p></div>
+      <span class="action-arrow" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M5 12h14m-6-6 6 6-6 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+    </a>
+    <a class="home-action-card library-action" href="#petitions" data-route="petitions" id="homePetitionsBtn">
+      <span class="home-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M3 7a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v9H3V7Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M7 12h10M7 16h6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></span>
+      <div><span class="action-eyebrow" id="homePetitionsEyebrow">PICK UP WHERE YOU LEFT OFF</span><h3 id="homePetitionsTitle">My petitions</h3><p id="homePetitionsDescription">Find, open, and manage your saved petitions, with their documents and versions.</p></div>
+      <span class="action-arrow" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M5 12h14m-6-6 6 6-6 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+    </a>
+  </div>
+
+  <div class="resume-card" id="resumeCard" hidden>
+    <span class="resume-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M3 11a9 9 0 1 1 3 7M3 5v6h6m3-4v5l3 2" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+    <div><h3 id="resumeTitle">Continue your petition</h3><p id="resumeDescription">Your current draft is ready to pick up again.</p></div>
+    <button class="btn" id="resumeBtn" type="button">Continue draft <span aria-hidden="true">→</span></button>
+  </div>
+
+  <section class="home-guide" aria-labelledby="homeGuideTitle">
+    <div class="home-guide-heading"><p class="eyebrow" id="homeGuideEyebrow">THREE SIMPLE STEPS</p><h3 id="homeGuideTitle">A little guidance, all the way.</h3></div>
+    <ol class="home-steps">
+      <li><span class="home-step-number">01</span><h4 id="homeStepOneTitle">Share your concern</h4><p id="homeStepOneText">Answer a few questions and add supporting documents if you have them.</p></li>
+      <li><span class="home-step-number">02</span><h4 id="homeStepTwoTitle">Make it yours</h4><p id="homeStepTwoText">Check your details, review the draft, and make any changes you need.</p></li>
+      <li><span class="home-step-number">03</span><h4 id="homeStepThreeTitle">Download &amp; keep</h4><p id="homeStepThreeText">Save your document and return to My Petitions whenever you need it.</p></li>
+    </ol>
+  </section>
+</section>
+
+<section class="petitions-page app-page" id="petitionsPage" hidden aria-labelledby="petitionsTitle">
+  <div class="page-heading">
+    <div><p class="eyebrow" id="petitionsEyebrow">YOUR DOCUMENT WORKSPACE</p><h2 id="petitionsTitle">My petitions</h2><p id="petitionsDescription">Find a petition, review its details, and pick up where you left off.</p></div>
+    <a class="btn primary" href="#create" data-route="create"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span id="petitionsCreateText">Create petition</span></a>
+  </div>
+
+  <form class="petition-filters" id="petitionFilters" autocomplete="off">
+    <div class="filter-search-row">
+      <div class="petition-search"><label class="sr-only" for="petitionSearch" id="petitionSearchLabel">Search petitions</label><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" stroke="currentColor" stroke-width="1.7"/><path d="m16 16 5 5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg><input id="petitionSearch" type="search" placeholder="Search by reference, applicant name, or subject" maxlength="200"></div>
+      <div class="filter-sort"><label for="petitionSort" id="petitionSortLabel">Sort by</label><select id="petitionSort"><option value="newest">Newest first</option><option value="oldest">Oldest first</option><option value="updated">Recently updated</option></select></div>
+    </div>
+    <div class="filter-grid">
+      <div class="filter-field"><label for="filterDateFrom" id="filterDateFromLabel">Created from</label><input id="filterDateFrom" type="date"></div>
+      <div class="filter-field"><label for="filterDateTo" id="filterDateToLabel">Created to</label><input id="filterDateTo" type="date"></div>
+      <div class="filter-field"><label for="filterDepartment" id="filterDepartmentLabel">Department</label><select id="filterDepartment"><option value="">All departments</option></select></div>
+      <div class="filter-field"><label for="filterCategory" id="filterCategoryLabel">Category</label><select id="filterCategory"><option value="">All categories</option></select></div>
+      <div class="filter-field"><label for="filterStatus" id="filterStatusLabel">Status</label><select id="filterStatus"><option value="">All statuses</option><option value="draft">Draft</option><option value="ready">Ready</option><option value="generating">Preparing</option><option value="failed">Needs attention</option><option value="cancelled">Cancelled</option></select></div>
+      <div class="filter-field"><label for="filterLanguage" id="filterLanguageLabel">Language</label><select id="filterLanguage"><option value="">All languages</option><option value="en">English</option><option value="ta">தமிழ்</option></select></div>
+    </div>
+    <div class="filter-footer"><p id="petitionFilterHint">Search and filters apply to your saved petitions.</p><button class="text-btn" id="clearFilters" type="button">Clear filters</button></div>
+  </form>
+
+  <div class="petition-results-heading">
+    <h3 id="petitionCount" role="status" aria-live="polite">Your petitions</h3>
+    <label class="petition-select-all" id="selectAllWrap" hidden><input type="checkbox" id="selectAllPetitions"><span id="selectAllText">Select all</span></label>
+    <span id="petitionsResultsNote">Saved documents and drafts</span>
+  </div>
+  <!-- Appears only once something is ticked. A delete button standing on a page
+       of petitions with nothing selected is an invitation to an accident. -->
+  <div class="petition-selection" id="petitionSelection" hidden role="status" aria-live="polite">
+    <span class="selection-count" id="selectionCount">0 selected</span>
+    <button class="text-btn" id="selectAllMatching" type="button" hidden>Select all</button>
+    <span class="selection-spacer"></span>
+    <button class="text-btn" id="clearSelection" type="button">Clear selection</button>
+    <button class="btn danger" id="deleteSelected" type="button">
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 7h14M10 7V5h4v2m-8 0 1 12h8l1-12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span id="deleteSelectedText">Delete</span></button>
+  </div>
+  <div class="collection-state" id="petitionsLoading" role="status" aria-live="polite"><span class="collection-spinner" aria-hidden="true"></span><h3 id="petitionsLoadingTitle">Loading your petitions</h3><p id="petitionsLoadingText">Getting your saved documents ready.</p></div>
+  <div class="collection-state" id="petitionsEmpty" hidden>
+    <span class="state-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M3 7a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v9H3V7Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M8 13h8m-8 3h5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></span><h3 id="petitionsEmptyTitle">Your petitions will be here</h3><p id="petitionsEmptyText">Create your first petition and return here to find it, make changes, or download it.</p><a class="btn primary" href="#create" data-route="create" id="petitionsEmptyCreate">Create your first petition</a>
+  </div>
+  <div class="collection-state collection-error" id="petitionsError" hidden role="alert"><span class="state-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.5"/><path d="M12 7v6m0 4v.1" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></span><h3 id="petitionsErrorTitle">We couldn’t load your petitions</h3><p id="petitionsErrorText">Please try again in a moment.</p><button class="btn" id="petitionsRetry" type="button">Try again</button></div>
+  <div class="petitions-list" id="petitionsList" aria-live="polite" aria-label="Saved petitions"></div>
+  <nav class="petitions-pagination" id="petitionsPagination" hidden aria-label="Petition pages"><button class="btn" id="petitionsPrevious" type="button">Previous</button><span id="petitionsPageInfo" aria-live="polite">Page 1</span><button class="btn" id="petitionsNext" type="button">Next</button></nav>
+</section>
+
+<section id="generatorPage" hidden aria-label="Create and review a petition">
+
+<section class="workspace-intro" aria-labelledby="workspaceTitle">
+  <div class="intro-copy">
+    <p class="eyebrow" id="ui-workspaceEyebrow">YOUR VOICE, CLEARLY EXPRESSED</p>
+    <h2 id="workspaceTitle">A clear petition starts here.</h2>
+    <p id="workspaceSubtitle">Share your details. Tell us what happened. We’ll help you prepare a petition you can review and download.</p>
+  </div>
+  <div class="intro-meta">
+    <div class="lifecycle is-collecting" id="lifecycle" role="status" aria-live="polite">
+      <span class="dot" aria-hidden="true"></span>
+      <span class="txt" id="lifecycleText">Collecting Information</span>
+    </div>
+    <span class="save-status" id="saveStatus" role="status" aria-live="polite">Starting your workspace…</span>
+  </div>
+</section>
+
+<div class="connection-banner" id="connectionBanner" hidden role="alert">
+  <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m12 3 10 18H2L12 3Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M12 9v5m0 3v.1" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+  <span id="connectionText"></span><button class="btn" id="retryConnection" type="button">Try again</button>
+</div>
+
+<nav class="stepper" id="stepper" aria-label="Petition progress"></nav>
+
+<main class="workspace">
+  <!-- LEFT: conversation, or the finished document once there is one -->
+  <div class="left">
+    <section class="card" id="chatCard" style="flex:1">
+      <div class="card-head">
+        <div class="ai-badge" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5L12 3Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg></div>
+        <div>
+          <h2 id="ui-assistant">Petition Assistant</h2>
+          <p class="sub"><span class="dot" aria-hidden="true"></span><span id="assistantStatus">Collecting citizen information</span></p>
+        </div>
+        <button class="details-toggle" id="detailsToggle" type="button" aria-controls="detailsPanel" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M9 5h11M9 12h11M9 19h11M4 5h.1M4 12h.1M4 19h.1" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span id="detailsToggleText">Details</span></button>
+      </div>
+
+      <div class="voicebar" id="voiceBar" hidden>
+        <button class="mic-round" id="voiceMute" type="button" aria-pressed="false">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <rect x="9" y="2.5" width="6" height="11" rx="3" fill="currentColor"/>
+            <path d="M5.5 11a6.5 6.5 0 0 0 13 0" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round"/>
+            <path d="M12 17.5V21M8.5 21h7" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round"/>
+            <path class="slash" d="M4 3.2 20 20.8" stroke="currentColor" stroke-width="2.2"
+                  stroke-linecap="round"/>
+          </svg>
+        </button>
+
+        <div class="voice-field">
+          <canvas id="voiceWave" aria-hidden="true"></canvas>
+          <div class="vf-status">
+            <span id="voiceStatus"></span>
+            <span class="vf-heard" id="voiceTranscript"></span>
+          </div>
+        </div>
+
+        <div class="vb-actions">
+          <button class="btn danger" id="voiceEnd" type="button"></button>
+        </div>
+      </div>
+
+      <div class="vb-under">
+        <div class="vb-meter" id="voiceMeter" aria-hidden="true" hidden><i></i><u></u></div>
+        <div class="vb-diag" id="voiceDiag" hidden></div>
+      </div>
+
+      <div class="voice-error-banner" id="voiceError" hidden role="alert">
+        <span class="ic" aria-hidden="true">!</span>
+        <span id="voiceErrorText"></span>
+        <span class="acts">
+          <button class="btn" id="voiceRetry" type="button"></button>
+          <button class="btn" id="voiceDismiss" type="button"></button>
+        </span>
+      </div>
+
+      <div class="card-body" id="log" role="log" aria-live="polite" aria-atomic="false"></div>
+
+      <div class="composer">
+        <!-- What is attached, and anything that still needs the citizen's
+             eye on it. A strip above the buttons rather than a panel: at this
+             point in the form the citizen is answering a question, not
+             managing files. -->
+        <div class="attach-strip" id="attachStrip" hidden>
+          <ul class="as-chips" id="attachChips"></ul>
+          <div id="attachConfirmList"></div>
+          <p class="as-note" id="attachNote" hidden></p>
+        </div>
+        <ul class="ap-progress" id="attachProgress" hidden></ul>
+
+        <form class="composer-row" id="ask" autocomplete="off">
+          <label class="sr-only" for="text" id="ui-inputLabel">Your response</label>
+          <textarea id="text" rows="1" placeholder="Type your response…" maxlength="10000" aria-describedby="inputHint"></textarea>
+          <button class="icon-btn" id="micInline" type="button" title="Dictate" aria-label="Dictate"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3" stroke="currentColor" stroke-width="1.7"/><path d="M6 11a6 6 0 0 0 12 0M12 17v4m-3 0h6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></button>
+          <!-- Attach. Beside the microphone because it is the same kind of
+               thing: another way of putting something into the petition, and
+               available whenever the citizen happens to have it in their hand
+               rather than only at one step. -->
+          <button class="icon-btn" id="attachBtn" type="button">
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M18.4 11.3 12 17.7a4.5 4.5 0 0 1-6.4-6.4l7.1-7a3 3 0 0 1 4.3 4.2l-7.1 7.1a1.5 1.5 0 0 1-2.1-2.1l6.3-6.4"
+                    stroke="currentColor" stroke-width="1.7" stroke-linecap="round"
+                    stroke-linejoin="round"/>
+            </svg>
+          </button>
+          <input class="sr-only" id="attachInput" type="file" multiple>
+          <button class="send-btn" id="send" type="submit">
+            <span id="sendText">Send</span><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+        </form>
+        <div class="composer-hint"><span id="inputHint">Enter to send · Shift + Enter for a new line</span><span id="inputCount">0 / 10,000</span></div>
+        <!-- The attachment step. Two actions, because the question has two
+             answers and a citizen at a service centre should not have to
+             compose a sentence to say "nothing to add". -->
+        <div class="composer-actions">
+          <button class="btn primary grow" id="confirm" type="button"></button>
+          <button class="btn" id="restart" type="button"></button>
+          <button class="btn danger" id="cancel" type="button"></button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- MIDDLE: the drafting animation, only while the petition is being made.
+       Sits between the assistant and the record, so the citizen watches the
+       document being prepared without either panel going away. -->
+  <section class="card genpanel" id="genPanel" hidden aria-live="polite">
+    <div class="card-head">
+      <div class="ai-badge" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5L12 3Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg></div>
+      <div>
+        <h2 id="ui-genTitle">Preparing your petition</h2>
+        <p class="sub"><span class="dot" aria-hidden="true"></span><span id="genNow">Drafting the petition</span></p>
+      </div>
+    </div>
+
+    <div class="gp-stage">
+      <div class="gp-sheet" aria-hidden="true">
+        <div class="gp-head">
+          <span class="gp-emblem"><svg viewBox="0 0 24 24" fill="none"><path d="m3 8 9-5 9 5H3Zm3 3v7m6-7v7m6-7v7M3 21h18" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+          <span class="gp-title" id="gp-title">Draft Petition</span>
+          <span class="gp-date" id="gp-date"></span>
+        </div>
+
+        <div class="gp-body">
+          <div class="gp-block">
+            <span class="gp-tag" id="gp-from">From</span>
+            <div class="gp-line w70"><i style="animation-delay:.10s"></i></div>
+            <div class="gp-line w85"><i style="animation-delay:.35s"></i></div>
+          </div>
+          <div class="gp-block">
+            <span class="gp-tag" id="gp-to">To</span>
+            <div class="gp-line w60"><i style="animation-delay:.70s"></i></div>
+            <div class="gp-line w50"><i style="animation-delay:.95s"></i></div>
+          </div>
+          <div class="gp-block">
+            <div class="gp-line w90 strong"><i style="animation-delay:1.30s"></i></div>
+          </div>
+          <div class="gp-block">
+            <div class="gp-line w95"><i style="animation-delay:1.70s"></i></div>
+            <div class="gp-line w88"><i style="animation-delay:1.90s"></i></div>
+            <div class="gp-line w92 mark"><i style="animation-delay:2.10s"></i></div>
+            <div class="gp-line w75"><i style="animation-delay:2.30s"></i></div>
+          </div>
+          <div class="gp-block">
+            <div class="gp-line w90"><i style="animation-delay:2.55s"></i></div>
+            <div class="gp-line w95"><i style="animation-delay:2.75s"></i></div>
+            <div class="gp-line w85"><i style="animation-delay:2.95s"></i></div>
+            <div class="gp-line w60"><i style="animation-delay:3.15s"></i></div>
+          </div>
+          <div class="gp-block">
+            <div class="gp-line w40"><i style="animation-delay:3.45s"></i></div>
+            <div class="gp-sign"><i style="animation-delay:3.70s"></i></div>
+          </div>
+        </div>
+
+        <div class="gp-scan"></div>
+        <div class="gp-pencil"><svg viewBox="0 0 24 24" fill="none"><path d="m14 5 5 5M4 20l5-1 12-12a2 2 0 0 0 0-3l-1-1a2 2 0 0 0-3 0L5 15l-1 5Z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+
+        <span class="gp-callout c1" id="gp-c1">Improved clarity</span>
+        <span class="gp-callout c2" id="gp-c2">Better wording</span>
+        <span class="gp-callout c3" id="gp-c3">Official format</span>
+      </div>
+
+      <ol class="gp-rail" id="genRail"></ol>
+      <div class="gp-bar" role="progressbar" aria-label="Preparing your petition"><i></i></div>
+    </div>
+  </section>
+
+  <!-- MIDDLE, once it exists: the petition itself, in the place it was just
+       drawn. The animation gives way to the finished document without either
+       moving, so the citizen watches one become the other. Under the
+       conversation — where this used to sit — the document they came for was
+       below the fold and needed a scroll to reach. -->
+  <div class="middle" id="docColumn" hidden>
+    <div class="banner" id="outcome" hidden>
+      <div class="ic" id="outcomeIcon" aria-hidden="true">✓</div>
+      <div>
+        <h3 id="outcomeTitle"></h3>
+        <p id="outcomeText"></p>
+      </div>
+      <div class="ref" id="outcomeRef" hidden><span id="ui-refLabel">Reference</span><b id="refValue"></b></div>
+    </div>
+
+    <section class="card" id="docCard" hidden>
+      <div class="doc-toolbar">
+        <a class="btn primary off" id="pdf" download></a>
+        <a class="btn off" id="docx" download></a>
+        <button class="btn" id="reviseBtn" type="button" aria-expanded="false" aria-controls="letter">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m14.5 5.5 4 4M4 20l4.5-.9L20 7.6a2 2 0 0 0 0-2.8l-.8-.8a2 2 0 0 0-2.8 0L4.9 15.5 4 20Z" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span id="reviseText"></span>
+        </button>
+        <button class="btn primary" id="editSave" type="button" hidden></button>
+        <button class="btn" id="editCancel" type="button" hidden></button>
+        <button class="btn" id="printBtn" type="button"></button>
+        <button class="btn" id="copyBtn" type="button"></button>
+      </div>
+
+      <p class="edit-hint" id="editHint" hidden></p>
+      <details class="version-panel" id="versionPanel" hidden>
+        <summary id="versionToggle"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 11a9 9 0 1 1 3 7M3 5v6h6m3-4v5l3 2" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg><span id="versionTitle">Document versions</span><span id="versionCurrent"></span><span class="version-chevron" aria-hidden="true">⌄</span></summary>
+        <div class="version-panel-body"><p class="version-status" id="versionStatus" role="status" aria-live="polite"></p><div id="versionList"></div></div>
+      </details>
+      <div class="paper-wrap">
+        <article class="paper" id="letter"></article>
+      </div>
+    </section>
+  </div>
+
+  <!-- RIGHT: the record -->
+  <aside class="right" id="detailsPanel" aria-labelledby="ui-details">
+    <section class="card" style="flex:1">
+      <div class="card-head" style="display:block">
+        <div class="details-heading"><h2 id="ui-details">Petition Details</h2><span class="details-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M9 5h11M9 12h11M9 19h11M4 5h.1M4 12h.1M4 19h.1" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></span></div>
+        <p class="details-hint" id="ui-detailsHint">Your details come together as we talk.</p>
+        <div class="progress-note">
+          <span id="progressText">0 of 6 required details collected</span>
+          <span id="progressPct">0%</span>
+        </div>
+        <div class="progress-track"><i id="progressBar" style="width:0%"></i></div>
+      </div>
+
+      <div class="card-body">
+        <div id="warnings"></div>
+        <div class="section-label" id="ui-citizenSection">Citizen Details</div>
+        <div id="citizenFields"></div>
+        <div class="section-label" id="ui-grievanceSection">Grievance Details</div>
+        <div id="grievanceFields"></div>
+
+        <!-- Advisory findings from the government knowledge base. Present only
+             when the corpus had something to say, and never part of the
+             petition: an officer must be able to tell what the citizen stated
+             from what a document search suggested. -->
+        <details class="drawer analysis-drawer" id="analysisDrawer" hidden>
+          <summary>
+            <span id="ui-analysis">AI Petition Analysis</span>
+            <span class="count" id="analysisCount" hidden>0</span>
+            <span class="chev" aria-hidden="true">▾</span>
+          </summary>
+          <div class="drawer-body" id="analysis"></div>
+        </details>
+
+        <details class="drawer" id="correctionsDrawer">
+          <summary>
+            <span id="ui-corrections">Corrections History</span>
+            <span class="count" id="correctionsCount" hidden>0</span>
+            <span class="chev" aria-hidden="true">▾</span>
+          </summary>
+          <div class="drawer-body" id="corrections"></div>
+        </details>
+
+        <details class="drawer">
+          <summary>
+            <span id="ui-system">System Status</span>
+            <span class="chev" aria-hidden="true">▾</span>
+          </summary>
+          <div class="drawer-body" id="health"></div>
+        </details>
+      </div>
+    </section>
+  </aside>
+</main>
+</section>
+</div>
+
+<script src="/static/app.js" defer></script>
+<!-- Loaded AFTER app.js and never before it: navigation.js bootstraps the
+     session at the end of its own body, and that call needs app.js's
+     functions to already exist. Both are `defer`, which runs them in
+     document order. Without this tag the page loads, looks correct, and
+     never starts a session at all. -->
+<script src="/static/navigation.js" defer></script>
+</body>
+</html>

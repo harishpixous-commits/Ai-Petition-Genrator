@@ -1,0 +1,134 @@
+# The citizen petition (மனு).
+#
+# Five questions, asked in this order, and then the letter is written. The order
+# is how a person tells their own story — who they are, how old they are, where
+# they live, their Aadhaar number, and only then the grievance itself. A citizen
+# who has just been asked to recite an identifier is not in the frame of mind to
+# describe what went wrong, so the grievance is asked last.
+#
+# EVERYTHING a department may need to change lives in this file: the office it is
+# addressed to, the subject line, the wording of each question in both languages,
+# the enclosure list. Replacing this with a prescribed government format is an
+# edit here, with no change to any application logic.
+#
+# There is no `match:` block and no letter-type selection. One form is installed,
+# so the citizen is never asked which document they want.
+id: petition
+authoring_language: en
+
+label:
+  en: Citizen Petition
+  ta: குடிமகன் மனு
+
+department:
+  en: District Collectorate
+  ta: மாவட்ட ஆட்சியர் அலுவலகம்
+
+addressee:
+  en: The District Collector
+  ta: மாவட்ட ஆட்சியர் அவர்கள்
+
+subject:
+  en: Petition seeking redressal of a grievance
+  ta: குறை தீர்க்கக் கோரி மனு
+
+closing:
+  en: Yours faithfully,
+  ta: தங்கள் உண்மையுள்ள,
+
+# Handed to the model as the purpose of the form, so that the subject line and
+# the closing request it writes are about the right kind of document.
+narrative_brief: >
+  A citizen is submitting a petition to the District Collectorate asking for a
+  grievance to be looked into and redressed. It will be read by a receiving
+  officer who has to decide which department it belongs to, so the subject line
+  should say plainly what the matter concerns. The grievance itself is stated in
+  the citizen's own words and is reproduced verbatim in the document — it must
+  never be softened, escalated, summarised, or supplemented with anything the
+  citizen did not say.
+
+# `aliases` are the words a citizen may use to NAME this field when they are
+# correcting it: "the address is wrong", "என் வயது தவறு". Matching them is
+# deterministic and costs nothing, which is what lets the correction flow work
+# with no model available. Adding local usage is an edit here, not in code.
+fields:
+  - name: applicant_name
+    type: person_name
+    required: true
+    aliases:
+      en: [name, my name, full name]
+      ta: [பெயர், என் பெயர், எனது பெயர், பெயரை, பேர்]
+    label: {en: Name of petitioner, ta: மனுதாரர் பெயர்}
+    prompt:
+      en: What is your name?
+      ta: உங்கள் பெயர் என்ன?
+
+  - name: age
+    type: age
+    required: true
+    aliases:
+      en: [age, my age, years old]
+      ta: [வயது, என் வயது, வயதை, வயசு, வயசை]
+    label: {en: Age, ta: வயது}
+    prompt:
+      en: What is your age?
+      ta: உங்கள் வயது என்ன?
+
+  - name: mobile
+    type: mobile
+    required: true
+    aliases:
+      en: [mobile, phone, phone number, mobile number, contact number]
+      ta: [கைபேசி, கைபேசி எண், கைபேசி எண்ணை, தொலைபேசி, போன், மொபைல், தொடர்பு எண்]
+    label: {en: Mobile number, ta: கைபேசி எண்}
+    prompt:
+      en: What is your mobile number?
+      ta: உங்கள் கைபேசி எண் என்ன?
+
+  - name: address
+    type: address
+    required: true
+    aliases:
+      en: [address, my address, house, place]
+      ta: [முகவரி, என் முகவரி, முகவரியை, வீடு, விலாசம்]
+    label: {en: Address, ta: முகவரி}
+    prompt:
+      en: What is your full address?
+      ta: உங்கள் முழு முகவரி என்ன?
+
+  - name: aadhaar
+    type: aadhaar
+    required: true
+    aliases:
+      en: [aadhaar, aadhar, adhar, aadhaar number, id number]
+      ta: [ஆதார், ஆதார் எண், ஆதார் எண்ணை, ஆதாரை, அடையாள எண்]
+    label: {en: Aadhaar number, ta: ஆதார் எண்}
+    prompt:
+      en: Please say your 12-digit Aadhaar number.
+      ta: உங்கள் 12 இலக்க ஆதார் எண்ணைச் சொல்லுங்கள்.
+
+  # The whole substance of the petition. Free text, deliberately: a grievance
+  # that has to fit a dropdown is a grievance that has been changed. It is
+  # reproduced verbatim in the document and is never summarised or rephrased.
+  - name: grievance
+    type: text
+    required: true
+    aliases:
+      en: [grievance, complaint, problem, issue, matter]
+      ta: [குறை, குறையை, புகார், புகாரை, பிரச்சனை, பிரச்சினை, விவகாரம்]
+    label: {en: Grievance, ta: குறை}
+    prompt:
+      en: Now please tell me your grievance, in your own words.
+      ta: இப்போது உங்கள் குறையை உங்கள் சொந்த வார்த்தைகளில் சொல்லுங்கள்.
+
+# Printed on the petition so a receiving office can tell what should have
+# arrived with it. Both lists are edited here, never in code.
+enclosures:
+  en:
+    - Copy of Aadhaar card
+    - Copy of proof of residence, if available
+    - Copies of any earlier petition or acknowledgement on this matter
+  ta:
+    - ஆதார் அட்டை நகல்
+    - வசிப்பிடச் சான்று நகல், இருப்பின்
+    - இந்த விவகாரம் தொடர்பாக ஏற்கனவே அளித்த மனு அல்லது ஒப்புகைச் சீட்டு நகல்கள்
