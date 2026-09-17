@@ -194,12 +194,19 @@ jobs:
 
             # Snapshot of every container that is NOT ours: name, id and
             # start time. Detects stop, removal, recreation AND restart.
+            #
+            # The "is it ours?" filter is done INSIDE the loop, not with a
+            # `grep -vx` in the pipeline. grep exits 1 when it selects no
+            # lines, and on a host with no running containers (the first
+            # deployment) that made the whole pipeline return 1 under
+            # `set -o pipefail`, aborting the deploy before it started.
+            # Keep the filtering here; do not reintroduce grep into this pipe.
             snapshot_others() {
               docker ps --format '{{.Names}}' \
-                | grep -vx "${CONTAINER_NAME}" \
                 | sort \
                 | while read -r n; do
                     [ -z "$n" ] && continue
+                    [ "$n" = "${CONTAINER_NAME}" ] && continue
                     printf '%s\t%s\t%s\n' "$n" \
                       "$(docker inspect -f '{{.Id}}' "$n" 2>/dev/null || echo GONE)" \
                       "$(docker inspect -f '{{.State.StartedAt}}' "$n" 2>/dev/null || echo GONE)"
