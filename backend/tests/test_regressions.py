@@ -917,3 +917,53 @@ class TestTheVoiceLoopNeverAnswersWithSilence:
         at = nodes.index("render_service.render_docx")
 
         assert "asyncio.to_thread(" in nodes[max(0, at - 400):at]
+
+
+class TestTheEnvironmentTemplatesDoNotDrift:
+    """A template that disagrees with the code configures a broken service.
+
+    This one did. `backend/.env.example` specified SARVAM_TTS_MODEL=bulbul:v2
+    and SARVAM_TTS_SPEAKER=anushka long after both were retired — v2 answers
+    HTTP 400 "has been deprecated" and anushka is not a v3 speaker — so anyone
+    who used it to configure a server got spoken replies that could not work.
+    The deployment template had already noticed and says so in its own header.
+
+    Only the settings whose exact value is load-bearing are checked here. The
+    rest of a template is free to differ; these are the ones where a stale
+    value is a silent outage.
+    """
+
+    LOAD_BEARING = ("SARVAM_TTS_MODEL", "SARVAM_TTS_SPEAKER", "DEEPGRAM_MODEL")
+
+    @staticmethod
+    def _declared(path: str, key: str) -> str | None:
+        import re
+        from pathlib import Path
+
+        source = Path(path)
+        if not source.is_file():
+            return None
+        found = re.search(rf"(?m)^{key}=(\S*)", source.read_text(encoding="utf-8"))
+        return found.group(1) if found else None
+
+    def test_the_local_template_matches_the_code(self):
+        from app.config import Settings
+
+        settings = Settings(_env_file=None)
+        for key in self.LOAD_BEARING:
+            declared = self._declared(".env.example", key)
+            if declared is None:
+                continue
+            assert declared == str(getattr(settings, key.lower())), (
+                f"{key} in .env.example is {declared!r}, but config.py says "
+                f"{getattr(settings, key.lower())!r}")
+
+    def test_the_local_template_says_it_is_not_for_production(self):
+        """The mistake this prevents is using it to configure a server, which
+        is what put retired provider settings into a deployment."""
+        from pathlib import Path
+
+        header = Path(".env.example").read_text(encoding="utf-8")[:900]
+
+        assert "deploy/env/app.env.example" in header, (
+            "the local template does not point at the production one")
