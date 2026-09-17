@@ -1,4 +1,4 @@
-"""Deleting a saved petition has to actually delete it.
+"""Deleting a saved petition, and reporting a petition being written.
 
 A citizen who deletes a petition is making a privacy decision, not tidying a
 list. These tests hold the service to that: the checkpoint history goes, the
@@ -15,6 +15,7 @@ import pytest
 from fastapi import FastAPI
 
 from app.api.catalog import router
+from app.api.rest import router as rest_router
 from app.config import Settings
 from app.graph.state import new_state
 from app.graph.workflow import Workflow
@@ -58,6 +59,7 @@ def workflow(graph):
 async def api(workflow):
     app = FastAPI()
     app.include_router(router)
+    app.include_router(rest_router)
     app.state.workflow = workflow
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://test",
@@ -212,3 +214,76 @@ class TestDeletionIsNotJustHiding:
         assert result.unknown == [session_id], "it should not claim to have found a petition"
         assert not document.exists()
         assert not attachments.exists()
+
+
+class TestTheProgressReport:
+    """Saying yes has to show that the petition is being written.
+
+    A turn is one request that returns only once it has finished. The Confirm
+    button opens the drafting panel itself, because it knows what it asked for
+    — but a typed or spoken "yes" does not, and for as long as composition took
+    the citizen watched an unchanged review screen with no sign that anything
+    had begun. One report of this ran to two and a half minutes, and the
+    citizen reasonably concluded nothing had happened.
+
+    The fix is a report, not a guess: the workflow records `generating` before
+    it routes to composition, and this endpoint reads that without waiting on
+    the session lock the running turn is holding.
+    """
+
+    async def test_it_answers_with_the_status_and_nothing_else(self, api, workflow):
+        session_id = _id()
+        await _persist(workflow, session_id, _saved(session_id))
+
+        response = await api.get(f"/api/sessions/{session_id}/progress")
+
+        assert response.status_code == 200
+        # Exactly one key. A progress check has no reason to carry a name, an
+        # address, an Aadhaar number or a draft.
+        assert set(response.json()) == {"status"}
+        assert response.json()["status"] == "ready"
+
+    async def test_it_carries_no_citizen_data(self, api, workflow):
+        session_id = _id()
+        await _persist(workflow, session_id, _saved(session_id))
+
+        body = (await api.get(f"/api/sessions/{session_id}/progress")).text
+
+        for private in ("Ravi", "234567890124", "9876543210", "Anna Street",
+                        "drain", "Subject"):
+            assert private not in body, f"the progress check leaked {private!r}"
+
+    async def test_a_session_that_does_not_exist_is_not_found(self, api):
+        response = await api.get(f"/api/sessions/{_id()}/progress")
+        assert response.status_code == 404
+
+    async def test_it_reports_generation_while_it_is_happening(self, api, workflow):
+        """The whole point: `generating` has to be readable DURING the turn.
+
+        `peek` is deliberately not `snapshot` — snapshot owns the session lock
+        and rewrites a persisted `generating` as an interrupted process, which
+        is the correct reading only when no turn is running.
+        """
+        session_id = _id()
+        await _persist(workflow, session_id,
+                       {**_saved(session_id), "status": "generating",
+                        "document": None, "letter_text": None})
+
+        response = await api.get(f"/api/sessions/{session_id}/progress")
+
+        assert response.json()["status"] == "generating", (
+            "a composition in progress must be reportable as one")
+
+    async def test_the_lock_free_read_does_not_repair_the_state(self, workflow):
+        """`peek` reports; it never decides. If it ran snapshot's recovery it
+        would mark every live generation as a failure the moment it was
+        watched."""
+        session_id = _id()
+        await _persist(workflow, session_id,
+                       {**_saved(session_id), "status": "generating"})
+
+        peeked = await workflow.peek(session_id)
+
+        assert peeked["status"] == "generating"
+        again = await workflow.peek(session_id)
+        assert again["status"] == "generating", "peek changed the session it read"

@@ -24,12 +24,14 @@ from ..config import get_settings
 from ..domain import attachments as attachment_rules
 from ..domain import prior_petition, revisions
 from ..domain.fields import MAX_FREE_TEXT
+from ..domain.letter import verbatim_lines
 from ..domain.templates import missing_fields, the_template
 from ..graph.state import LetterState, new_state
 from ..logging_setup import preview, session_context
 from ..services import asr, attachment_store, extraction, llm, tts
 from ..services.render import pdf_status
 from ..services.speech_text import speech_for
+from ..services.translate import language_of, translate_lines
 from .views import session_view
 
 log = logging.getLogger(__name__)
@@ -251,6 +253,29 @@ async def get_session(session_id: str, request: Request) -> dict:
     """Session recovery. A citizen who lost signal resumes from here."""
     with session_context(session_id):
         return session_view(await _require_state(request, session_id))
+
+
+@router.get("/sessions/{session_id}/progress")
+async def session_progress(session_id: str, request: Request) -> dict:
+    """Is this session composing a petition right now?
+
+    Deliberately lock-free, and deliberately one word.
+
+    A turn is a single request that returns only once it has finished, so the
+    page cannot learn from it that composition has begun — and the full session
+    endpoint is no help, because it waits on the same session lock the running
+    turn is holding. Asking that "are you still working?" can only be answered
+    after the work has stopped.
+
+    So this reads the checkpoint directly. Nothing here decides that work is
+    under way: the confirm step records `generating` before it routes to
+    composition, and this reports that status and nothing else. No document, no
+    fields, no transcript — there is no reason for a progress check to carry a
+    citizen's details.
+    """
+    state = await _workflow(request).peek(session_id)
+    _require_existing(state)
+    return {"status": state.get("status") or "collecting"}
 
 
 @router.post("/sessions/{session_id}/message")
@@ -544,6 +569,80 @@ async def edit_document(session_id: str, body: EditRequest,
             guard=_version_guard(body.expected_version, ready=True, text=body.text),
         )
         return session_view(result)
+
+
+# Named in English for the history, which an officer reads as often as a
+# citizen does. The menu names each language in its own script.
+_LANGUAGE_NAMES = {"en": "English", "ta": "Tamil", "hi": "Hindi"}
+
+
+class TranslateRequest(BaseModel):
+    """Which language the citizen wants to read their petition in."""
+
+    language: str = Field(pattern="^(en|ta|hi)$")
+    expected_version: int | None = Field(default=None, ge=0)
+
+
+@router.post("/sessions/{session_id}/translate")
+async def translate_document(session_id: str, body: TranslateRequest,
+                             request: Request) -> dict:
+    """Produce the finished petition in another language.
+
+    What is translated is the letter the service wrote. What is NOT translated
+    is the citizen's own text — their name, their address and their grievance
+    come through exactly as they were entered, in whatever language they chose
+    to write them. That is not a nicety: a petition whose complaint has been
+    reworded is a different petition, and a translator has already been seen to
+    turn Coimbatore into the name of a locality in Chennai. A document naming
+    the wrong town does not get acted on.
+
+    The translated text then takes the same path a hand edit takes — remade,
+    versioned and verified — so the downloads carry it and the previous
+    language is still in the version history.
+    """
+    with session_context(session_id):
+        state = await _require_state(request, session_id)
+        _require_existing(state)
+        text = str(state.get("letter_text") or "")
+        if state.get("status") != "ready" or not text.strip():
+            raise HTTPException(409, "There is no finished petition to translate yet.")
+
+        target = body.language
+        keep = verbatim_lines(state.get("fields") or {})
+        lines = text.split("\n")
+        source = language_of(lines, keep)
+        log.info("session.translate", extra={"source": source, "target": target})
+        if source == target:
+            # Nothing to do, and nothing pretended: no new version, no
+            # re-render, and the same document handed straight back.
+            return session_view(state)
+
+        try:
+            result = await translate_lines(lines, target, keep=keep, source=source)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("translate.request_failed", extra={"error": str(exc)[:200]})
+            raise HTTPException(
+                503, "The translation service is unavailable. "
+                     "Your petition has not been changed.") from None
+
+        translated = "\n".join(result.lines)
+        if translated.strip() == text.strip():
+            raise HTTPException(
+                503, "The petition could not be translated. It has not been changed.")
+
+        # The same route a hand edit takes: used exactly as given, then
+        # rendered, versioned and verified like any other change.
+        outcome = await _workflow(request).invoke(
+            session_id,
+            {"utterance": "", "intent": "edit_text", "understood_by": "form",
+             "_extracted": {}, "_corrections": {}, "_correction_target": None,
+             "_revision": None, "_emblem": None, "_skip_understand": True,
+             "_edited_text": translated,
+             "_edit_label": {"source": "Translation",
+                             "summary": f"Translated into {_LANGUAGE_NAMES[target]}"}},
+            guard=_version_guard(body.expected_version, ready=True, text=translated),
+        )
+        return session_view(outcome)
 
 
 @router.post("/sessions/{session_id}/revise")

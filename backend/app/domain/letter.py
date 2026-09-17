@@ -312,6 +312,24 @@ def build_letter_text(
     when = when or date.today()
     lines: list[str] = []
 
+    # -- date and place, at the top ----------------------------------------- #
+    #
+    # Printed flush right, which is where a letter carries them. In this plain
+    # text they are simply the first lines; the renderer and the preview both
+    # recognise the opening block by its SHAPE — a short "label: value" run
+    # before the first blank line — rather than by the words "Date" and
+    # "Place", so a petition translated into a third language keeps them on
+    # the right instead of quietly falling back to the left margin.
+    #
+    # The place is derived from the address the citizen gave, and is left out
+    # entirely when it cannot be: a wrong town on a petition is worse than a
+    # missing one, and they can write it in by hand.
+    lines.append(f"{label('date', language)}: {when.strftime('%d-%m-%Y')}")
+    place = derive_place(next((fields[n] for n in SENDER_ADDRESS_FIELDS if fields.get(n)), ""))
+    if place:
+        lines.append(f"{label('place', language)}: {place}")
+    lines.append("")
+
     # Each slot falls back on its own: a model that produced a good opening and
     # a poor request keeps the opening.
     written = composition or Composition()
@@ -409,13 +427,6 @@ def build_letter_text(
         lines.append(str(name))
     lines.append("")
 
-    # -- date and place, at the foot ---------------------------------------- #
-    lines.append(f"{label('date', language)}: {when.strftime('%d-%m-%Y')}")
-    place = derive_place(next((fields[n] for n in SENDER_ADDRESS_FIELDS if fields.get(n)), ""))
-    if place:
-        lines.append(f"{label('place', language)}: {place}")
-
-    lines.append("")
     lines.append(f"{label('note', language)}: {DISCLAIMER[language]}")
 
     return "\n".join(lines)

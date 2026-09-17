@@ -148,6 +148,34 @@ _NOTE = re.compile(r"^(Note|குறிப்பு)\s*:", re.I)
 _SECTION_WORDS = re.compile(r"^(Encl|Enclosure|இணைப்புகள்)", re.I)
 
 
+# A short "label: value" line. Deliberately not "Date" or "Place": those words
+# are English, and a petition translated into a third language has to keep its
+# opening block on the right rather than quietly sliding back to the margin.
+_LABELLED = re.compile(r"^[^:\n]{1,24}:\s*\S")
+_MAX_OPENING_LINES = 3
+
+
+def opening_block(lines: list[str]) -> int:
+    """How many lines at the top are the date-and-place block, if any.
+
+    Recognised by SHAPE and POSITION — a short run of "label: value" lines
+    before the first blank one — so it survives translation, and so a letter
+    that opens with "From," (a hand edit that removed the block, or an older
+    petition) is read as having no opening block rather than having its sender
+    details flung to the right margin.
+    """
+    head: list[str] = []
+    for line in lines:
+        if not line.strip():
+            break
+        head.append(line)
+        if len(head) > _MAX_OPENING_LINES:
+            return 0
+    if not head:
+        return 0
+    return len(head) if all(_LABELLED.match(line.strip()) for line in head) else 0
+
+
 def classify(line: str, index: int, total: int) -> str:
     """What kind of line is this? Recovered from the text, so edits survive.
 
@@ -247,8 +275,9 @@ def render_docx(
 
     _add_emblem_header(document, s, placement or Placement())
 
+    opening = opening_block(lines)
     for index, line in enumerate(lines):
-        kind = classify(line, index, len(lines))
+        kind = "dateline" if index < opening else classify(line, index, len(lines))
         stripped = line.strip()
         paragraph = document.add_paragraph()
         fmt = paragraph.paragraph_format
@@ -258,7 +287,14 @@ def render_docx(
             fmt.space_after = Pt(4)
             continue
 
-        if kind == "block":
+        if kind == "dateline":
+            # Flush right, which is where a letter carries the date it was
+            # written and the place it was signed.
+            paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+            fmt.space_after = Pt(1)
+            _style_run(paragraph.add_run(stripped), font)
+
+        elif kind == "block":
             # "அனுப்புநர்," / "From," — a heading for the lines beneath it.
             fmt.space_before = Pt(6)
             fmt.space_after = Pt(2)

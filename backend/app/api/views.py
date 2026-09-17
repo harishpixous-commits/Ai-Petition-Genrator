@@ -17,11 +17,13 @@ from ..config import get_settings
 from ..domain import attachments as attachment_rules
 from ..domain import emblem, phrasing, prior_petition, revisions
 from ..domain.fields import MAX_FREE_TEXT, display_value
+from ..domain.letter import verbatim_lines
 from ..domain.phrasing import DISCLAIMER
 from ..domain.templates import the_template
 from ..graph.state import LetterState
 from ..knowledge.schema import UNVERIFIED, UNVERIFIED_TA
 from ..services import extraction
+from ..services import translate as translate_service
 
 # The knowledge layer's findings, in the order an officer reads them: which
 # office, under what law, then what happens next. Labels live here rather than
@@ -330,6 +332,17 @@ def session_view(state: LetterState) -> dict[str, Any]:
         # downloading. File paths are NOT: downloads go through the document
         # endpoints, which check the session, rather than by handing out a path.
         "letter_text": state.get("letter_text") if ready else None,
+        # What language the DOCUMENT is in, which is not always the language of
+        # the conversation: a citizen can ask for the finished petition in
+        # another one. Computed with the same rule the translator uses, so the
+        # page never has to work it out from the text a second time and reach a
+        # different answer.
+        "document_language": (
+            translate_service.language_of(
+                str(state.get("letter_text") or "").splitlines(),
+                verbatim_lines(state.get("fields") or {}),
+            ) if ready and state.get("letter_text") else language
+        ),
         # What the model wrote, if anything. Null means the petition carries
         # the standard wording, which is worth being able to see.
         "composition": state.get("composition") if ready else None,

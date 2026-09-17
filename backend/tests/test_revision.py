@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import pytest
 
+from app.domain import revisions
 from app.domain.templates import the_template
 from app.graph.nodes import understand, validate
 
@@ -332,3 +333,63 @@ class TestEditingTheTextDirectly:
 
         assert result["letter_text"] == edited
         assert "கூடுதல் வரி." in result["letter_text"]
+
+
+class TestATamilCitizenCanEditTheirPetition:
+    """Every Tamil edit instruction used to fall through to "tell me what to
+    change" — by voice and by typing alike — so a Tamil petition could not be
+    edited at all once it existed.
+
+    The cause was one character. The interpreter looked for `பொருள்`, which ends
+    in a pulli; the accusative a citizen actually says, `பொருளை`, REPLACES that
+    pulli, so the dictionary form is not a substring of the spoken one.
+    """
+
+    def test_the_dictionary_form_is_not_a_substring_of_the_spoken_one(self):
+        """The bug itself, stated as a fact about Tamil."""
+        assert "பொருள்" not in "பொருளை"
+        assert "பொருள" in "பொருள்"
+        assert "பொருள" in "பொருளை"
+
+    def test_changing_the_subject(self):
+        got = revisions.interpret(
+            "பொருளை குழந்தைகளின் பாதுகாப்பு என்று மாற்றவும்")
+
+        assert got == {"action": "subject",
+                       "value": "குழந்தைகளின் பாதுகாப்பு"}
+
+    def test_changing_the_recipient(self):
+        got = revisions.interpret(
+            "பெறுநரை மாவட்ட ஆட்சியர் என்று மாற்று")
+
+        assert got == {"action": "recipient", "value": "மாவட்ட ஆட்சியர்"}
+
+    def test_adding_a_sentence(self):
+        got = revisions.interpret(
+            "நான் ஏற்கனவே புகார் அளித்தேன் என்று சேர்க்கவும்")
+
+        assert got == {"action": "add",
+                       "value": "நான் ஏற்கனவே புகார் அளித்தேன்"}
+
+    def test_an_instruction_with_no_value_asks_rather_than_guessing(self):
+        """"Change the subject" does not say to what. Guessing would rewrite a
+        citizen's petition into something they never asked for."""
+        assert revisions.interpret("பொருளை மாற்றவும்") == {"question": "subject"}
+        assert revisions.interpret("கடைசியில் ஒரு வரி சேர்க்கவும்") == {"question": "add"}
+
+    def test_shortening_still_works(self):
+        assert revisions.interpret("மனுவைச் சுருக்கவும்") == {"action": "shorten"}
+
+    def test_an_acknowledgement_is_not_an_edit(self):
+        for word in ("சரி", "ஆம்", "நன்றி"):
+            assert revisions.interpret(word) is None, word
+
+    @pytest.mark.parametrize("instruction,expected", [
+        ("change the subject to mention children",
+         {"action": "subject", "value": "mention children"}),
+        ("add that I complained twice", {"action": "add", "value": "I complained twice"}),
+        ("make it shorter", {"action": "shorten"}),
+    ])
+    def test_english_is_untouched(self, instruction, expected):
+        """The Tamil branch runs first. It must not swallow English."""
+        assert revisions.interpret(instruction) == expected

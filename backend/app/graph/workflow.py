@@ -119,6 +119,23 @@ class Workflow:
                     return state
             return await self._compiled.ainvoke(patch, config=self.config(session_id))
 
+    async def peek(self, session_id: str) -> LetterState | None:
+        """The persisted state WITHOUT taking the session lock.
+
+        For watching a turn that is still running, and for nothing else.
+
+        It is deliberately not `snapshot`: that method owns the lock and treats
+        a persisted `generating` as the fingerprint of an interrupted process,
+        because no live generation could hold the lock and be read by it. Here
+        the opposite is true — a live generation is exactly what is being
+        watched, and `generating` is the truth being reported, not a fault to
+        be repaired.
+
+        Never make a decision about a session from this. Only report it.
+        """
+        state = await self._compiled.aget_state(self.config(session_id))
+        return getattr(state, "values", None) or None
+
     async def snapshot(self, session_id: str) -> LetterState | None:
         """The persisted state for a session, or None if there is no checkpoint.
 

@@ -3,7 +3,6 @@
 const NAV = {
   en: {
     home: "Home", create: "Create Petition", petitions: "My Petitions", view: "View", edit: "Edit",
-    resume: "Continue your petition", resumeText: "Pick up your saved workspace where you left off.",
     search: "Search reference, petitioner or subject", all: "All", language: "Language",
     department: "Department", category: "Category", status: "Status", from: "From date", to: "To date",
     newest: "Newest", oldest: "Oldest", updated: "Recently updated", clear: "Clear filters",
@@ -43,7 +42,6 @@ const NAV = {
   },
   ta: {
     home: "முகப்பு", create: "மனு உருவாக்கு", petitions: "எனது மனுக்கள்", view: "காண்க", edit: "திருத்து",
-    resume: "உங்கள் மனுவைத் தொடருங்கள்", resumeText: "சேமித்த இடத்திலிருந்து மீண்டும் தொடரலாம்.",
     search: "தொடர்பு எண், பெயர் அல்லது பொருள் தேடவும்", all: "அனைத்தும்", language: "மொழி",
     department: "துறை", category: "வகை", status: "நிலை", from: "தொடக்கத் தேதி", to: "முடிவுத் தேதி",
     newest: "புதியவை முதலில்", oldest: "பழையவை முதலில்", updated: "சமீபத்திய திருத்தம்", clear: "வடிகட்டிகளை நீக்கு",
@@ -112,7 +110,7 @@ function navigationLabels() {
     if (n[key]) el.textContent = n[key];
   });
   for (const [id, text] of Object.entries({ navHome: n.home, navCreate: n.create,
-    navPetitions: n.petitions, resumeBtn: n.resume, clearFilters: n.clear,
+    navPetitions: n.petitions, clearFilters: n.clear,
     petitionsRetry: n.retry, petitionsPrevious: n.previous, petitionsNext: n.next })) {
     if ($(id)) $(id).textContent = text;
   }
@@ -128,24 +126,9 @@ function navigationLabels() {
     const first = $(id)?.querySelector('option[value=""]');
     if (first) first.textContent = n.all;
   }
-  updateResume();
   if (view) drawVersions(view);
 }
 
-function updateResume() {
-  const saved = savedSession();
-  if (!$("resumeCard")) return;
-  $("resumeCard").hidden = !saved;
-  // Both null on a first visit, and `undefined === undefined` is true — so the
-  // optional chaining protected the comparison and then the branch dereferenced
-  // a null `view`. That threw during `labels()`, which runs before the session
-  // is started, so the whole bootstrap died and the page never opened one.
-  const isCurrent = Boolean(saved && view && view.session_id === saved.id);
-  $("resumeTitle").textContent = isCurrent
-    ? (view.document?.reference || view.title || N().resume)
-    : N().resume;
-  $("resumeDescription").textContent = N().resumeText;
-}
 
 function syncNavigation() {
   document.querySelectorAll("[data-route]").forEach(el => {
@@ -195,7 +178,7 @@ async function navigate(route, options = {}) {
   if (route === "create") { await start(); return; }
   if (route === "generator") { await openPetition(options.id, options.edit, options.replace); return; }
   setPage(route === "petitions" ? "petitions" : "home", route === "petitions" ? "#petitions" : "#home", options.replace);
-  if (route === "petitions") await loadPetitions(); else updateResume();
+  if (route === "petitions") await loadPetitions();
 }
 
 async function openPetition(id, edit = false, replace = false) {
@@ -394,7 +377,6 @@ async function deletePicked() {
   } else if (ids.includes(savedSession()?.id)) {
     forgetSession();
   }
-  updateResume();
 
   deleting = false;
   picked.clear();
@@ -494,7 +476,6 @@ document.addEventListener("click", e => {
   if (version) previewVersion(Number(version.dataset.version));
 });
 
-$("resumeBtn").onclick = () => navigate("generator", { id: savedSession()?.id });
 $("petitionsRetry").onclick = loadPetitions;
 $("petitionsList").addEventListener("change", (e) => {
   const box = e.target.closest?.("input[data-pick]");

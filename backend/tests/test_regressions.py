@@ -506,12 +506,13 @@ class TestThePageIsWiredUp:
         _, script = self._sources()
 
         for element in ("attachBtn", "confirm", "new", "restart", "cancel",
-                        "reviseBtn", "editSave", "editCancel", "resumeBtn",
+                        "reviseBtn", "editSave", "editCancel",
                         "petitionsRetry", "clearFilters",
                         # Deletion is irreversible: a Delete button with no
                         # handler is harmless, but one whose confirmation
                         # handler went missing would not be.
-                        "deleteSelected", "clearSelection", "selectAllMatching"):
+                        "deleteSelected", "clearSelection", "selectAllMatching",
+                        "translateBtn"):
             bound = re.search(
                 rf'\$\("{element}"\)\.(onclick|onsubmit)\s*=|'
                 rf'\$\("{element}"\)\.addEventListener',
@@ -657,3 +658,262 @@ class TestTheDocumentAppearsWhereTheAnimationPlayed:
         """Header 78 + intro 150 + stepper 62 = 290, measured in a browser. The
         constant was 281 and every page scrolled by the missing nine pixels."""
         assert "height:calc(100dvh - 290px)" in self._css()
+
+
+class TestEveryWayOfSayingYesShowsTheWork:
+    """Three routes to the same twenty-second wait, and one of them used to
+    leave the screen blank for all of it.
+
+    The button opens the panel directly. A typed yes watches the workflow's own
+    progress report. A spoken yes is told by the server, which watches the same
+    thing. If any of those three wirings is removed the petition still gets
+    written — which is exactly why nothing else would notice.
+    """
+
+    @staticmethod
+    def _read(name: str) -> str:
+        from pathlib import Path
+
+        return (Path("app/static") / name).read_text(encoding="utf-8")
+
+    def test_the_button_opens_the_panel_itself(self):
+        script = self._read("app.js")
+        at = script.index("/api/sessions/${sid}/confirm")
+        assert "beginDocumentWork(" in script[max(0, at - 500):at]
+
+    def test_a_typed_yes_watches_the_workflow(self):
+        script = self._read("app.js")
+        assert "watchForGeneration" in script
+        assert "/progress" in script, "nothing asks the workflow whether it is composing"
+        # Started while the request is in flight, not awaited first — otherwise
+        # the turn is over before anything looks at it.
+        at = script.index("void watchForGeneration(sid)")
+        window = script[max(0, at - 400):at]
+        assert "const pending = mutate(" in window, (
+            "the watcher must start alongside the request, not after it")
+
+    def test_a_spoken_yes_is_told_by_the_server(self):
+        from pathlib import Path
+
+        socket = Path("app/api/ws.py").read_text(encoding="utf-8")
+        assert "announce_generation" in socket
+        assert "workflow.peek(" in socket, "the socket no longer watches the workflow"
+        at = socket.index("result = await workflow.invoke(")
+        assert "asyncio.create_task(announce_generation())" in socket[max(0, at - 400):at]
+
+    def test_the_recovery_poll_stays_off_a_voice_turn(self):
+        """It fetches a session snapshot that waits on the lock the turn holds,
+        with a fifteen second timeout — so it could only ever report a
+        connection that was never lost, mid-composition."""
+        script = self._read("app.js")
+        at = script.index("generationPoll = setTimeout(recover")
+        window = script[max(0, at - 700):at]
+        assert "voiceTurn" in window and "VOICE.PROCESSING" in window
+
+
+class TestTheTranslateControl:
+    """Between the two downloads, because it decides what they contain."""
+
+    @staticmethod
+    def _read(name: str) -> str:
+        from pathlib import Path
+
+        return (Path("app/static") / name).read_text(encoding="utf-8")
+
+    def test_it_sits_between_the_two_download_buttons(self):
+        """Compared by position in the page: slicing to the first `</div>` now
+        stops inside the menu's own element, which is how this test first
+        failed against markup that was perfectly correct."""
+        markup = self._read("index.html")
+
+        pdf = markup.index('id="pdf"')
+        menu = markup.index('id="translateMenu"')
+        docx = markup.index('id="docx"')
+
+        assert pdf < menu < docx, "the translate control moved out from between the downloads"
+
+    def test_it_offers_exactly_the_languages_the_service_can_produce(self):
+        """A menu that offers a language the translator has no code for gives
+        the citizen a button that can only fail."""
+        import re
+
+        from app.services.translate import SARVAM_CODE
+
+        offered = set(re.findall(r'data-language="(\w+)"', self._read("index.html")))
+        assert offered == set(SARVAM_CODE), (
+            f"the menu offers {offered}, the translator knows {set(SARVAM_CODE)}")
+
+    def test_each_language_is_named_in_its_own_script(self):
+        """Somebody looking for Tamil is looking for the word written in Tamil.
+        A list that says "Tamil" and "Hindi" in English helps whoever already
+        reads English."""
+        markup = self._read("index.html")
+        menu = markup[markup.index('id="translateList"'):]
+        menu = menu[:menu.index("</ul>")]
+
+        assert "தமிழ்" in menu or "&#2980;" in menu, "Tamil is not named in Tamil"
+        assert "हिन्दी" in menu or "&#2361;" in menu, "Hindi is not named in Hindi"
+
+    def test_it_pins_to_a_version_the_view_actually_has(self):
+        """`expected_version` guards against two changes landing on each other.
+        Pointed at a key the session view does not publish it is always null,
+        the guard never runs, and nothing looks wrong."""
+        import re
+
+        script = self._read("app.js")
+        at = script.index("/api/sessions/${sid}/translate")
+        body = script[at:at + 600]
+
+        used = set(re.findall(r"view\?\.(\w+)", body))
+        assert "version" in used, "the translate request pins to no version at all"
+        assert "document_version" not in used, (
+            "document_version is not a field of the session view; the editor "
+            "uses view.version")
+
+    def test_the_request_names_only_a_language(self):
+        """The endpoint takes a language and nothing else. It must never take
+        the text to translate: what is translated is the stored petition, and
+        what is kept verbatim is decided from the stored fields."""
+        import re
+
+        script = self._read("app.js")
+        at = script.index("/api/sessions/${sid}/translate")
+        # Wide enough to reach the closing brace past the comment above it.
+        body = script[at:at + 800]
+        sent = set(re.findall(r"JSON.stringify\(\{([^}]*)\}", body))
+        assert sent, "no request body found"
+        for key in sent:
+            assert "text" not in key, f"the translate request carries text: {key}"
+
+
+class TestTheStateEmblem:
+    """The emblem is the application's mark. It is NOT on the petition.
+
+    Two different things that are easy to conflate now that the same image is
+    used for one of them. The header is branding for a service a department
+    runs. The petition is a citizen's own document, and printing a state
+    emblem on it would imply the state wrote it — which is why the default has
+    always been `none` and must stay there.
+    """
+
+    @staticmethod
+    def _static(name: str) -> str:
+        from pathlib import Path
+
+        return (Path("app/static") / name).read_text(encoding="utf-8")
+
+    def test_the_header_shows_the_emblem_the_project_ships(self):
+        from pathlib import Path
+
+        markup = self._static("index.html")
+        header = markup[markup.index("<header"):markup.index("</header>")]
+
+        assert '<img src="/assets/emblem/tamil-nadu.png"' in header
+        assert Path("app/assets/emblem/tamil-nadu.png").is_file(), (
+            "the header points at an emblem that is not in the repository")
+
+    def test_the_tab_icon_is_the_emblem_and_is_small(self):
+        from pathlib import Path
+
+        assert 'href="/assets/emblem/favicon.png"' in self._static("index.html")
+        icon = Path("app/assets/emblem/favicon.png")
+        assert icon.is_file()
+        # The full emblem is 279 KB. A tab icon has no business being that.
+        assert icon.stat().st_size < 40_000, f"{icon.stat().st_size} bytes"
+
+    def test_it_is_drawn_as_itself_not_on_a_coloured_plate(self):
+        """A tinted rounded box behind it reads as a logo somebody designed.
+        The emblem is a multicoloured mark meant to sit on a white field."""
+        import re
+
+        css = self._static("app.css")
+        rule = re.search(r"(?m)^\.emblem\{([^}]*)\}", css)
+
+        assert rule, "the header mark has no styling at all"
+        assert "background:" not in rule.group(1), rule.group(1)
+        assert "box-shadow" not in rule.group(1), rule.group(1)
+
+    def test_putting_it_in_the_interface_did_not_put_it_on_the_petition(self):
+        """The guarantee, stated as a test. A citizen asked for this default
+        explicitly, and it has to survive somebody adding the same image
+        somewhere else."""
+        from app.config import Settings
+        from app.domain.emblem import DEFAULT_PAGES
+
+        assert DEFAULT_PAGES == "none"
+        assert Settings(_env_file=None).letter_emblem_pages == "none", (
+            "the petition would now carry a state emblem by default")
+
+
+class TestTheOpeningBlockRuleIsTheSameInBothPlaces:
+    """The renderer finds the date-and-place block in Python; the preview finds
+    it again in JavaScript. They must agree, or the citizen checks a preview
+    that does not match the file they download."""
+
+    def test_the_pattern_and_the_limit_match(self):
+        import re
+        from pathlib import Path
+
+        from app.services import render
+
+        script = Path("app/static/app.js").read_text(encoding="utf-8")
+        pattern = re.search(r"const LABELLED_LINE = /(.+?)/;", script)
+        limit = re.search(r"const MAX_OPENING_LINES = (\d+);", script)
+
+        assert pattern, "the preview no longer has the rule"
+        assert pattern.group(1) == render._LABELLED.pattern, (
+            f"preview {pattern.group(1)!r} vs renderer {render._LABELLED.pattern!r}")
+        assert limit and int(limit.group(1)) == render._MAX_OPENING_LINES
+
+    def test_the_preview_splits_into_exactly_two_blocks(self):
+        """One element per line would look the same and quietly corrupt every
+        manual edit: `innerText` joins block children with a newline, so two
+        blocks reproduce the text and fifty blocks do not."""
+        from pathlib import Path
+
+        script = Path("app/static/app.js").read_text(encoding="utf-8")
+        body = script[script.index("function drawLetter("):]
+        body = body[:body.index(chr(10) + "}")]
+
+        assert body.count("createElement") == 2, body.count("createElement")
+        assert "paper-dateline" in body and "paper-body" in body
+
+
+class TestTheVoiceLoopNeverAnswersWithSilence:
+    """A citizen who speaks and hears nothing back concludes the microphone is
+    broken, and says it again, louder, into a void. Every rejection that was
+    plausibly a person has to be answered out loud."""
+
+    @staticmethod
+    def _socket() -> str:
+        from pathlib import Path
+
+        return Path("app/api/ws.py").read_text(encoding="utf-8")
+
+    def test_a_too_short_utterance_is_answered(self):
+        socket = self._socket()
+        at = socket.index("if listening and decision.verdict in (")
+        window = socket[at:at + 320]
+
+        assert "TOO_SHORT" in window, (
+            "a brief utterance is discarded in silence again")
+
+    def test_every_buffer_is_offered_to_the_pre_roll(self):
+        """Offered BEFORE it is classified: if this buffer is where a word
+        began, the one before it holds the beginning."""
+        socket = self._socket()
+        remember = socket.index("eos.remember(chunk)")
+        classify = socket.index("verdicts = vad.feed(chunk)")
+
+        assert remember < classify, "the pre-roll is filled after the fact"
+
+    def test_the_document_is_written_off_the_event_loop(self):
+        """Writing the DOCX is synchronous, and with attachments it rasterises
+        pages through PyMuPDF. On the loop it freezes every other session,
+        including the WebSocket carrying somebody's voice."""
+        from pathlib import Path
+
+        nodes = Path("app/graph/nodes.py").read_text(encoding="utf-8")
+        at = nodes.index("render_service.render_docx")
+
+        assert "asyncio.to_thread(" in nodes[max(0, at - 400):at]

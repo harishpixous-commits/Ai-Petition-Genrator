@@ -39,6 +39,69 @@ def question(target: str, language: str = "en") -> str:
     return (tamil if language == "ta" else english).get(target, english["instruction"])
 
 
+# --------------------------------------------------------------------------- #
+# Tamil
+#
+# Written as STEMS, not whole words. `பொருள்` ends in a pulli, and the accusative a
+# citizen actually says — `பொருளை` — REPLACES that pulli. So the dictionary
+# form is not a substring of the spoken one, and every Tamil edit instruction
+# fell through to "tell me what to change", by voice and by typing alike: a
+# Tamil petition could not be edited at all once it existed.
+#
+# The stem is a prefix of every case ending, which is how Tamil works, and why
+# `\b` is no help — a Tamil word boundary is not what `\w` thinks it is.
+#
+# The other half is word order. Tamil puts the value BEFORE the verb, marked by
+# `என்று`: "change the subject to X" is "பொருளை X என்று மாற்று". The English
+# patterns look for a connector after the keyword, which in Tamil is never
+# there.
+# --------------------------------------------------------------------------- #
+
+_TA_SUBJECT = "பொருள"       # subject, without its pulli
+_TA_RECIPIENT = "பெறுநர"    # recipient
+_TA_AS = "என்று"            # "as" — closes the value
+_TA_CHANGE = "மாற்ற"        # change
+_TA_ADD = "சேர்"           # add
+_TA_REMOVE = "நீக்"        # remove
+_TA_OBJECT = r"(?:ஐ|அதை)?"   # the accusative particle, when written
+
+# A bare "a line" / "a sentence" / "a paragraph" names no content. That is a
+# question to put back to the citizen, not a value to insert.
+_TA_EMPTY_VALUE = re.compile(r"^(?:ஒரு\s+)?(?:வரி|வாக்கிய|பத்தி)\S*\s*$")
+
+
+def _tamil(text: str) -> dict[str, Any] | None:
+    """A Tamil instruction, or None when this is not one."""
+    value = r"(.+?)\s*" + _TA_AS + r"\S*\s*"
+
+    match = re.search(_TA_SUBJECT + r"\S*\s+" + value + _TA_CHANGE, text)
+    if match:
+        return {"action": "subject", "value": match[1].strip().strip('"“”')}
+
+    match = re.search(_TA_RECIPIENT + r"\S*\s+" + value + _TA_CHANGE, text)
+    if match:
+        return {"action": "recipient", "value": match[1].strip().strip('"“”')}
+
+    match = re.search(value + _TA_ADD, text)
+    if match and not _TA_EMPTY_VALUE.match(match[1].strip()):
+        return {"action": "add", "value": match[1].strip().strip('"“”')}
+
+    match = re.search(r"(.+?)\s*" + _TA_OBJECT + r"\s*" + _TA_REMOVE, text)
+    if match and not _TA_EMPTY_VALUE.match(match[1].strip()):
+        return {"action": "remove", "value": match[1].strip().strip('"“”')}
+
+    # Named the thing but not the change: ask which, rather than guess at it.
+    if re.search(_TA_SUBJECT, text):
+        return {"question": "subject"}
+    if re.search(_TA_RECIPIENT, text):
+        return {"question": "recipient"}
+    if re.search(_TA_ADD, text):
+        return {"question": "add"}
+    if re.search(_TA_REMOVE, text):
+        return {"question": "remove"}
+    return None
+
+
 def interpret(instruction: str, pending: dict | None = None) -> dict[str, Any] | None:
     text = str(instruction or "").strip()
     if not text or _ACK.fullmatch(text):
@@ -48,6 +111,12 @@ def interpret(instruction: str, pending: dict | None = None) -> dict[str, Any] |
         if not re.match(r"^(?:change|set|add|remove|delete|replace|make|shorten|update)\b", text, re.I):
             target = pending["target"]
             return {"action": "add" if target == "previous" else target, "value": text}
+
+    # Tamil first: its own grammar, and none of the English patterns
+    # below can match it anyway.
+    tamil = _tamil(text)
+    if tamil is not None:
+        return tamil
 
     match = re.search(r"\b(?:subject|பொருள்)\b\s*(?:line\s*)?(?:to|as|:|say|mention|be)\s+(.+)", text, re.I)
     if match:

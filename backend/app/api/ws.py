@@ -92,6 +92,30 @@ _STOP_READING = re.compile(
 )
 
 
+# How often a running turn is checked for having reached composition. Short
+# enough that the panel opens while the citizen is still waiting for a reply,
+# long enough to be nothing next to a turn measured in tens of seconds.
+_PROGRESS_POLL_S = 0.4
+
+
+# The steps where a plain "yes" or "no" is the answer to the question on the
+# table, rather than the sound a transcription service makes out of silence.
+_CONFIRMATION_STATUSES = {"attachments", "confirming", "ready"}
+
+
+def expects_confirmation(state: dict | None) -> bool:
+    """Is a bare yes or no an answer right now?
+
+    Asked of the workflow's own state, never guessed from the words. At the
+    review step the assistant asks "Shall I prepare your petition?" and there
+    is no longer answer to give; while details are being collected the same
+    word is what a service returns when it heard nothing.
+    """
+    values = state or {}
+    return (str(values.get("status") or "") in _CONFIRMATION_STATUSES
+            or bool(values.get("awaiting_correction")))
+
+
 class Phase(StrEnum):
     """The live session's state, named once and sent to the page as-is.
 
@@ -132,6 +156,7 @@ async def voice(websocket: WebSocket, session_id: str, language: str = "en") -> 
 
         language = state.get("language", language)
         template = the_template()
+        confirmation_expected = expects_confirmation(state)
 
         # ---------------------------------------------------------------- #
         # Session state. One phase, one lock, one cancellable speech task.
@@ -216,12 +241,53 @@ async def voice(websocket: WebSocket, session_id: str, language: str = "en") -> 
             except Exception as exc:  # noqa: BLE001
                 # A failed voice is a degraded experience, never a failed turn:
                 # the text is already on the page.
-                log.info("tts.stream.failed", extra={"error": str(exc)[:160]})
+                #
+                # The TYPE is recorded as well as the message, because the most
+                # common one here has no message at all: a citizen who closes
+                # the tab mid-sentence raises WebSocketDisconnect, whose str()
+                # is empty. Five of those in a day's log read as five silent
+                # failures of the speech service, which is not what happened
+                # and is not something to go looking for.
+                log.info("tts.stream.failed", extra={
+                    "kind": type(exc).__name__,
+                    "error": str(exc)[:160] or "(no message)",
+                    "listener_gone": isinstance(exc, WebSocketDisconnect)})
             finally:
                 with contextlib.suppress(Exception):
                     await websocket.send_json({"type": "tts.end"})
             if listening:
                 await set_phase(Phase.LISTENING)
+
+        async def announce_generation() -> None:
+            """Say that the petition is being written, while it is being written.
+
+            A turn is a single invoke that returns only once it has finished,
+            so a citizen who confirmed by voice watched an unchanged review
+            screen for as long as composition took — two and a half minutes in
+            the report that prompted this, with nothing on the page to say the
+            work had even started. Typing Confirm never had the problem: that
+            button knows what it just asked for.
+
+            Nothing here decides that work is under way. The confirm node
+            records `generating` in the checkpoint before it routes to compose,
+            and this reads that and passes it on unchanged; the page already
+            knows what a generating state means and has a panel for it. A turn
+            that is something else — a correction, a question — never reaches
+            that status, so nothing is sent and nothing is claimed.
+            """
+            try:
+                while True:
+                    await asyncio.sleep(_PROGRESS_POLL_S)
+                    values = await workflow.peek(session_id)
+                    if (values or {}).get("status") == "generating":
+                        await websocket.send_json(
+                            {"type": "state", "state": session_view(values)})
+                        return
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:  # noqa: BLE001
+                # Progress is a courtesy. A turn must never fail for it.
+                log.info("voice.progress.unavailable", extra={"error": str(exc)[:120]})
 
         async def run_turn(text: str, *, via: str) -> dict | None:
             """One turn through the workflow. The only way in, for both modes."""
@@ -230,6 +296,7 @@ async def voice(websocket: WebSocket, session_id: str, language: str = "en") -> 
                                                  "preview": preview(text)})
                 await set_phase(Phase.PROCESSING)
                 started = time.monotonic()
+                progress = asyncio.create_task(announce_generation())
                 try:
                     result = await workflow.invoke(session_id, {"utterance": text})
                 except Exception as exc:  # noqa: BLE001
@@ -241,6 +308,10 @@ async def voice(websocket: WebSocket, session_id: str, language: str = "en") -> 
                              "detail": str(exc)[:200]}
                         )
                     return None
+                finally:
+                    progress.cancel()
+                    with contextlib.suppress(asyncio.CancelledError, Exception):
+                        await progress
                 log.info("voice.turn_latency_ms",
                          extra={"ms": int((time.monotonic() - started) * 1000), "via": via})
 
@@ -252,7 +323,9 @@ async def voice(websocket: WebSocket, session_id: str, language: str = "en") -> 
             nonlocal language
             if result is None:
                 return
+            nonlocal confirmation_expected
             language = result.get("language", language)
+            confirmation_expected = expects_confirmation(result)
             view = session_view(result)
             reply = result.get("reply") or ""
             spoken = speech_text.speech_for(
@@ -406,6 +479,7 @@ async def voice(websocket: WebSocket, session_id: str, language: str = "en") -> 
                 text, evidence, language=language, turn=turn,
                 confidence=confidence, min_confidence=settings.voice_min_confidence,
                 during_playback=playback_overlap_ms > 0,
+                expecting_confirmation=confirmation_expected,
             )
             if not decision.ok:
                 # Never say what was rejected — it is either nothing or a
@@ -417,8 +491,14 @@ async def voice(websocket: WebSocket, session_id: str, language: str = "en") -> 
                     "snr": round(evidence.peak_snr, 1), "chars": len(text or ""),
                     "sent_to_stt": True})
                 await send_discarded(decision.verdict.value, evidence, sent=True)
+                # TOO_SHORT is in this list now. It used to fall through to
+                # silence, and silence after somebody speaks reads as a broken
+                # microphone — so they say it again, louder, into a void. The
+                # brief utterances reaching here are overwhelmingly real
+                # speech that was simply short.
                 if listening and decision.verdict in (
-                        Verdict.FILLER_ONLY, Verdict.WRONG_SCRIPT, Verdict.LOW_CONFIDENCE):
+                        Verdict.FILLER_ONLY, Verdict.WRONG_SCRIPT,
+                        Verdict.LOW_CONFIDENCE, Verdict.TOO_SHORT):
                     # Heard something, could not make an answer of it. Saying so
                     # is better than silence, which reads as a broken
                     # microphone and makes people repeat into a void.
@@ -459,6 +539,10 @@ async def voice(websocket: WebSocket, session_id: str, language: str = "en") -> 
             nonlocal last_voice_at
             if not listening:
                 return
+
+            # Held before it is classified: if this buffer turns out to be
+            # where a word began, the one before it carries the beginning.
+            eos.remember(chunk)
 
             verdicts = vad.feed(chunk)
             started = Speech.STARTED in verdicts

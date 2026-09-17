@@ -34,12 +34,63 @@ from ..config import Settings, get_settings
 
 log = logging.getLogger(__name__)
 
-TAMIL = re.compile(r"[஀-௿]")
+TAMIL = re.compile("[" + chr(0x0B80) + "-" + chr(0x0BFF) + "]")
+DEVANAGARI = re.compile("[" + chr(0x0900) + "-" + chr(0x097F) + "]")
 LATIN_WORD = re.compile(r"[A-Za-z]{3}")
+
+# The languages a petition can be produced in, and what the translator
+# calls them. Adding one here is the whole change: every code below is
+# looked up, never derived from "whichever one it is not".
+SARVAM_CODE = {"en": "en-IN", "ta": "ta-IN", "hi": "hi-IN"}
+SCRIPTS = {"ta": TAMIL, "hi": DEVANAGARI, "en": LATIN_WORD}
+LANGUAGES = tuple(SARVAM_CODE)
 
 
 def script_of(text: str) -> str:
-    return "ta" if TAMIL.search(str(text or "")) else "en"
+    """Which language's script this text is written in.
+
+    Order matters: an Indic script is decisive, because a Tamil or Hindi line
+    routinely carries a Latin word — a place name, an initial, a reference
+    number — while a genuinely English line carries neither.
+    """
+    value = str(text or "")
+    if TAMIL.search(value):
+        return "ta"
+    if DEVANAGARI.search(value):
+        return "hi"
+    return "en"
+
+
+def has_letters(text: str) -> bool:
+    """Is there anything here that could be translated at all?
+
+    A reference number, a date or a row of digits has no language, and treating
+    one as untranslated text is what used to send finished letters back to the
+    translator.
+    """
+    value = str(text or "")
+    return bool(TAMIL.search(value) or DEVANAGARI.search(value)
+                or LATIN_WORD.search(value))
+
+
+def language_of(lines: list[str], keep: frozenset[str] | set[str] = frozenset()) -> str:
+    """What language a document is currently written in.
+
+    Decided by counting, not by the first line that matches, and with the
+    citizen's own verbatim text left out of the count. A petition written in
+    English routinely contains a grievance in Tamil — that is the document
+    working correctly, and it must not be read as a Tamil petition.
+    """
+    tally: dict[str, int] = {}
+    for line in lines:
+        stripped = str(line or "").strip()
+        if not stripped or line in keep or stripped in keep or not has_letters(stripped):
+            continue
+        script = script_of(stripped)
+        tally[script] = tally.get(script, 0) + len(stripped)
+    if not tally:
+        return "en"
+    return max(tally, key=lambda key: tally[key])
 
 
 def needs_translation(
@@ -62,7 +113,7 @@ def needs_translation(
             continue
         if line in keep or stripped in keep:
             continue
-        if not (TAMIL.search(stripped) or LATIN_WORD.search(stripped)):
+        if not has_letters(stripped):
             continue
         if script_of(stripped) != target:
             return True
@@ -150,19 +201,22 @@ class TranslationResult:
 
 
 async def _translate_via_sarvam(
-    lines: list[str], target: str, s: Settings, warnings: list[str]
+    lines: list[str], target: str, s: Settings, warnings: list[str],
+    source: str = "en",
 ) -> list[str] | None:
     keys = s.sarvam_key_list
     if not keys:
         return None
 
-    source_code = "en-IN" if target == "ta" else "ta-IN"
-    target_code = "ta-IN" if target == "ta" else "en-IN"
+    # Both ends are named. This used to read "whichever of the two it is not",
+    # which had no answer once there were three.
+    source_code = SARVAM_CODE.get(source, "en-IN")
+    target_code = SARVAM_CODE.get(target, "en-IN")
     out = list(lines)
     todo = [
         (i, text)
         for i, text in enumerate(lines)
-        if text.strip() and (TAMIL.search(text) or LATIN_WORD.search(text))
+        if text.strip() and has_letters(text)
         and script_of(text) != target
     ]
     if not todo:
@@ -260,7 +314,7 @@ async def _translate_via_worker(
     todo = [
         (i, text)
         for i, text in enumerate(lines)
-        if text.strip() and (TAMIL.search(text) or LATIN_WORD.search(text))
+        if text.strip() and has_letters(text)
         and script_of(text) != target
     ]
     if not todo:
@@ -339,6 +393,7 @@ async def translate_lines(
     target: str,
     settings: Settings | None = None,
     keep: frozenset[str] | set[str] = frozenset(),
+    source: str | None = None,
 ) -> TranslationResult:
     """Translate an ordered line list, returning a list of the SAME length.
 
@@ -352,7 +407,11 @@ async def translate_lines(
     if not needs_translation(lines, target, keep):
         return TranslationResult(lines=list(lines), engine="skipped")
 
-    out = await _translate_via_sarvam(lines, target, s, warnings)
+    # Read off the document when the caller does not say. The composition path
+    # knows (it authors in English); a citizen asking for a different language
+    # after the fact does not, and the document itself is the evidence.
+    origin = source or language_of(lines, keep)
+    out = await _translate_via_sarvam(lines, target, s, warnings, source=origin)
     engine = "sarvam"
     if out is None:
         warnings.clear()
@@ -361,13 +420,16 @@ async def translate_lines(
     if out is None:
         raise RuntimeError("No translation engine is available.")
 
-    # A whole document that came back without a single Tamil character means the
-    # model did not do the job at all — that is worth refusing.
-    if target == "ta":
-        translatable = sum(1 for line in lines if LATIN_WORD.search(line))
-        produced = sum(1 for line in out if TAMIL.search(line))
+    # A whole document that came back without a single character of the target
+    # script means the model did not do the job at all — that is worth refusing
+    # rather than handing over a letter that claims to be translated.
+    expected = SCRIPTS.get(target)
+    if expected is not None:
+        translatable = sum(1 for line in lines
+                           if has_letters(line) and script_of(line) != target)
+        produced = sum(1 for line in out if expected.search(line))
         if translatable > 2 and produced == 0:
-            raise RuntimeError("Tamil translation produced no Tamil text.")
+            raise RuntimeError(f"Translation to {target!r} produced none of its script.")
 
     # Whatever the engine did with the verbatim lines, they go back exactly as
     # they were. Restoring here rather than withholding them from the request

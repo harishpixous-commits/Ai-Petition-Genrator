@@ -79,7 +79,8 @@ def _now() -> str:
 # value left over from the previous turn would be recorded a second time.
 BLANK_TURN: dict[str, Any] = {"_extracted": {}, "_corrections": {},
                               "_correction_target": None, "_revision": None,
-                              "_emblem": None, "_edited_text": None, "_document_edit": None}
+                              "_emblem": None, "_edited_text": None, "_document_edit": None,
+                              "_edit_label": None}
 
 
 # --------------------------------------------------------------------------- #
@@ -474,8 +475,11 @@ async def validate(state: LetterState) -> dict[str, Any]:
         # confirmation. `letter_text` is deliberately NOT cleared here — it is
         # replaced wholesale by `compose`, which passes the edit through
         # untouched.
+        # Used verbatim either way; only the name in the history differs.
+        label = state.get("_edit_label") or {}
         return {
-            **revisions.begin(state, "Manual", "Manual edit"),
+            **revisions.begin(state, label.get("source") or "Manual",
+                              label.get("summary") or "Manual edit"),
             "status": "generating",
             "confirmed": True,
             "manually_edited": True,
@@ -1424,7 +1428,13 @@ async def render(state: LetterState) -> dict[str, Any]:
 
     with timed(log, "node.render") as carry:
         try:
-            render_service.render_docx(
+            # Off the event loop. Writing the document is synchronous work,
+            # and with attachments it also rasterises up to twelve pages per
+            # file through PyMuPDF. Held on the loop, that freezes every other
+            # session in the service — including the WebSocket carrying
+            # somebody's voice, which drops rather than waits.
+            await asyncio.to_thread(
+                render_service.render_docx,
                 text, docx_path, reference=reference,
                 title=template.label_for("en"), settings=settings,
                 placement=emblem.placement_for(state.get("emblem"), settings),

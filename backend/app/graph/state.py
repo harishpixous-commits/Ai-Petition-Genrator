@@ -151,6 +151,10 @@ class LetterState(TypedDict, total=False):
     # applied to `letter_text` and cleared. Nothing rewrites it on the way
     # through — that is the entire point of the manual editor.
     _edited_text: str | None
+    # How to label this edit in the version history. A translation takes
+    # the same path a hand edit takes, and without this the history tells
+    # the citizen they typed a Hindi petition themselves.
+    _edit_label: dict[str, str] | None
     # Set by the REST form endpoints, which have already been told which field
     # the citizen is editing. The turn then starts at `validate`, because there
     # is nothing left to understand.

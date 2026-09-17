@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#133b40">
 <meta name="description" content="Prepare a clear, well-structured citizen petition in English or Tamil, with guided questions and document downloads.">
 <title>Citizen Petition Assistant</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23163b6d'/%3E%3Cpath d='M9 8h11l4 4v12a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2V10a2 2 0 0 1 2-2z' fill='%23fff'/%3E%3Cpath d='M11 15h10M11 19h7' stroke='%23163b6d' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="icon" type="image/png" href="/assets/emblem/favicon.png">
 <link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
@@ -14,7 +14,7 @@
 
 <header class="app">
   <a class="brand" href="#home" data-route="home" aria-label="Citizen Petition Assistant home">
-    <div class="emblem" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M7 3h7l4 4v13H6a1 1 0 0 1-1-1V5a2 2 0 0 1 2-2Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M14 3v5h4M9 12h5M9 16h6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></div>
+    <div class="emblem" aria-hidden="true"><img src="/assets/emblem/tamil-nadu.png" alt="" width="960" height="1054" decoding="async"></div>
     <div class="brand-text">
       <h1 id="ui-title">Citizen Petition Assistant</h1>
       <p id="ui-subtitle">AI Assisted Petition Preparation</p>
@@ -81,11 +81,6 @@
     </a>
   </div>
 
-  <div class="resume-card" id="resumeCard" hidden>
-    <span class="resume-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M3 11a9 9 0 1 1 3 7M3 5v6h6m3-4v5l3 2" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
-    <div><h3 id="resumeTitle">Continue your petition</h3><p id="resumeDescription">Your current draft is ready to pick up again.</p></div>
-    <button class="btn" id="resumeBtn" type="button">Continue draft <span aria-hidden="true">→</span></button>
-  </div>
 
   <section class="home-guide" aria-labelledby="homeGuideTitle">
     <div class="home-guide-heading"><p class="eyebrow" id="homeGuideEyebrow">THREE SIMPLE STEPS</p><h3 id="homeGuideTitle">A little guidance, all the way.</h3></div>
@@ -351,6 +346,21 @@
     <section class="card" id="docCard" hidden>
       <div class="doc-toolbar">
         <a class="btn primary off" id="pdf" download></a>
+        <!-- Between the two downloads, because it decides what they contain. -->
+        <div class="translate-menu" id="translateMenu">
+          <button class="btn" id="translateBtn" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="translateList">
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 5h9M8.5 5v1.5c0 3.6-2 6.7-4.5 8M6 9.5c1 2.4 3.3 4.4 6 5.2M13.5 20l3.75-9 3.75 9m-6.4-2.4h5.3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span id="translateText">Translate</span>
+            <svg class="caret" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="m3 4.5 3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          </button>
+          <ul class="translate-list" id="translateList" role="menu" hidden>
+            <!-- Each language named in its own script: a citizen looking for
+                 Tamil is looking for the word "Tamil" written in Tamil. -->
+            <li role="none"><button class="translate-option" type="button" role="menuitem" data-language="en"><span class="tick" aria-hidden="true">&#10003;</span>English</button></li>
+            <li role="none"><button class="translate-option" type="button" role="menuitem" data-language="ta"><span class="tick" aria-hidden="true">&#10003;</span>&#2980;&#2990;&#3007;&#2996;&#3021;</button></li>
+            <li role="none"><button class="translate-option" type="button" role="menuitem" data-language="hi"><span class="tick" aria-hidden="true">&#10003;</span>&#2361;&#2367;&#2344;&#2381;&#2342;&#2368;</button></li>
+          </ul>
+        </div>
         <a class="btn off" id="docx" download></a>
         <button class="btn" id="reviseBtn" type="button" aria-expanded="false" aria-controls="letter">
           <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m14.5 5.5 4 4M4 20l4.5-.9L20 7.6a2 2 0 0 0 0-2.8l-.8-.8a2 2 0 0 0-2.8 0L4.9 15.5 4 20Z" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>

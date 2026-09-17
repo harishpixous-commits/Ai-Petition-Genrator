@@ -109,6 +109,10 @@ const UI = {
     // A change made after the petition exists is a DIFFERENT piece of work
     // from writing it, and the rail says so rather than claiming the details
     // are being verified again.
+    translate: "Translate", translating: "Translating your petition",
+    translateSteps: ["Reading the petition", "Translating the wording",
+                     "Applying the official format", "Final verification"],
+    translateFailed: "The petition could not be translated. It has not been changed.",
     reviseTitle: "Updating your petition",
     reviseSteps: ["Reading your request", "Updating the petition",
                   "Applying the official format", "Final verification"],
@@ -264,6 +268,13 @@ const UI = {
     fromTag: "அனுப்புநர்", toTag: "பெறுநர்",
     improve1: "தெளிவு மேம்பாடு", improve2: "சிறந்த சொற்கள்",
     improve3: "அரசு வடிவம்",
+    translate: "மொழிபெயர்",
+    translating: "மனு மொழிபெயர்க்கப்படுகிறது",
+    translateSteps: ["மனு படிக்கப்படுகிறது",
+                     "சொற்கள் மொழிபெயர்க்கப்படுகிறன",
+                     "அரசு வடிவம் அமைக்கப்படுகிறது",
+                     "இறுதிச் சரிபார்ப்பு"],
+    translateFailed: "மனுவை மொழிபெயர்க்க இயலவில்லை. மனு மாற்றப்படவில்லை.",
     reviseTitle: "உங்கள் மனு புதுப்பிக்கப்படுகிறது",
     reviseSteps: ["உங்கள் கோரிக்கை படிக்கப்படுகிறது", "மனு புதுப்பிக்கப்படுகிறது",
                   "அரசு வடிவம் அமைக்கப்படுகிறது", "இறுதிச் சரிபார்ப்பு"],
@@ -391,6 +402,7 @@ let revealed = new Set();   // identifiers the citizen asked to see, this render
 let lastValues = {};        // to animate only the row that actually changed
 let closedNotice = false;   // a cancelled or failed session is announced once
 let requestPending = false;
+let lastApiMessage = "";
 let connectionLost = false;
 let lastApiStatus = 0;
 let healthState = null;
@@ -495,6 +507,7 @@ async function api(path, options = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeout);
   lastApiStatus = 0;
+  lastApiMessage = "";
   try {
     const r = await fetch(path, { headers: { "Content-Type": "application/json" },
       cache: "no-store", ...fetchOptions, signal: controller.signal });
@@ -503,6 +516,10 @@ async function api(path, options = {}) {
       const body = await r.json().catch(() => ({}));
       const message = typeof body.detail === "string" ? body.detail
         : Array.isArray(body.detail) ? body.detail.map(e => e.msg).join(". ") : X().genericError;
+      // "Not Found" is what the framework says when a ROUTE is missing, and
+      // it means nothing to a citizen. Anything else is a sentence this
+      // service wrote on purpose and is worth showing.
+      lastApiMessage = message === "Not Found" ? "" : message;
       if (!quiet) bubble("system", message, true);
       return null;
     }
@@ -626,6 +643,7 @@ let docWorkTimer = null;
 
 function railSteps() {
   const t = T();
+  if (genMode === "translate") return t.translateSteps;
   return genMode === "revise" ? t.reviseSteps : t.genSteps;
 }
 
@@ -641,8 +659,9 @@ function drawRail() {
 
 function startGenerating(mode) {
   const t = T();
-  genMode = mode === "revise" ? "revise" : "create";
-  $("ui-genTitle").textContent = genMode === "revise" ? t.reviseTitle : t.genTitle;
+  genMode = ["revise", "translate"].includes(mode) ? mode : "create";
+  $("ui-genTitle").textContent = genMode === "translate" ? t.translating
+    : genMode === "revise" ? t.reviseTitle : t.genTitle;
   $("gp-title").textContent = t.draftHeading;
   $("gp-from").textContent = t.fromTag;
   $("gp-to").textContent = t.toTag;
@@ -655,7 +674,7 @@ function startGenerating(mode) {
   // Writing the first draft, details and grievance are behind us before this
   // panel ever opens. Updating one, nothing is behind us yet: the request has
   // been sent, not read.
-  genStage = genMode === "revise" ? 0 : 2;
+  genStage = genMode === "create" ? 2 : 0;
   drawRail();
   $("genPanel").hidden = false;
   document.querySelector("main.workspace").classList.add("generating");
@@ -685,6 +704,40 @@ function stopGenerating(completed) {
  * straight back — that reads as something having gone wrong. Work that
  * actually takes time still gets the panel, which is every real edit. */
 const DOC_WORK_DELAY_MS = 450;
+
+/* Saying yes in the conversation, rather than pressing the button.
+ *
+ * The button knows what it just asked for and opens the panel itself. A typed
+ * or spoken "yes" does not: the page sends one message and waits, and the
+ * reply only arrives once the petition has been written. That wait was two and
+ * a half minutes in one report, with the review screen unchanged throughout
+ * and no sign that anything had started.
+ *
+ * The workflow knows. It records `generating` the moment the confirm step
+ * routes to composition, and /progress reports that one word without waiting
+ * on the session lock. So the panel opens on the workflow's say-so, exactly as
+ * it does for the button — and a turn that was a correction or a question
+ * never reaches that status, so nothing opens and nothing is claimed.
+ */
+const PROGRESS_POLL_MS = 700;
+
+async function watchForGeneration(session) {
+  while (requestPending && sid === session) {
+    await new Promise(resolve => setTimeout(resolve, PROGRESS_POLL_MS));
+    if (!requestPending || sid !== session) return;
+    let status;
+    try {
+      const response = await fetch(`/api/sessions/${session}/progress`,
+                                   { cache: "no-store" });
+      if (!response.ok) return;
+      status = (await response.json()).status;
+    } catch {
+      return;  // A progress check that fails must never disturb the turn.
+    }
+    if (!requestPending || sid !== session) return;
+    if (status === "generating") { startGenerating("create"); return; }
+  }
+}
 
 function beginDocumentWork(mode) {
   clearTimeout(docWorkTimer);
@@ -850,12 +903,19 @@ function render(v) {
   }
   document.querySelector("main.workspace").dataset.status = v.status;
   clearTimeout(generationPoll);
-  if (v.status === "generating" && !requestPending) {
+  // The recovery poll is for a generation this page started and then lost
+  // track of. NOT for one running on the voice socket: that socket delivers
+  // the next state itself, and the session snapshot this would fetch is
+  // blocked behind the very lock the turn is holding — so it could only time
+  // out after fifteen seconds and report a connection that was never lost,
+  // in the middle of a composition that is going perfectly well.
+  const voiceTurn = Boolean(voice.socket && voice.socket.readyState === 1
+    && voice.state === VOICE.PROCESSING);
+  if (v.status === "generating" && !requestPending && !voiceTurn) {
     generationPoll = setTimeout(recover, 2500);
   }
   syncControls();
   if (typeof drawVersions === "function") drawVersions(v);
-  if (typeof updateResume === "function") updateResume();
 }
 
 function drawLifecycle(v) {
@@ -1266,7 +1326,7 @@ function drawOutcome(v) {
       : t.readyText;
     $("outcomeRef").hidden = !doc.reference;
     $("refValue").textContent = doc.reference || "";
-    if (!editingLetter) $("letter").textContent = v.letter_text;
+    if (!editingLetter) drawLetter(v.letter_text);
     paintEmblem(v.emblem);
   } else {
     $("outcome").hidden = true;
@@ -1277,6 +1337,9 @@ function drawOutcome(v) {
   $("printBtn").disabled = !hasLetter;
   $("copyBtn").disabled = !hasLetter;
   $("reviseBtn").disabled = !hasLetter || busy;
+  $("translateBtn").disabled = !hasLetter || busy || requestPending || editing;
+  $("translateMenu").hidden = !hasLetter;
+  if (!hasLetter || busy || editing) closeTranslate(); else drawTranslate();
   if (!hasLetter && editingLetter) stopEditing(true);
 }
 
@@ -1464,9 +1527,15 @@ $("ask").onsubmit = async (e) => {
   // Asking for a change to a petition that already exists is work on the
   // document, so it is shown where work on the document is always shown.
   const changing = view?.status === "ready";
+  const confirming = ["confirming", "attachments"].includes(view?.status);
   if (changing) beginDocumentWork("revise");
-  const result = await mutate(`/api/sessions/${sid}/message`, { text });
-  if (changing) stopGenerating(Boolean(result));
+  // Started, not awaited. `mutate` marks the request in flight synchronously,
+  // and that is the flag the watcher runs on — awaiting it first would mean
+  // the turn had already finished before anything looked at it.
+  const pending = mutate(`/api/sessions/${sid}/message`, { text });
+  if (confirming) void watchForGeneration(sid);
+  const result = await pending;
+  if (changing || confirming) stopGenerating(Boolean(result));
   if (result) { $("text").value = ""; autoGrow(); }
   else if (connectionLost) bubble("system", X().retryDraft, true);
   syncControls();
@@ -2380,6 +2449,56 @@ document.addEventListener("visibilitychange", () => {
  * given is not an editor, and somebody who fixed one word and got a
  * differently-worded document back would be right to stop trusting it.
  */
+/* The petition as it will be printed.
+ *
+ * The date and place go at the top right of a letter, and the preview has to
+ * agree with the document — a citizen checks the preview and then downloads
+ * the file, and two different layouts means one of them is lying.
+ *
+ * The opening block is found the same way the renderer finds it: a short run
+ * of "label: value" lines before the first blank one. By SHAPE, not by the
+ * words "Date" and "Place", so a petition translated into a third language
+ * keeps them on the right. The rule is written twice, once here and once in
+ * render.py, and a test holds the two to the same answers.
+ *
+ * Split into exactly two elements, never one per line: `innerText` joins
+ * block children with a single newline, so two blocks reproduce the original
+ * text character for character. That matters because it is what the manual
+ * editor reads back and sends to the server. */
+const LABELLED_LINE = /^[^:\n]{1,24}:\s*\S/;
+const MAX_OPENING_LINES = 3;
+
+function openingBlock(lines) {
+  const head = [];
+  for (const line of lines) {
+    if (!line.trim()) break;
+    head.push(line);
+    if (head.length > MAX_OPENING_LINES) return 0;
+  }
+  if (!head.length) return 0;
+  return head.every(line => LABELLED_LINE.test(line.trim())) ? head.length : 0;
+}
+
+function drawLetter(text) {
+  const paper = $("letter");
+  const value = String(text ?? "");
+  // While editing it is one plain text node: the citizen is typing into it.
+  if (editingLetter) { paper.textContent = value; return; }
+  const lines = value.split("\n");
+  const head = openingBlock(lines);
+  paper.replaceChildren();
+  if (head > 0) {
+    const top = document.createElement("div");
+    top.className = "paper-dateline";
+    top.textContent = lines.slice(0, head).join("\n");
+    paper.appendChild(top);
+  }
+  const body = document.createElement("div");
+  body.className = "paper-body";
+  body.textContent = lines.slice(head).join("\n");
+  paper.appendChild(body);
+}
+
 function startEditing() {
   if (!view?.document || busy || requestPending) return;
   stopVoice();
@@ -2388,6 +2507,8 @@ function startEditing() {
   editBackup = view.letter_text;
   editVersion = view.version || view.document?.version || 1;
   editConflict = false;
+  // Flattened first: the citizen edits plain text, not a laid-out preview.
+  paper.textContent = editBackup;
   paper.setAttribute("contenteditable", "plaintext-only");
   paper.setAttribute("role", "textbox");
   paper.setAttribute("aria-multiline", "true");
@@ -2402,8 +2523,8 @@ function startEditing() {
 
 function stopEditing(restore) {
   const paper = $("letter");
-  if (restore) paper.textContent = editBackup;
   editingLetter = false;
+  if (restore) drawLetter(editBackup);
   paper.removeAttribute("contenteditable");
   paper.removeAttribute("role");
   paper.removeAttribute("aria-multiline");
@@ -2411,6 +2532,85 @@ function stopEditing(restore) {
   $("editHint").hidden = true;
   $("reviseBtn").setAttribute("aria-expanded", "false");
   syncControls();
+}
+
+/* Reading the petition in another language.
+ *
+ * What gets translated is the letter the service wrote. What does NOT is the
+ * citizen's own text: their name, their address and their grievance come
+ * through exactly as entered. The server enforces that — the request cannot
+ * ask for anything else — and it is the reason a translated petition still
+ * passes verification.
+ */
+function closeTranslate() {
+  $("translateList").hidden = true;
+  $("translateBtn").setAttribute("aria-expanded", "false");
+}
+
+function drawTranslate() {
+  const current = view?.document_language || view?.language || "en";
+  for (const option of document.querySelectorAll(".translate-option")) {
+    const mine = option.dataset.language === current;
+    option.setAttribute("aria-current", String(mine));
+    // The language it is already in is shown ticked and not offered again;
+    // choosing it would remake the document for no change.
+    option.disabled = mine || busy || requestPending;
+  }
+  $("translateText").textContent = T().translate;
+}
+
+$("translateBtn").onclick = (e) => {
+  e.stopPropagation();
+  if ($("translateBtn").disabled) return;
+  const open = $("translateList").hidden;
+  drawTranslate();
+  $("translateList").hidden = !open;
+  $("translateBtn").setAttribute("aria-expanded", String(open));
+};
+
+$("translateList").addEventListener("click", async (e) => {
+  const option = e.target.closest(".translate-option");
+  if (!option || option.disabled) return;
+  closeTranslate();
+  await translateDocument(option.dataset.language);
+});
+
+document.addEventListener("click", (e) => {
+  if (!e.target.closest("#translateMenu")) closeTranslate();
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !$("translateList").hidden) {
+    closeTranslate();
+    $("translateBtn").focus();
+  }
+});
+
+async function translateDocument(language) {
+  if (busy || requestPending || !sid) return;
+  busy = true;
+  syncControls();
+  // The same panel every other change to the document uses, in the same place.
+  startGenerating("translate");
+  const result = await api(`/api/sessions/${sid}/translate`, {
+    method: "POST", quiet: true,
+    // The same version the manual editor pins to. `document_language` is a
+    // field of the view; `document_version` is not, so this was sending null
+    // and skipping the check that stops two changes landing on each other.
+    body: JSON.stringify({
+      language,
+      expected_version: view?.version || view?.document?.version || null,
+    }),
+  });
+  stopGenerating(Boolean(result));
+  busy = false;
+  if (result) render(result);
+  else {
+    // Exactly one message, and the service's own reason when it gave one —
+    // "the translation service is unavailable, your petition has not been
+    // changed" tells a citizen what happened and what did not.
+    bubble("system", lastApiMessage || T().translateFailed, true);
+    syncControls();
+  }
 }
 
 $("reviseBtn").onclick = () => {

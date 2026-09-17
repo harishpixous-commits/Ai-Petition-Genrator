@@ -79,6 +79,21 @@ _HALLUCINATIONS = {
 }
 
 
+# Words from that list which ARE the answer when the question was a yes or no.
+#
+# "Shall I prepare your petition?" — "yes". The list above is right that these
+# come back from silence; it was wrong to treat them as never meaning anything,
+# because at the confirmation step they are the only short answer there is. The
+# audio still has to be genuine speech: what changes is whether the WORD is
+# allowed to mean something, not whether noise can become a turn.
+_CONFIRMATIONS = {
+    "yes", "yeah", "yep", "ok", "okay", "o k", "right", "alright", "sure",
+    "no", "nope",
+    "\u0b86\u0bae\u0bcd", "\u0b86\u0bae", "\u0b9a\u0bb0\u0bbf", "\u0b86",
+    "\u0b87\u0bb2\u0bcd\u0bb2\u0bc8", "\u0bb5\u0bc7\u0ba3\u0bcd\u0b9f\u0bbe\u0bae\u0bcd",
+}
+
+
 def _normalise(text: str) -> str:
     return re.sub(r"\s+", " ", str(text or "").strip().lower()).strip(" .,!?।")
 
@@ -133,6 +148,44 @@ class SpeechCommitGuard:
     min_modulation: float = 0.12
     # Loudest frame, relative to the room. Quiet speech still clears this.
     min_peak_snr: float = 2.2
+    # Evidence strong enough that an utterance does not also have to be long,
+    # or to fill its window.
+    #
+    # Speech that pauses is still speech: a citizen who thinks before answering
+    # produces a low voiced RATIO while the audio that is there is unmistakable.
+    # Speech that is brief is still speech: "yes" is a quarter of a second.
+    # What separates either from a room is the level variation between
+    # syllables and a clear peak above the noise floor — never the proportion
+    # of the window filled, and never the duration on its own.
+    #
+    # The numbers come from utterances this service actually threw away: they
+    # ran from 0.66 to 1.52 modulation and 8 dB upwards. A fan is below 0.12.
+    clear_modulation: float = 0.40
+    clear_peak_snr: float = 6.0
+    # The floor for an utterance that IS clearly speech.
+    #
+    # Measured, not guessed: the word "yes", spoken plainly and pushed through
+    # this exact pipeline, is 224 ms of voiced audio at 33.8 dB. A floor of 240
+    # rejected it — which is what "I said yes and nothing happened" was.
+    #
+    # Below this are clicks and knocks, at 128 to 192 ms in the same logs. And
+    # the cost of being wrong in this direction is one wasted transcription:
+    # a click sent to the service comes back with no words and is discarded as
+    # empty. The cost of being wrong in the other direction is a citizen
+    # talking to something that ignores them.
+    brief_voiced_ms: int = 200
+    # And briefer still when the question was a yes or no.
+    #
+    # Measured through the real pipeline: a plainly spoken "Yes." came out at
+    # 192 ms of voiced audio at 78 dB and was thrown away for being eight
+    # milliseconds short of the floor. The risk of going lower is bounded
+    # here in a way it is not elsewhere: the transcript must ALSO be one of a
+    # dozen confirmation words, so a knock that transcribes to nothing, or to
+    # anything else, still does not answer.
+    #
+    # A single click is one frame of audio. Sustaining 160 ms of VOICED frames
+    # takes a voice.
+    confirmation_voiced_ms: int = 160
     # A short transcript needs more than the minimum evidence, because short
     # transcripts are what hallucinations look like.
     short_text_chars: int = 12
@@ -162,6 +215,7 @@ class SpeechCommitGuard:
         confidence: float | None = None,
         min_confidence: float = 0.0,
         during_playback: bool = False,
+        expecting_confirmation: bool = False,
     ) -> Decision:
         cleaned = str(text or "").strip()
 
@@ -173,18 +227,39 @@ class SpeechCommitGuard:
         if not cleaned:
             return Decision(Verdict.EMPTY)
 
-        if evidence.voiced_ms < self.min_voiced_ms:
+        # Unmistakably somebody talking, whatever the shape of the window.
+        clear = (evidence.modulation >= self.clear_modulation
+                 and evidence.peak_snr >= self.clear_peak_snr)
+
+        if clear and expecting_confirmation:
+            floor = self.confirmation_voiced_ms
+        elif clear:
+            floor = self.brief_voiced_ms
+        else:
+            floor = self.min_voiced_ms
+        if evidence.voiced_ms < floor:
             return Decision(Verdict.TOO_SHORT)
 
-        if (evidence.voiced_ratio < self.min_voiced_ratio
-                or evidence.modulation < self.min_modulation
+        # A room fails these outright, and no amount of anything else saves it.
+        if (evidence.modulation < self.min_modulation
                 or evidence.peak_snr < self.min_peak_snr):
+            return Decision(Verdict.NO_SPEECH_EVIDENCE)
+
+        # And a thinly-filled window is only evidence of nothing when the audio
+        # in it is not evidence of something.
+        if evidence.voiced_ratio < self.min_voiced_ratio and not clear:
             return Decision(Verdict.NO_SPEECH_EVIDENCE)
 
         if during_playback and evidence.echo_ratio > self.max_echo_ratio:
             return Decision(Verdict.ECHO_SUSPECTED)
 
         normalised = _normalise(cleaned)
+        if expecting_confirmation and normalised in _CONFIRMATIONS:
+            # The answer to the question that was actually asked. It has
+            # already cleared every evidence test above, so this is a citizen
+            # saying yes, not a service inventing one.
+            return Decision(Verdict.COMMIT, cleaned)
+
         if normalised in _HALLUCINATIONS:
             # Said on its own, with nothing else in the utterance. The citizen
             # who genuinely answers "okay" is asked again, which is what should
@@ -192,7 +267,7 @@ class SpeechCommitGuard:
             return Decision(Verdict.FILLER_ONLY)
 
         if len(normalised) < self.short_text_chars and \
-                evidence.voiced_ms < self.short_text_voiced_ms:
+                evidence.voiced_ms < self.short_text_voiced_ms and not clear:
             # Two seconds of sound that produced four characters did not
             # contain four characters' worth of speech.
             return Decision(Verdict.FILLER_ONLY)

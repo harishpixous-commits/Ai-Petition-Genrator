@@ -70,8 +70,10 @@ class TestLetterText:
             assert marker in english_letter, marker
 
     def test_the_blocks_come_in_the_prescribed_order(self, english_letter):
-        order = ["From,", "To,", "Respected Sir / Madam,", "Subject:",
-                 "Thank you!", "Yours faithfully,", "Date:"]
+        # The date and place lead the letter now, printed flush right, which is
+        # where a letter carries them. They used to sit under the signature.
+        order = ["Date:", "Place:", "From,", "To,", "Respected Sir / Madam,",
+                 "Subject:", "Thank you!", "Yours faithfully,"]
         positions = [english_letter.index(marker) for marker in order]
         assert positions == sorted(positions), "the letter reads top to bottom"
 
@@ -592,3 +594,126 @@ class TestProductionReadinessIsEarned:
         report = pdf_status(settings)
         assert report["available"] is True
         assert report["production_ready"] is False
+
+
+class TestTheDateAndPlaceAtTheTop:
+    """Where a letter carries them, and printed flush right.
+
+    They used to sit under the signature. Moving them is a format change, and
+    the format is the thing an officer recognises a petition by, so both the
+    position and the alignment are held here.
+    """
+
+    @staticmethod
+    def _letter(**over):
+        from datetime import date
+
+        from app.domain.letter import build_letter_text
+        from app.domain.templates import the_template
+
+        fields = {"applicant_name": "Ravi Kumar", "age": 45, "mobile": "9876543210",
+                  "address": "12 Gandhi Street, Peelamedu, Coimbatore",
+                  "aadhaar": "234567890124",
+                  "grievance": "The drain has been blocked for a month."}
+        fields.update(over.pop("fields", {}))
+        return build_letter_text(
+            template=the_template(), fields=fields, language=over.pop("language", "en"),
+            composition=None, session_id="abc-123", when=date(2026, 9, 17), **over)
+
+    def test_they_lead_the_letter(self):
+        lines = self._letter().splitlines()
+
+        assert lines[0] == "Date: 17-09-2026"
+        assert lines[1] == "Place: Coimbatore"
+        assert lines[2] == ""
+        assert lines[3] == "From,"
+
+    def test_they_are_no_longer_under_the_signature(self):
+        tail = self._letter().splitlines()[-8:]
+
+        assert not [line for line in tail if line.startswith(("Date:", "Place:"))]
+
+    def test_a_place_that_cannot_be_derived_is_left_out_rather_than_guessed(self):
+        """A wrong town on a petition is worse than a missing one. The citizen
+        was never asked for the place separately, so it comes from the address
+        they did give, and only when that address has parts to take it from."""
+        lines = self._letter(fields={"address": "theni"}).splitlines()
+
+        assert lines[0].startswith("Date:")
+        assert not lines[1].startswith("Place:"), lines[1]
+        assert lines[1] == ""
+
+    def test_the_tamil_letter_carries_tamil_labels_at_the_top(self):
+        from app.domain.letter import LABELS
+
+        lines = self._letter(language="ta").splitlines()
+
+        assert lines[0].startswith(LABELS["date"]["ta"])
+        assert "Date:" not in lines[0]
+
+
+class TestFindingTheOpeningBlock:
+    """By shape and position, never by the words "Date" and "Place".
+
+    Those words are English. A petition translated into Hindi has to keep its
+    opening block on the right, and a letter whose block has been deleted by
+    hand must not have its sender details flung to the right margin instead.
+    """
+
+    @staticmethod
+    def _count(lines):
+        from app.services.render import opening_block
+
+        return opening_block(lines)
+
+    def test_an_english_opening_block(self):
+        assert self._count(["Date: 17-09-2026", "Place: Coimbatore", "", "From,"]) == 2
+
+    def test_a_tamil_one(self):
+        assert self._count(["\u0ba8\u0bbe\u0bb3\u0bcd: 17-09-2026",
+                            "\u0b87\u0b9f\u0bae\u0bcd: \u0ba4\u0bc7\u0ba9\u0bbf",
+                            "", "\u0b85\u0ba9\u0bc1\u0baa\u0bcd\u0baa\u0bc1\u0ba8\u0bb0\u0bcd,"]) == 2
+
+    def test_a_hindi_one_even_though_no_hindi_word_is_listed_anywhere(self):
+        assert self._count(["\u0926\u093f\u0928\u093e\u0902\u0915: 17-09-2026",
+                            "\u0938\u094d\u0925\u093e\u0928: \u0925\u0947\u0928\u0940",
+                            "", "From,"]) == 2
+
+    def test_a_letter_that_opens_with_the_sender_has_no_opening_block(self):
+        """The failure this prevents is the loud one: every sender line pushed
+        to the right margin on a petition that simply had no dateline."""
+        assert self._count(["From,", "    Ravi Kumar", "    12 Gandhi Street", "", "To,"]) == 0
+
+    def test_a_long_run_is_not_an_opening_block(self):
+        assert self._count(["A: 1", "B: 2", "C: 3", "D: 4", "", "x"]) == 0
+
+    def test_nothing_at_all(self):
+        assert self._count([]) == 0
+        assert self._count(["", "", "From,"]) == 0
+
+
+class TestItIsPrintedOnTheRight:
+    def test_the_opening_block_is_right_aligned_and_nothing_else_is(self, tmp_path):
+        import re
+        import zipfile
+
+        from app.services.render import render_docx
+
+        text = ("Date: 17-09-2026" + chr(10) + "Place: Coimbatore" + chr(10) + chr(10)
+                + "From," + chr(10) + "    Ravi Kumar" + chr(10) + chr(10)
+                + "To," + chr(10) + "    The District Collector" + chr(10) + chr(10)
+                + "Respected Sir / Madam," + chr(10) + chr(10)
+                + "Subject: A blocked drain." + chr(10) + chr(10)
+                + "The drain has been blocked for a month." + chr(10))
+        out = tmp_path / "petition.docx"
+        render_docx(text, out, reference="AP/2026/ABCDEF", title="Citizen Petition")
+
+        with zipfile.ZipFile(out) as archive:
+            xml = archive.read("word/document.xml").decode("utf-8")
+        right = [
+            "".join(re.findall(r"<w:t[^>]*>([^<]*)</w:t>", paragraph))
+            for paragraph in re.findall(r"<w:p[ >].*?</w:p>", xml, re.S)
+            if 'w:val="right"' in paragraph
+        ]
+
+        assert right == ["Date: 17-09-2026", "Place: Coimbatore"], right

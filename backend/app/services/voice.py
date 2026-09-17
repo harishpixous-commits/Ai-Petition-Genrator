@@ -30,6 +30,7 @@ import asyncio
 import logging
 import math
 import time
+from collections import deque
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -298,8 +299,26 @@ class EndOfSpeech:
     max_seconds: float = 45.0
     min_seconds: float = 0.25
     sample_rate: int = 16000
+    # How much audio to keep from BEFORE the detector says a turn has begun.
+    #
+    # The detector needs 120 ms of speech before it will commit to "this is an
+    # utterance", and the buffer that completes that test is the first one
+    # stored. Everything earlier was dropped — up to a whole browser buffer,
+    # 128 ms at 16 kHz — and that is the beginning of the word.
+    #
+    # Measured against the real transcription service: with 160 ms cut off the
+    # front, "Harish" comes back as "Breeze", and a Tamil sentence comes back
+    # as "Pair Harish". Not an empty result, which is why this never showed up
+    # as a failure — just a wrong answer on a petition.
+    #
+    # 400 ms is comfortably more than one buffer at any rate a browser uses,
+    # and costs a fraction of a second of leading room tone, which every
+    # transcription service is built to ignore.
+    pre_roll_ms: float = 400.0
 
     _chunks: list[bytes] = field(default_factory=list)
+    _recent: deque[bytes] = field(default_factory=deque)
+    _recent_bytes: int = 0
     _generation: int = 0
     _turn: int = 0
     _open: bool = False
@@ -307,10 +326,30 @@ class EndOfSpeech:
     _delivered: set[int] = field(default_factory=set)
     _task: asyncio.Task | None = None
 
+    def remember(self, pcm: bytes) -> None:
+        """Hold the most recent audio, in case what follows turns out to be a word.
+
+        Called for every buffer while listening. Does nothing once an utterance
+        is open — from that point the audio is being kept anyway.
+        """
+        if self._open or not pcm:
+            return
+        self._recent.append(pcm)
+        self._recent_bytes += len(pcm)
+        limit = int(self.sample_rate * 2 * self.pre_roll_ms / 1000)
+        while self._recent_bytes > limit and len(self._recent) > 1:
+            self._recent_bytes -= len(self._recent.popleft())
+
     def begin(self) -> int:
-        """A new utterance starts; anything pending from the last one is void."""
+        """A new utterance starts; anything pending from the last one is void.
+
+        It starts with what was already held, so the word begins where the
+        citizen began it rather than where the detector became certain.
+        """
         self._generation += 1
-        self._chunks.clear()
+        self._chunks = list(self._recent)
+        self._recent.clear()
+        self._recent_bytes = 0
         self._open = True
         self._started_at = time.monotonic()
         self._cancel_pending()
@@ -341,6 +380,8 @@ class EndOfSpeech:
         self._open = False
         audio = b"".join(self._chunks)
         self._chunks.clear()
+        self._recent.clear()
+        self._recent_bytes = 0
         ended = time.monotonic()
 
         # Superseded while we were closing: a newer utterance has already begun
