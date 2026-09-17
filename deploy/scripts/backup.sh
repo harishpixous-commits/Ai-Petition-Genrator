@@ -36,8 +36,13 @@ if ! docker volume inspect "${VOLUME_NAME}" >/dev/null 2>&1; then
   exit 1
 fi
 
+HOST_UID="$(id -u)"
+HOST_GID="$(id -g)"
+
 docker run --rm --user 0:0 \
   -e "TS=${TS}" \
+  -e "HOST_UID=${HOST_UID}" \
+  -e "HOST_GID=${HOST_GID}" \
   -v "${VOLUME_NAME}":/data \
   -v "${BACKUP_DIR}":/backups \
   --entrypoint /bin/sh \
@@ -58,11 +63,29 @@ docker run --rm --user 0:0 \
       fi
     done
     [ "$found" -eq 1 ] || echo "    no databases found (service may never have run)"
+
+    # LOAD-BEARING. The container writes as root (it must, to read the volume
+    # and write the host directory regardless of host ownership). Without this
+    # chown the backups stay root-owned, the retention sweep below runs as the
+    # unprivileged login user, its rm silently fails, backups accumulate
+    # forever and eventually fill the EBS volume SHARED WITH TWO OTHER
+    # APPLICATIONS. Do not remove.
+    chown -R "${HOST_UID}:${HOST_GID}" /backups
   '
 
 # Retain the most recent N backups. Never a blanket delete.
 ls -1t "${BACKUP_DIR}"/*.sqlite 2>/dev/null \
   | tail -n +$((RETAIN + 1)) | xargs -r rm -f || true
+
+# Prove retention actually worked. A silent failure here is how a shared disk
+# fills up, so it is reported rather than swallowed.
+REMAINING="$(ls -1 "${BACKUP_DIR}"/*.sqlite 2>/dev/null | wc -l)"
+if [ "${REMAINING}" -gt "${RETAIN}" ]; then
+  echo "WARNING: ${REMAINING} backups present but RETAIN=${RETAIN}."
+  echo "         Old backups are not being deleted - check ownership:"
+  echo "           ls -l ${BACKUP_DIR}"
+  echo "         Files must be owned by $(id -un), not root."
+fi
 
 echo "==> Done. Current backups:"
 ls -lh "${BACKUP_DIR}" | tail -n +2 | tail -5

@@ -13,12 +13,24 @@
 #
 # THIS SCRIPT NEVER TOUCHES CITIZEN DATA. The named volume is not removed,
 # recreated or modified — only the container image changes.
+#
+# ⚠️  THIS HOST RUNS THREE APPLICATIONS. Every compose command below is scoped
+#     with `-p ai-petition-generator`, so it is structurally incapable of
+#     stopping, recreating or removing the other two applications' containers.
+#     There is no `docker compose down`, no `system prune`, no `image prune`.
 # ---------------------------------------------------------------------------
 set -euo pipefail
 
 APP_DIR="${APP_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
 VOLUME_NAME="${VOLUME_NAME:-ai_petition_generator_var}"
+COMPOSE_PROJECT="${COMPOSE_PROJECT:-ai-petition-generator}"
 cd "${APP_DIR}"
+
+# Every compose invocation goes through this, so the project scope can never
+# be forgotten.
+dc() {
+  docker compose -p "${COMPOSE_PROJECT}" -f "${APP_DIR}/docker-compose.yml" "$@"
+}
 
 if [ ! -f docker-compose.yml ]; then
   echo "FATAL: ${APP_DIR}/docker-compose.yml is missing."
@@ -84,10 +96,11 @@ fi
 printf 'APP_IMAGE=%s\nIMAGE_TAG=%s\nAPP_PORT=%s\n' \
   "${APP_IMAGE}" "${TARGET_TAG}" "${APP_PORT}" > .env
 
-# `down` WITHOUT -v. The named volume holds every petition.
-echo "==> Replacing containers (volume preserved)"
-docker compose down --remove-orphans
-docker compose up -d
+# Project-scoped recreate. No `down` — `up -d` recreates this service because
+# the image tag changed, with less downtime, and the scope makes it incapable
+# of touching the other two applications. The named volume is preserved.
+echo "==> Recreating service (project: ${COMPOSE_PROJECT}, volume preserved)"
+dc up -d
 
 echo "==> Verifying GET http://127.0.0.1:${APP_PORT}/"
 OK=0
@@ -100,13 +113,13 @@ for i in $(seq 1 30); do
   sleep 5
 done
 
-docker compose ps
+dc ps
 
 if [ "${OK}" -ne 1 ]; then
   echo ""
   echo "ROLLBACK VERIFICATION FAILED - the application is not answering."
   echo "--- last 200 log lines ---"
-  docker compose logs --tail=200 --no-color || true
+  dc logs --tail=200 --no-color || true
   echo ""
   echo "Citizen data is intact in volume ${VOLUME_NAME}."
   echo "Try another tag:  ./rollback.sh <commit-sha>"

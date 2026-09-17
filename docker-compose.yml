@@ -17,6 +17,20 @@
 #               NEVER written by CI, never committed, never in an image layer.
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# EXPLICIT COMPOSE PROJECT NAME.
+#
+# This host runs THREE applications. Every docker compose command for this
+# application is scoped with `-p ai-petition-generator`, and this top-level
+# `name:` makes that scope explicit in the file rather than inferred from
+# whatever the deployment directory happens to be called.
+#
+# Consequence: `docker compose -p ai-petition-generator ...` can only ever
+# see, stop, recreate or remove containers belonging to THIS project. It is
+# structurally incapable of touching the other two applications.
+# ---------------------------------------------------------------------------
+name: ai-petition-generator
+
 services:
   app:
     # Deployed by immutable commit SHA, never by a floating tag, so the host
