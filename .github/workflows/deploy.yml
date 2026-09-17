@@ -73,9 +73,8 @@ jobs:
     # Company actor restriction — preserved exactly.
     if: >-
       github.actor == 'subashpixous' ||
-      github.actor == 'ElanjsuriyanPixous' ||
+      github.actor == 'harishpixous-commits' ||
       github.actor == 'PrithivRS' ||
-      github.actor == 'sivasankarpixous-art' ||
       github.actor == 'loguTyson25'
 
     steps:
