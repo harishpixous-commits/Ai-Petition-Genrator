@@ -1,0 +1,101 @@
+# ---------------------------------------------------------------------------
+# Citizen Petition Assistant — production compose
+#
+# ONE service. There is no separate UI container and no database container:
+# the frontend is served by FastAPI from inside the Python package, and all
+# persistence is local SQLite plus files under /app/backend/var.
+#
+# Two DIFFERENT env files are involved. Do not confuse them:
+#
+#   ./.env      Read automatically by docker compose for ${VARIABLE}
+#               substitution BELOW (APP_IMAGE, IMAGE_TAG, APP_PORT).
+#               WRITTEN BY THE DEPLOYMENT on every run. Not secret.
+#
+#   ./app.env   Passed INTO the container as its environment (env_file:).
+#               Holds OPERATOR_TOKEN and any provider API keys.
+#               Created ONCE by hand on the EC2 host, mode 600.
+#               NEVER written by CI, never committed, never in an image layer.
+# ---------------------------------------------------------------------------
+
+services:
+  app:
+    # Deployed by immutable commit SHA, never by a floating tag, so the host
+    # runs exactly the image this pipeline run built. `:?` makes compose fail
+    # loudly rather than silently resolving to something unintended.
+    image: "${APP_IMAGE:?APP_IMAGE is not set - check .env next to this file}:${IMAGE_TAG:?IMAGE_TAG is not set - check .env next to this file}"
+
+    # Fixed name so a collision with an existing deployment on this host is an
+    # immediate, obvious error rather than a second silent stack.
+    container_name: ai-petition-generator
+
+    restart: unless-stopped
+
+    # Runtime configuration and secrets. This file lives on the EC2 host only.
+    env_file:
+      - ./app.env
+
+    # Published to the HOST LOOPBACK ONLY.
+    #
+    # Nginx on the same host proxies to it. The container port is never
+    # reachable from outside the instance, and port 8000 must never appear in
+    # the Security Group. This is also what makes --forwarded-allow-ips=* in
+    # the Dockerfile CMD safe.
+    ports:
+      - "127.0.0.1:${APP_PORT:-8000}:8000"
+
+    volumes:
+      # ⛔ THE CRITICAL LINE. Everything a citizen has ever submitted lives
+      # here: sessions.sqlite (name, address, Aadhaar, grievance, transcript),
+      # documents/, attachments/ and knowledge.sqlite.
+      #
+      # Without this mount, `docker compose down` destroys every petition on
+      # the system permanently. There is no database server and no external
+      # store to recover from.
+      #
+      # A NAMED volume is used deliberately: it survives `docker compose down`,
+      # `down --rmi all` and container replacement. ONLY `down -v` (or an
+      # explicit `docker volume rm`) removes it — neither is ever used by the
+      # deployment workflow.
+      - petition_var:/app/backend/var
+
+    # Deployment/liveness gate is GET / — the static index, no network I/O.
+    # NOT /api/health, which probes every configured AI provider over the
+    # network and runs a blocking soffice --version subprocess.
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/"]
+      interval: 30s
+      timeout: 10s
+      # LibreOffice presence checks and the knowledge-layer preflight make the
+      # first start slower than steady-state restarts.
+      start_period: 90s
+      retries: 3
+
+    # The application logs structured JSON to stdout (backend/app/logging_setup.py),
+    # so the json-file driver is the natural sink. Rotation is set here because
+    # nothing else rotates it and the instance disk is shared with citizen data.
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+
+    # The application writes only to /app/backend/var and to the system temp
+    # directory (backend/app/services/enclosures.py uses
+    # tempfile.TemporaryDirectory with no dir=, so /tmp must stay writable).
+    # It never writes into its own package directory.
+    security_opt:
+      - no-new-privileges:true
+
+    stop_grace_period: 30s
+
+volumes:
+  petition_var:
+    # Explicit name so it is independent of the compose project directory
+    # name. If the deployment directory is ever renamed, the data still
+    # attaches to the same volume instead of silently starting empty.
+    #
+    # ON-DISK LOCATION (Ubuntu, default Docker storage driver):
+    #   /var/lib/docker/volumes/ai_petition_generator_var/_data
+    #
+    # Inspect with:  docker volume inspect ai_petition_generator_var
+    name: ai_petition_generator_var

@@ -1,0 +1,78 @@
+# ---------------------------------------------------------------------------
+# Docker build context exclusions.
+#
+# The first two blocks are the important ones: citizen data and credentials
+# must never enter an image layer, because a layer is permanent and an image
+# gets pushed to a registry.
+# ---------------------------------------------------------------------------
+
+# --- Citizen data. NEVER build this into an image. -------------------------
+#
+# backend/var holds sessions.sqlite (the whole petition: name, address,
+# Aadhaar number, grievance), the generated DOCX/PDF, and everything a citizen
+# uploaded as an attachment. It is mounted as a volume at runtime instead.
+var/
+backend/var/
+**/var/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.db
+
+# --- Credentials. -----------------------------------------------------------
+#
+# Nothing resembling an environment file may reach a layer. Runtime
+# configuration is injected by docker-compose env_file from a host file that
+# is never part of the build context.
+# backend/.env.example is excluded too. It is committed documentation, but it
+# has drifted from backend/app/config.py (it still specifies the retired
+# SARVAM_TTS_MODEL=bulbul:v2 / speaker anushka, which answer HTTP 400), so it
+# must never be a template anyone copies inside a running container.
+.env
+.env.*
+**/.env
+**/.env.*
+
+# --- Version control and CI/deployment scaffolding --------------------------
+.git/
+.gitignore
+.github/
+deploy/
+Dockerfile
+.dockerignore
+docker-compose.yml
+sonar-project.properties
+
+# --- Python caches and local environments -----------------------------------
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+backend/.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+
+# --- Tests are not needed at runtime ----------------------------------------
+#
+# backend/scripts IS kept: verify_pdf.py (the nine-check PDF/Tamil validation
+# that gates pdf_production_ready) and ingest.py (loads the government corpus)
+# are operational tools that are run inside the container.
+backend/tests/
+
+# --- Documentation ----------------------------------------------------------
+docs/
+README.md
+backend/README.md
+*.md
+
+# --- Editor and OS leftovers ------------------------------------------------
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db

@@ -1,0 +1,363 @@
+name: Build, Analyze and Deploy
+
+# ---------------------------------------------------------------------------
+# GitHub -> GitHub Actions -> SonarQube -> Docker Build -> Docker Hub
+#        -> SSH (appleboy/ssh-action) -> AWS EC2 -> Docker Compose -> Nginx
+#
+# ONE image is built. There is no separate UI image: the frontend is vanilla
+# JS/CSS/HTML inside the Python package, served by FastAPI itself. This
+# repository contains no package.json, no bundler and no frontend build step.
+# ---------------------------------------------------------------------------
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+# Never let two deployments race onto the same host. This is a single-instance,
+# single-worker service writing to one SQLite file, so an overlapping deploy is
+# a correctness problem, not merely a noisy one.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  IMAGE_NAME: subashawsdevops/ai-petition-generator
+
+jobs:
+  # =========================================================================
+  # JOB 1 — Build and Analyze
+  # =========================================================================
+  build-and-analyze:
+    name: Build and Analyze
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          # SonarQube uses history for new-code detection and blame.
+          fetch-depth: 0
+
+      - name: SonarQube Scan
+        uses: SonarSource/sonarqube-scan-action@v4
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+
+  # =========================================================================
+  # JOB 2 — Deploy to EC2
+  # =========================================================================
+  deploy:
+    name: Deploy to EC2
+    needs: build-and-analyze
+    runs-on: ubuntu-latest
+
+    # Company actor restriction — preserved exactly.
+    if: >-
+      github.actor == 'subashpixous' ||
+      github.actor == 'ElanjsuriyanPixous' ||
+      github.actor == 'PrithivRS' ||
+      github.actor == 'sivasankarpixous-art' ||
+      github.actor == 'loguTyson25'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # -------------------------------------------------------------------
+      # Immutable tag. The commit SHA is what EC2 actually deploys, so the
+      # host runs exactly the image this run built — and every previous SHA
+      # stays pullable for rollback.
+      # -------------------------------------------------------------------
+      - name: Resolve image tag
+        id: meta
+        run: |
+          echo "tag=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+          echo "Image to build: ${IMAGE_NAME}:${GITHUB_SHA}"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Docker Hub login
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # -------------------------------------------------------------------
+      # ONE application image, built and pushed in a single step so the
+      # pushed digest is exactly the one that was built.
+      # -------------------------------------------------------------------
+      - name: Build and push application image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.tag }}
+            ${{ env.IMAGE_NAME }}:latest
+          # The LibreOffice apt layer is ~1 GB and rarely changes. Caching it
+          # keeps subsequent builds to the application layer only.
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false
+
+      # -------------------------------------------------------------------
+      # Deploy over SSH.
+      #
+      #   verify -> pull -> BACKUP -> down -> up -> verify GET /
+      #          -> auto-revert on failure
+      # -------------------------------------------------------------------
+      - name: Deploy to EC2 over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          APP_IMAGE: ${{ env.IMAGE_NAME }}
+          IMAGE_TAG: ${{ steps.meta.outputs.tag }}
+          APP_DIR: ${{ secrets.EC2_APP_DIR }}
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          port: ${{ secrets.EC2_SSH_PORT }}
+          command_timeout: 20m
+          envs: APP_IMAGE,IMAGE_TAG,APP_DIR
+          script: |
+            set -euo pipefail
+
+            VOLUME_NAME="ai_petition_generator_var"
+            CONTAINER="ai-petition-generator"
+            TS="$(date -u +%Y%m%d-%H%M%S)"
+
+            echo "==> Deploying ${APP_IMAGE}:${IMAGE_TAG}"
+            echo "==> Target directory: ${APP_DIR}"
+
+            # ---------------------------------------------------------------
+            # 1. Verify the deployment directory and its files.
+            #
+            #    Nothing is created implicitly here: doing so would mask a
+            #    wrong APP_DIR and quietly start a SECOND, EMPTY deployment
+            #    beside the real one. The one-time setup creates these.
+            # ---------------------------------------------------------------
+            if [ -z "${APP_DIR}" ]; then
+              echo "FATAL: secret EC2_APP_DIR is empty."
+              exit 1
+            fi
+            if [ ! -d "${APP_DIR}" ]; then
+              echo "FATAL: ${APP_DIR} does not exist."
+              echo "Run the one-time EC2 setup in deploy/README.md first."
+              exit 1
+            fi
+            cd "${APP_DIR}"
+
+            if [ ! -f docker-compose.yml ]; then
+              echo "FATAL: ${APP_DIR}/docker-compose.yml is missing."
+              exit 1
+            fi
+            if [ ! -f app.env ]; then
+              echo "FATAL: ${APP_DIR}/app.env is missing."
+              echo "Create it from deploy/env/app.env.example (mode 600)."
+              exit 1
+            fi
+
+            # ---------------------------------------------------------------
+            # 2. Verify the Docker toolchain.
+            # ---------------------------------------------------------------
+            echo "==> Verifying Docker toolchain"
+            docker --version
+            docker compose version
+
+            # ---------------------------------------------------------------
+            # 3. Verify / create persistent storage.
+            #    Created only when absent. Never removed, never recreated.
+            # ---------------------------------------------------------------
+            if docker volume inspect "${VOLUME_NAME}" >/dev/null 2>&1; then
+              echo "==> Persistent volume ${VOLUME_NAME} present"
+            else
+              echo "==> Persistent volume ${VOLUME_NAME} absent - creating (first deployment)"
+              docker volume create "${VOLUME_NAME}"
+            fi
+            mkdir -p "${APP_DIR}/backups"
+
+            # Preserve an operator-chosen port across deployments instead of
+            # resetting it to the default on every run.
+            APP_PORT="8000"
+            if [ -f .env ]; then
+              EXISTING_PORT="$(grep -E '^APP_PORT=' .env | cut -d= -f2- || true)"
+              if [ -n "${EXISTING_PORT}" ]; then
+                APP_PORT="${EXISTING_PORT}"
+              fi
+            fi
+            echo "==> Application port on host loopback: ${APP_PORT}"
+
+            # ---------------------------------------------------------------
+            # 4. Pull BEFORE stopping anything, so a registry failure never
+            #    leaves the host with no running application.
+            # ---------------------------------------------------------------
+            echo "==> Pulling ${APP_IMAGE}:${IMAGE_TAG}"
+            docker pull "${APP_IMAGE}:${IMAGE_TAG}"
+
+            # ---------------------------------------------------------------
+            # 5. BACK UP SQLITE BEFORE CONTAINERS ARE REPLACED.
+            #
+            #    Uses SQLite's online ".backup", never a cp of a live WAL
+            #    database (which produces a corrupt copy). Runs in a throwaway
+            #    root container against the same volume, so it works whether
+            #    or not the application is currently running, and writes to a
+            #    host directory regardless of host ownership.
+            #
+            #    Skips cleanly on the first deployment, when no database
+            #    exists yet.
+            # ---------------------------------------------------------------
+            echo "==> Backing up SQLite databases (online .backup)"
+            docker run --rm --user 0:0 \
+              -e "TS=${TS}" \
+              -v "${VOLUME_NAME}":/data \
+              -v "${APP_DIR}/backups":/backups \
+              --entrypoint /bin/sh \
+              "${APP_IMAGE}:${IMAGE_TAG}" -c '
+                set -eu
+                for db in sessions knowledge; do
+                  src="/data/${db}.sqlite"
+                  dst="/backups/${TS}-${db}.sqlite"
+                  if [ -f "$src" ]; then
+                    echo "    backing up ${db}.sqlite"
+                    sqlite3 "$src" ".backup ${dst}"
+                    printf "    integrity: "
+                    sqlite3 "$dst" "PRAGMA integrity_check;" | head -1
+                  else
+                    echo "    ${db}.sqlite not present (first deployment) - skipped"
+                  fi
+                done
+              '
+
+            # Retain the 20 most recent backups. Never a blanket delete.
+            ls -1t "${APP_DIR}/backups"/*.sqlite 2>/dev/null \
+              | tail -n +21 | xargs -r rm -f || true
+
+            # ---------------------------------------------------------------
+            # 6. Record the currently deployed tag, then write the new one.
+            # ---------------------------------------------------------------
+            PREVIOUS_TAG=""
+            if [ -f .env ]; then
+              PREVIOUS_TAG="$(grep -E '^IMAGE_TAG=' .env | cut -d= -f2- || true)"
+            fi
+            if [ -n "${PREVIOUS_TAG}" ]; then
+              printf '%s\n' "${PREVIOUS_TAG}" > .previous_tag
+              echo "==> Previous tag recorded for rollback: ${PREVIOUS_TAG}"
+            else
+              echo "==> No previous tag (first deployment)"
+            fi
+
+            write_env() {
+              printf 'APP_IMAGE=%s\nIMAGE_TAG=%s\nAPP_PORT=%s\n' \
+                "${APP_IMAGE}" "$1" "${APP_PORT}" > .env
+            }
+            write_env "${IMAGE_TAG}"
+
+            # ---------------------------------------------------------------
+            # 7. Replace containers.
+            #
+            #    ⛔ `down` WITHOUT -v. The named volume holds every petition:
+            #    names, addresses, Aadhaar numbers, documents, attachments.
+            #    `down -v` would destroy all of it irrecoverably.
+            # ---------------------------------------------------------------
+            echo "==> Stopping current containers (volume preserved)"
+            docker compose down --remove-orphans
+
+            echo "==> Starting containers"
+            docker compose up -d
+
+            # ---------------------------------------------------------------
+            # 8/9. Verify container state, then verify the application answers.
+            #
+            #    Gate is GET / — the static index, which performs no network
+            #    I/O. /api/health is deliberately NOT the gate: it probes every
+            #    configured AI provider over the network (6s timeouts each) and
+            #    runs a blocking `soffice --version` subprocess, so it is slow
+            #    and can fail for reasons unrelated to this deployment.
+            # ---------------------------------------------------------------
+            echo "==> Container status"
+            docker compose ps
+
+            echo "==> Verifying GET http://127.0.0.1:${APP_PORT}/"
+            OK=0
+            for i in $(seq 1 30); do
+              if curl -fsS "http://127.0.0.1:${APP_PORT}/" >/dev/null 2>&1; then
+                OK=1
+                echo "    application responded after ${i} attempt(s)"
+                break
+              fi
+              sleep 5
+            done
+
+            if [ "${OK}" -ne 1 ]; then
+              echo ""
+              echo "============================================================"
+              echo "DEPLOYMENT VERIFICATION FAILED"
+              echo "============================================================"
+              echo "--- docker compose ps ---"
+              docker compose ps || true
+              echo "--- last 200 log lines ---"
+              docker compose logs --tail=200 --no-color || true
+              echo "--- container state ---"
+              docker inspect --format '{{json .State}}' "${CONTAINER}" 2>/dev/null || true
+
+              if [ -s .previous_tag ]; then
+                REVERT="$(cat .previous_tag)"
+                echo ""
+                echo "==> AUTO-ROLLBACK to ${REVERT}"
+                write_env "${REVERT}"
+                docker compose down --remove-orphans || true
+                docker compose up -d || true
+                sleep 15
+                docker compose ps || true
+                if curl -fsS "http://127.0.0.1:${APP_PORT}/" >/dev/null 2>&1; then
+                  echo "==> Rollback SUCCEEDED. Host is serving ${REVERT}."
+                else
+                  echo "==> ROLLBACK ALSO FAILED - MANUAL INTERVENTION REQUIRED."
+                  echo "    See deploy/README.md 'Rollback procedure'."
+                fi
+              else
+                echo "==> No previous tag to roll back to (first deployment)."
+              fi
+
+              echo ""
+              echo "Citizen data was NOT touched. Volume ${VOLUME_NAME} is intact"
+              echo "and a pre-deploy backup is in ${APP_DIR}/backups/ (prefix ${TS})."
+              exit 1
+            fi
+
+            # ---------------------------------------------------------------
+            # 10. Conservative image retention.
+            #
+            #     `docker image prune -af` is NEVER used: it would delete the
+            #     images rollback depends on.
+            #
+            #     ALWAYS protected: `latest`, the current tag, the previous
+            #     tag. Of whatever remains, the 3 most recent are kept and
+            #     older ones removed — so at most ~6 images (~7 GB at this
+            #     image size) are ever resident.
+            # ---------------------------------------------------------------
+            echo "==> Pruning old images (protecting latest, current and previous)"
+            KEEP_PREVIOUS="$(cat .previous_tag 2>/dev/null || true)"
+            docker images "${APP_IMAGE}" --format '{{.Tag}}' \
+              | grep -v '^<none>$' \
+              | grep -v '^latest$' \
+              | grep -v "^${IMAGE_TAG}$" \
+              | { if [ -n "${KEEP_PREVIOUS}" ]; then grep -v "^${KEEP_PREVIOUS}$"; else cat; fi; } \
+              | tail -n +4 \
+              | while read -r old_tag; do
+                  [ -z "${old_tag}" ] && continue
+                  echo "    removing ${APP_IMAGE}:${old_tag}"
+                  docker rmi "${APP_IMAGE}:${old_tag}" 2>/dev/null || true
+                done || true
+
+            echo ""
+            echo "==> DEPLOYMENT SUCCESSFUL"
+            echo "    image:  ${APP_IMAGE}:${IMAGE_TAG}"
+            echo "    volume: ${VOLUME_NAME} (intact)"
+            echo "    port:   127.0.0.1:${APP_PORT}"
+            docker compose ps
