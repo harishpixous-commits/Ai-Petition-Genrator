@@ -110,6 +110,15 @@ jobs:
       # -------------------------------------------------------------------
       - name: Build and push application image
         uses: docker/build-push-action@v6
+        env:
+          # Do not upload the Buildx build record (.dockerbuild) as a GitHub
+          # artifact. It is a build-provenance blob we do not consume, and at
+          # this image size (~1.2 GB, LibreOffice) it burns artifact storage on
+          # every run for nothing.
+          #
+          # This affects ONLY artifact upload. The image is still built and
+          # pushed identically, with the same tags, cache and digest.
+          DOCKER_BUILD_RECORD_UPLOAD: "false"
         with:
           context: .
           file: ./Dockerfile
