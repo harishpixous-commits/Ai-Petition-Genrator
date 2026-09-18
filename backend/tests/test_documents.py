@@ -467,9 +467,36 @@ class TestVerification:
 
 
 class TestRepresentation:
-    """The developed section. It reasons from the complaint; it never adds to it."""
+    """The developed section. It STATES the complaint and then develops it.
 
-    def test_it_sits_between_the_complaint_and_the_prayer(self, fields, answers):
+    It used to sit after the citizen's own words, which were printed verbatim
+    in a paragraph of their own. That paragraph is gone from the ordinary
+    petition: a citizen speaks in the grammar of speech, sometimes in a few
+    words, sometimes in a different language from the letter, and pasting that
+    between two formal paragraphs read as a mistake rather than as evidence.
+    The representation carries the account now — faithfully, in official
+    language, adding nothing that was not said.
+    """
+
+    def test_it_sits_between_the_opening_and_the_prayer(self, fields):
+        text = build_letter_text(
+            template=the_template(), fields=fields, language="en",
+            composition=Composition(
+                introduction="I am a resident of the address given above.",
+                background="The road is unsafe after dark for those who must walk along it.",
+                request="I request that the light be restored.",
+            ),
+            session_id="abc-123",
+        )
+        opening = text.index("I am a resident of the address given above.")
+        representation = text.index("The road is unsafe after dark")
+        prayer = text.index("I request that the light be restored.")
+        assert opening < representation < prayer
+
+    def test_the_raw_words_are_not_printed_as_well(self, fields, answers):
+        """The matter is stated once. Printing the citizen's own phrasing too
+        put the same complaint in the letter twice — once properly, and once as
+        a fragment in whatever words it happened to be spoken in."""
         text = build_letter_text(
             template=the_template(), fields=fields, language="en",
             composition=Composition(
@@ -478,10 +505,30 @@ class TestRepresentation:
             ),
             session_id="abc-123",
         )
-        complaint = text.index(answers["grievance"].split("\n")[0])
-        representation = text.index("The road is unsafe after dark")
-        prayer = text.index("I request that the light be restored.")
-        assert complaint < representation < prayer
+
+        assert answers["grievance"].splitlines()[0] not in text
+
+    def test_with_no_account_the_citizens_own_words_are_the_account(self, fields, answers):
+        """`background` has no standard wording behind it. With no model there
+        is nothing to state the complaint WITH, and a petition that names no
+        problem is not a petition — so the citizen's own account is printed."""
+        text = build_letter_text(
+            template=the_template(), fields=fields, language="en",
+            composition=None, session_id="abc-123",
+        )
+
+        assert answers["grievance"].splitlines()[0] in text
+
+    def test_a_partial_answer_counts_as_no_account(self, fields, answers):
+        """A model that returned a subject but no representation has said
+        nothing about the matter. The citizen's words still have to carry it."""
+        text = build_letter_text(
+            template=the_template(), fields=fields, language="en",
+            composition=Composition(subject="A street light", background=None),
+            session_id="abc-123",
+        )
+
+        assert answers["grievance"].splitlines()[0] in text
 
     def test_a_petition_without_a_model_simply_omits_it(self, english_letter):
         """Developing an issue means having read the issue. With no model there

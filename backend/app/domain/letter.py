@@ -120,16 +120,20 @@ class Composition:
     """The parts of the petition a model may write.
 
     The subject, the opening, the representation and the closing prayer. None of
-    them is a NEW fact: the facts are the citizen's particulars and their
-    grievance, and both of those are placed by code. What the model adds is the
-    development an officer expects to read — why the matter needs attention,
-    what it affects, and precisely what is being asked for — drawn only from
-    what the citizen actually said.
+    them is a NEW fact: the particulars are placed by code and never written
+    here, and everything in `background` has to follow from what the citizen
+    actually said.
 
-    `background` is the elaboration, and it is the one field with no standard
-    wording behind it. Developing an issue means having read the issue, so a
-    petition produced with no model reachable simply does not carry this
-    section. It is a complete petition without it; it is a fuller one with it.
+    `background` is the representation, and it is the one field with no standard
+    wording behind it. It is also the only place the petition states the matter:
+    the citizen's own words are no longer printed alongside it, because a
+    complaint spoken in a few words, or in another language, read as a mistake
+    sitting between two formal paragraphs rather than as evidence.
+
+    That makes its absence load-bearing. With no model reachable there is
+    nothing to state the complaint with, and a petition that names no problem is
+    not a petition — so `build_letter_text` places the citizen's own account
+    whenever this field is empty, exactly as it always did.
 
     Every field is optional and each falls back on its own.
     """
@@ -368,12 +372,25 @@ def build_letter_text(
     lines.extend(_paragraphs(introduction))
     lines.append("")
 
-    # -- the citizen's own words, exactly as given -------------------------- #
-    for name in VERBATIM_FIELDS:
-        value = str(fields.get(name) or "").strip()
-        if value:
-            lines.extend(_paragraphs(value))
-            lines.append("")
+    # -- the citizen's own words --------------------------------------------- #
+    #
+    # Placed ONLY when nothing was written from them.
+    #
+    # Normally the representation below states the complaint in official
+    # language, so pasting the raw words here as well would print the same
+    # matter twice — once as a fragment in whatever grammar it was spoken in,
+    # and once properly. The screenshot that prompted this showed exactly that.
+    #
+    # But `background` has no standard wording behind it. With no model there
+    # is nothing to state the complaint WITH, and a petition that names no
+    # problem is not a petition — so in that case the citizen's own account is
+    # what the officer reads, exactly as it always was.
+    if not background:
+        for name in VERBATIM_FIELDS:
+            value = str(fields.get(name) or "").strip()
+            if value:
+                lines.extend(_paragraphs(value))
+                lines.append("")
 
     # -- the representation, developing what the citizen said --------------- #
     #
@@ -436,6 +453,7 @@ def verification_targets(
     template: LetterTemplate,
     fields: dict[str, Any],
     language: Language,
+    composition: Composition | None = None,
 ) -> dict[str, str]:
     """Field name -> the exact string that MUST appear in the rendered document.
 
@@ -449,6 +467,11 @@ def verification_targets(
         if not spec.required or spec.name not in fields:
             continue
         if spec.name in VERBATIM_FIELDS:
+            # Only a target when it was actually placed — which is when no
+            # account was written from it. Asserting on a string the document
+            # is not meant to contain fails a letter that is correct.
+            if composition is not None and (composition.background or "").strip():
+                continue
             # Verify the complete account, including the requested remedy at
             # the end. Whitespace normalization already handles line wrapping;
             # checking only the opening words misses truncated complaints.

@@ -13,9 +13,21 @@ Two rules hold everywhere in this file and are worth stating once:
   * NO RECORDED VALUE IS EVER SENT TO A MODEL. Not as context, not for drafting.
     The model is told which fields are answered, never what the answers are, and
     identifier-typed fields are excluded from every prompt at source.
-  * THE CITIZEN'S GRIEVANCE IS NEVER REWRITTEN. It is stored as given and placed
-    verbatim in the document. The model writes the formal wording around it and
-    is told, explicitly, not to restate it.
+  * THE CITIZEN'S GRIEVANCE IS NEVER CHANGED ON THE RECORD. It is stored exactly
+    as given, shown back to them exactly as given, and is what every later turn
+    reasons from.
+
+    What reaches the PETITION is the representation the model writes from it:
+    the same matter, stated faithfully in official language. A citizen speaks in
+    the grammar of speech, often briefly, sometimes in a different language from
+    the letter, and printing that between two formal paragraphs read as a
+    mistake rather than as evidence. The model may correct grammar, order the
+    facts and formalise them; it may not soften, strengthen, widen or narrow the
+    complaint, and it may not add one that was not raised.
+
+    With no model reachable there is nothing to state the complaint with, and a
+    petition that names no problem is not a petition — so the citizen's own
+    words are placed, exactly as they always were.
 """
 
 from __future__ import annotations
@@ -983,15 +995,16 @@ async def confirm(state: LetterState) -> dict[str, Any]:
 async def compose(state: LetterState) -> dict[str, Any]:
     """Assemble the petition. ONE model call, for the formal wording only.
 
-    The model writes three things, all of them framing: a subject line tailored
-    to this grievance, an opening paragraph, and the closing request. It writes
-    no facts — the particulars and the grievance are placed by
-    `build_letter_text`, deterministically.
+    The model writes four things: a subject line tailored to this grievance, an
+    opening paragraph, the representation, and the closing request. The
+    particulars — name, age, address, identifiers — are placed by
+    `build_letter_text`, deterministically, and the model never writes one.
 
-    It IS given the grievance, because a subject line and a closing request that
-    do not know what the petition is about are worth nothing. It is told, twice
-    and explicitly, not to reproduce or reword it; the verbatim block in the
-    document is written by code and never touched by this call. Identifier
+    The representation is where the complaint is STATED. It is the only place
+    the document describes the matter, so if the model does not say it, the
+    petition does not contain it. It is told to state the complaint faithfully
+    and to add nothing: no number, date, office, official, statute or scheme it
+    was not given, and no widening or narrowing of what was said. Identifier
     fields are excluded from the prompt at source and masked again at the
     provider boundary, so an Aadhaar number is not in what the model sees even
     if the citizen typed one inside their complaint.
@@ -1111,26 +1124,31 @@ async def compose(state: LetterState) -> dict[str, Any]:
                 "letter. Greet the officer, say that you reside at the address given "
                 "above, and introduce the specific matter you are writing about. Name the "
                 "kind of problem and where it is, so that a clerk sorting post knows which "
-                "department this belongs to. The citizen's own account of the complaint "
-                "follows immediately after this paragraph, so lead into it; never repeat "
-                "it.\n\n"
-                "3. `background` - 4 to 7 sentences in the first person: the "
-                "representation. This is the part of the petition that develops the "
-                "matter, and it is what makes the letter worth reading. Set out, in "
-                "ordinary official language:\n"
-                "   - what the continuing effect of this problem is on the petitioner and "
-                "on others in the locality, reasoning ONLY from what the complaint "
-                "actually says;\n"
+                "department this belongs to. The paragraph that follows states the "
+                "matter in full, so open it; do not finish it here.\n\n"
+                "3. `background` - 5 to 8 sentences in the first person: the "
+                "representation. This is the body of the petition and the ONLY place the "
+                "matter is stated, so it carries the whole account. Set out, in ordinary "
+                "official language:\n"
+                "   - WHAT THE PROBLEM IS. State it plainly and completely, in the "
+                "petitioner's meaning but in the language of a formal petition. The "
+                "citizen described it in their own way - possibly briefly, possibly in "
+                "another language, possibly in the grammar of speech rather than "
+                "writing. Say the same thing properly: not more than it, not less;\n"
+                "   - what the continuing effect of it is on the petitioner and on "
+                "others in the locality, reasoning ONLY from what the complaint actually "
+                "says;\n"
                 "   - why it needs the officer's attention rather than being left where "
                 "it is;\n"
                 "   - what would put it right, in practical terms.\n"
-                "   Reason from the complaint; do not restate it. If the complaint says a "
-                "street light has not worked for months, you may write about darkness, "
-                "risk to people walking at night, and the need for the line to be "
-                "inspected and repaired - because all of that follows from what was said. "
-                "You may NOT write that anyone was injured, that a number of families are "
-                "affected, or that any official promised anything, because none of that "
-                "was said.\n\n"
+                "   If the complaint says a street light has not worked for months, you "
+                "state that the street light at the petitioner's locality has remained "
+                "non-functional for several months, and you may then write about "
+                "darkness, risk to people walking at night, and the need for the line to "
+                "be inspected and repaired - because all of that follows from what was "
+                "said. You may NOT write that anyone was injured, that a number of "
+                "families are affected, or that any official promised anything, because "
+                "none of that was said.\n\n"
                 "4. `request` - 3 to 4 sentences in the first person: the closing prayer, "
                 "which follows the representation. Ask the officer to arrange an "
                 "inspection, to direct the department concerned to take the specific "
@@ -1140,10 +1158,14 @@ async def compose(state: LetterState) -> dict[str, Any]:
                 "sign-off immediately below your paragraph, and a second one reads as "
                 "though the letter ended twice.\n\n"
                 "HARD RULES.\n"
-                "You must NOT restate, summarise, quote, reword, soften or strengthen the "
-                "complaint. It is reproduced verbatim in its own section of the document, "
-                "and a petition in which the complaint has been reworded is a different "
-                "petition. Refer to it; never repeat it.\n"
+                "The complaint is NOT printed anywhere else in the document. If you do "
+                "not state it, the petition does not contain it, and the officer reading "
+                "the letter will not learn what is being complained about.\n"
+                "State it FAITHFULLY. You may correct grammar, order the facts, and put "
+                "them into official language. You may NOT soften it, strengthen it, "
+                "widen it, narrow it, or add a grievance that was not raised. A petition "
+                "in which the complaint has become a different complaint is a different "
+                "petition, and the citizen signs it believing it is their own.\n"
                 "You must NOT introduce any NUMBER that is not already in the material "
                 "you were given - no dates, durations, counts, amounts, section numbers "
                 "or file numbers. Write about duration in words only if the complaint "
@@ -1164,8 +1186,10 @@ async def compose(state: LetterState) -> dict[str, Any]:
                 f"Purpose of this form: {template.narrative_brief}\n\n"
                 f"Petitioner's particulars, for context only - do not repeat these:\n"
                 f"{particulars}\n\n"
-                f"The complaint, in the citizen's own words. Reason FROM it; do not "
-                f"reproduce or reword it:\n{grievance[:3000]}"
+                f"The complaint, in the citizen's own words. This is the ONLY "
+                f"description of the matter the document will carry: state it in the "
+                f"representation, faithfully and in full, in official language. Add "
+                f"nothing to it:\n{grievance[:3000]}"
                 + revision_brief
             ),
             schema={
@@ -1508,7 +1532,15 @@ async def verify(state: LetterState) -> dict[str, Any]:
     hand_edited = bool(state.get("manually_edited"))
 
     docx_path = Path(document["docx"])
-    targets = verification_targets(template, fields, language)
+    # The complaint is a verification target only when it was PLACED, which is
+    # when no account was written from it. Asking the document to contain a
+    # string it is not meant to contain fails a letter that is correct.
+    stored = state.get("composition") or {}
+    targets = verification_targets(
+        template, fields, language,
+        Composition(**{key: stored.get(key) for key in
+                       ("subject", "introduction", "background", "request")})
+        if stored else None)
 
     try:
         produced = _normalise(render_service.extract_docx_text(docx_path))
