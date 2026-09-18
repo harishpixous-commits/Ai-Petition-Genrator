@@ -158,6 +158,22 @@ def create_app() -> FastAPI:
         # Neither a shared browser cache nor a proxy should retain a copy.
         if request.url.path.startswith("/api/"):
             response.headers["Cache-Control"] = "no-store"
+        elif request.url.path.startswith("/static/"):
+            # Revalidate every time. These files change on every deploy, and
+            # the page that loads them is served `no-store` — so without this
+            # a returning citizen gets NEW markup with an OLD stylesheet, and
+            # the page renders structurally current and visually broken. That
+            # happened: a footer shipped and appeared unstyled and enormous.
+            #
+            # `no-cache` is not "do not cache": the browser keeps the file and
+            # asks whether it changed, which the ETag answers with a 304 of a
+            # couple of hundred bytes.
+            response.headers["Cache-Control"] = "no-cache"
+        elif request.url.path.startswith("/assets/"):
+            # Fonts, the state emblem, the footer mark. These change rarely,
+            # so they are worth caching — but not indefinitely, or replacing
+            # one means waiting out a year of stale copies.
+            response.headers["Cache-Control"] = "public, max-age=3600"
         return response
 
     # Noto Sans and Noto Sans Tamil ship WITH the application and are served

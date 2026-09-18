@@ -13,6 +13,8 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+import pytest
+
 from app.domain.fields import (
     validate_address,
     validate_age,
@@ -1030,3 +1032,76 @@ class TestTheFooterCredit:
         assert "--footer-h" in css, "the footer height is not declared"
         assert "100dvh - 290px - var(--footer-h)" in css, (
             "the workspace height no longer accounts for the footer")
+
+
+class TestTheStylesheetIsNeverOlderThanTheMarkup:
+    """The page is served `no-store`, so it is always current. The stylesheet
+    carried no Cache-Control at all, so browsers cached it heuristically — and
+    a returning citizen got NEW markup with an OLD stylesheet.
+
+    That is not theoretical. A footer shipped and rendered unstyled and
+    enormous, on the live site, for exactly this reason.
+    """
+
+    @staticmethod
+    async def _headers(path: str) -> dict[str, str]:
+        import httpx
+
+        from app.main import create_app
+
+        app = create_app()
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test",
+        ) as client:
+            response = await client.get(path)
+        return {k.lower(): v for k, v in response.headers.items()}
+
+    async def test_the_page_itself_is_never_stored(self):
+        headers = await self._headers("/")
+
+        assert "no-store" in headers.get("cache-control", "")
+
+    @pytest.mark.parametrize("path", ["/static/app.css", "/static/app.js",
+                                      "/static/navigation.js"])
+    async def test_every_file_that_changes_on_deploy_is_revalidated(self, path):
+        headers = await self._headers(path)
+
+        assert "no-cache" in headers.get("cache-control", ""), (
+            f"{path} may be served from cache against newer markup")
+
+    async def test_but_revalidation_is_cheap_because_the_etag_answers_it(self):
+        """`no-cache` is not "do not cache". The file is kept and a conditional
+        request answers with 304, not with the whole stylesheet again."""
+        headers = await self._headers("/static/app.css")
+
+        assert headers.get("etag"), "nothing to revalidate against"
+
+    async def test_assets_are_cached_but_not_forever(self):
+        """Fonts and the emblem change rarely and are worth caching. Not
+        indefinitely: replacing one should not mean waiting out a year."""
+        headers = await self._headers("/assets/brand/pixous-technologies.png")
+        control = headers.get("cache-control", "")
+
+        assert "max-age" in control
+        assert "immutable" not in control
+        age = int(control.split("max-age=")[1].split(",")[0])
+        assert 0 < age <= 86_400, f"max-age={age} is longer than a day"
+
+
+class TestTheFooterSurvivesAMissingStylesheet:
+    def test_the_image_declares_the_size_it_is_drawn_at(self):
+        """With width="360" the browser drew a 360px logo whenever the
+        stylesheet was late, missing or stale — which is what the live site
+        showed. The attributes are the rendered size, so the fallback is a
+        small mark rather than one that fills the page."""
+        import re
+        from pathlib import Path
+
+        markup = Path("app/static/index.html").read_text(encoding="utf-8")
+        footer = markup[markup.index('class="site-footer"'):]
+        footer = footer[:footer.index("</footer>")]
+        tag = re.search(r"<img[^>]*pixous-technologies[^>]*>", footer)
+
+        assert tag, "the footer has no logo"
+        width = int(re.search(r'width="(\d+)"', tag.group(0)).group(1))
+        assert width <= 120, f"unstyled fallback would render {width}px wide"
