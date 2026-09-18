@@ -654,10 +654,15 @@ class TestTheDocumentAppearsWhereTheAnimationPlayed:
         counts = [entry.count('"') // 2 for entry in rails]
         assert counts[0] == counts[1], f"the rails have different lengths: {counts}"
 
-    def test_the_workspace_height_matches_what_sits_above_it(self):
+    def test_the_workspace_height_matches_what_sits_above_and_below_it(self):
         """Header 78 + intro 150 + stepper 62 = 290, measured in a browser. The
-        constant was 281 and every page scrolled by the missing nine pixels."""
-        assert "height:calc(100dvh - 290px)" in self._css()
+        constant was 281 and every page scrolled by the missing nine pixels.
+
+        The footer beneath is subtracted by name rather than folded into the
+        number, so the two measurements stay separately true."""
+        css = self._css()
+
+        assert "height:calc(100dvh - 290px - var(--footer-h))" in css
 
 
 class TestEveryWayOfSayingYesShowsTheWork:
@@ -967,3 +972,61 @@ class TestTheEnvironmentTemplatesDoNotDrift:
 
         assert "deploy/env/app.env.example" in header, (
             "the local template does not point at the production one")
+
+
+class TestTheFooterCredit:
+    """"Developed by Pixous Technologies", linking out to the company site.
+
+    It is the only link on the page that leaves the service, which is what
+    makes the target and the rel attribute load-bearing rather than cosmetic.
+    """
+
+    @staticmethod
+    def _read(name: str) -> str:
+        from pathlib import Path
+
+        return (Path("app/static") / name).read_text(encoding="utf-8")
+
+    def test_it_links_to_the_company_site(self):
+        markup = self._read("index.html")
+        footer = markup[markup.index('class="site-footer"'):]
+        footer = footer[:footer.index("</footer>")]
+
+        assert 'href="https://pixoustech.com/"' in footer
+
+    def test_it_opens_in_a_new_tab_and_cannot_touch_this_one(self):
+        """A citizen part-way through a petition must not lose it to a company
+        link — and `noopener` is what stops the opened page from navigating
+        the tab it came from."""
+        markup = self._read("index.html")
+        footer = markup[markup.index('class="site-footer"'):]
+        footer = footer[:footer.index("</footer>")]
+
+        assert 'target="_blank"' in footer
+        assert "noopener" in footer and "noreferrer" in footer
+
+    def test_the_logo_ships_and_is_not_a_full_resolution_original(self):
+        """The source mark is 2550px wide and 141 KB. A footer badge rendered
+        at 38px tall has no business carrying that."""
+        from pathlib import Path
+
+        logo = Path("app/assets/brand/pixous-technologies.png")
+
+        assert logo.is_file(), "the footer points at a logo that is not in the repository"
+        assert logo.stat().st_size < 60_000, f"{logo.stat().st_size} bytes"
+
+    def test_it_has_alt_text(self):
+        markup = self._read("index.html")
+        footer = markup[markup.index('class="site-footer"'):]
+
+        assert 'alt="Pixous Technologies"' in footer[:footer.index("</footer>")]
+
+    def test_the_workspace_leaves_room_for_it(self):
+        """The generator is pinned to the viewport. A footer added without
+        subtracting its height scrolls the page by exactly that much, which is
+        the defect this guards against rather than a style preference."""
+        css = self._read("app.css")
+
+        assert "--footer-h" in css, "the footer height is not declared"
+        assert "100dvh - 290px - var(--footer-h)" in css, (
+            "the workspace height no longer accounts for the footer")

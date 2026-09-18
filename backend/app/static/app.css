@@ -83,7 +83,7 @@ select.lang:hover{border-color:#a9c2c5}
 .step-arrow{font-size:15px;color:#b6c4c8;flex:none}
 
 /* A spacious conversation paired with a readable record. */
-main.workspace{display:grid;grid-template-columns:minmax(0,1fr) 346px;max-width:1488px;margin:0 auto;gap:20px;padding:22px 32px 28px;height:calc(100dvh - 290px);min-height:575px;align-items:stretch}
+main.workspace{display:grid;grid-template-columns:minmax(0,1fr) 346px;max-width:1488px;margin:0 auto;gap:20px;padding:22px 32px 28px;height:calc(100dvh - 290px - var(--footer-h));min-height:575px;align-items:stretch}
 /* ONE layout from the moment the petition starts being made, and it does not
    move again.
 
@@ -883,6 +883,18 @@ header.app{gap:24px}
 .collection-spinner{display:block;width:30px;height:30px;border:3px solid #e5efeb;border-top-color:var(--blue);border-radius:50%;animation:spin .85s linear infinite}
 .collection-error .state-icon{color:#b68564;background:#fbf4eb;border-color:#f0e4d3}
 .petitions-list{display:grid;gap:12px}
+/* Developed by. Quiet on purpose: this is a government form, and the thing a
+   citizen came for is the petition above it. */
+:root{--footer-h:77px}
+@media(max-width:570px){:root{--footer-h:66px}}
+.site-footer{display:flex;justify-content:center;padding:12px 20px 14px;border-top:1px solid var(--line-soft);background:var(--surface)}
+.built-by{display:inline-flex;align-items:center;gap:11px;padding:6px 12px;border-radius:9px;color:var(--muted);font-size:11px;letter-spacing:.2px;text-decoration:none;transition:background var(--step),color var(--step)}
+.built-by:hover{background:var(--surface-2);color:var(--ink)}
+.built-by:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+/* Sized by HEIGHT: the mark is a wordmark with a swoosh above it, so fixing
+   the width made the footer as tall as a paragraph. */
+.built-by img{height:38px;width:auto;display:block}
+@media(max-width:570px){.site-footer{padding:14px 16px 18px}.built-by{font-size:9.5px;gap:8px}.built-by img{height:32px}}
 /* Choosing petitions to delete.
 
    The tick box sits outside `.petition-item-main`, which is the element that
