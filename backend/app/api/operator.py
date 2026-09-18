@@ -32,9 +32,10 @@ from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
+from pydantic import BaseModel, Field
 
 from ..config import Settings, get_settings
-from ..services import asr, extraction, llm, tts
+from ..services import asr, extraction, llm, provider_health, provider_store, tts
 from ..services.render import pdf_status
 
 log = logging.getLogger(__name__)
@@ -220,3 +221,143 @@ async def operator_status(request: Request) -> dict[str, Any]:
         "access": (
             "token" if (settings.operator_token or "").strip() else "loopback-only"),
     }
+
+
+class ProviderSettings(BaseModel):
+    """What an operator may change from the screen.
+
+    Every field is optional, and an EMPTY string is meaningful: it clears the
+    override and hands that setting back to `app.env`. That is how a key set
+    here is undone without a shell on the box.
+
+    Nothing in this model is ever echoed back. The response to a save is the
+    same report as a fresh read: how many keys are set, and what each one's
+    last probe said, by position.
+    """
+
+    allow_external_ai: bool | None = None
+    llm_provider: str | None = Field(default=None, max_length=40)
+    gemini_api_keys: str | None = Field(default=None, max_length=8000)
+    groq_api_keys: str | None = Field(default=None, max_length=8000)
+    anthropic_api_key: str | None = Field(default=None, max_length=400)
+    openrouter_api_keys: str | None = Field(default=None, max_length=8000)
+    stream_asr_provider: str | None = Field(default=None, max_length=40)
+    tts_provider: str | None = Field(default=None, max_length=40)
+    sarvam_api_keys: str | None = Field(default=None, max_length=8000)
+
+    def as_environment(self) -> dict[str, str]:
+        out: dict[str, str] = {}
+        for name, value in self.model_dump(exclude_none=True).items():
+            if isinstance(value, bool):
+                out[name.upper()] = "true" if value else "false"
+            else:
+                out[name.upper()] = str(value)
+        return out
+
+
+def _counts(settings: Settings) -> dict[str, int]:
+    """How many keys each setting holds. A count is not a key."""
+    return {
+        "GEMINI_API_KEYS": len(settings.gemini_key_list),
+        "GROQ_API_KEYS": len(settings.groq_key_list),
+        "OPENROUTER_API_KEYS": len(settings.openrouter_key_list),
+        "SARVAM_API_KEYS": len(settings.sarvam_key_list),
+        "ANTHROPIC_API_KEY": 1 if settings.anthropic_api_key.strip() else 0,
+    }
+
+
+def _configuration_advice(settings: Settings) -> list[str]:
+    """Traps a key alone does not escape.
+
+    `app.env.example` ships with ALLOW_EXTERNAL_AI=false and LLM_PROVIDER=off,
+    which is the correct default for a service that must not opt itself into
+    egress. It also means an operator can paste a perfectly good key, see it
+    counted, and watch nothing change. The screen says so rather than leaving
+    them to work it out.
+    """
+    out: list[str] = []
+    keys = bool(settings.gemini_key_list or settings.groq_key_list
+                or settings.openrouter_key_list or settings.anthropic_api_key.strip())
+    if keys and not settings.allow_external_ai:
+        out.append("Keys are set but external AI is switched off, so none of them "
+                   "is used. Tick 'Allow external AI'.")
+    if keys and settings.allow_external_ai and settings.llm_provider == "off":
+        out.append("Keys are set and external AI is allowed, but the language model "
+                   "is set to 'off'. Choose a provider, or 'auto'.")
+    if settings.sarvam_key_list and settings.stream_asr_provider == "off":
+        out.append("Sarvam keys are set but dictation is switched off. "
+                   "Set dictation to 'auto'.")
+    if settings.sarvam_key_list and settings.tts_provider == "off":
+        out.append("Sarvam keys are set but spoken replies are switched off. "
+                   "Set spoken replies to 'auto'.")
+    return out
+
+
+def _providers_view(settings: Settings) -> dict[str, Any]:
+    """The screen's whole model. Contains no credential, anywhere."""
+    probe = provider_health.last_result()
+    return {
+        "settings": {
+            "allow_external_ai": settings.allow_external_ai,
+            "llm_provider": settings.llm_provider,
+            "stream_asr_provider": settings.stream_asr_provider,
+            "tts_provider": settings.tts_provider,
+        },
+        "counts": _counts(settings),
+        "sources": provider_store.sources(settings),
+        "health": probe,
+        "advice": _configuration_advice(settings) + provider_health.advice(probe),
+        # Said on the screen, because the safer path should be the obvious one.
+        "note": (
+            "Credentials belong in app.env on the host. Anything set here is "
+            "kept in the data directory, applies immediately, and overrides "
+            "app.env until the field is cleared. It is never shown again."
+        ),
+    }
+
+
+@router.get("/providers")
+async def providers(request: Request) -> dict[str, Any]:
+    """Current provider configuration, by count and source. No values."""
+    authorise(request)
+    return _providers_view(get_settings())
+
+
+@router.post("/providers")
+async def set_providers(request: Request, body: ProviderSettings) -> dict[str, Any]:
+    """Set or clear provider settings, and apply them without a restart.
+
+    The values are written to the data directory, not to `app.env`: the
+    container cannot write that file, it is passed in at start. Both are
+    outside git, and the data directory is outside every backup — the backup
+    script copies two databases by name rather than archiving the volume.
+    """
+    authorise(request)
+    incoming = body.as_environment()
+    if not incoming:
+        raise HTTPException(422, "Nothing to change.")
+
+    kept = provider_store.read()
+    for name, value in incoming.items():
+        if str(value).strip():
+            kept[name] = value
+        else:
+            kept.pop(name, None)
+
+    provider_store.write(kept)
+    # Names only. A log line that carried the value would put credentials in
+    # exactly the place this whole design keeps them out of.
+    log.info("operator.providers_updated", extra={"names": sorted(incoming)})
+    return _providers_view(get_settings())
+
+
+@router.post("/providers/check")
+async def check_providers(request: Request) -> dict[str, Any]:
+    """Probe every configured key once and report by position.
+
+    Costs one small request per key, so it runs when an operator asks rather
+    than on every page load.
+    """
+    authorise(request)
+    await provider_health.check(get_settings())
+    return _providers_view(get_settings())

@@ -27,6 +27,11 @@ __pycache__/
 .ruff_cache/
 .mypy_cache/
 
+# Provider credentials set from the operator screen. It lives in the data
+# directory, which is already ignored — but a credentials file is worth a rule
+# of its own, in case DATA_DIR is ever pointed somewhere inside the repository.
+providers.json
+
 # Databases, wherever they end up.
 *.sqlite
 *.sqlite-wal

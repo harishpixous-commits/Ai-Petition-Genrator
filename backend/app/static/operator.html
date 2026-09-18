@@ -112,6 +112,53 @@ code{background:#eef2f3;padding:1px 5px;border-radius:4px;font-size:11px}
       <div id="conflictList"></div>
     </div>
 
+    <h2>Providers</h2>
+    <div class="card">
+      <p class="note" id="provNote"></p>
+      <div id="provList"></div>
+      <p><button type="button" id="provCheck">Check every key now</button>
+         <span class="kv" id="provChecked"></span></p>
+      <div id="provAdvice"></div>
+
+      <!-- Entry is deliberately plain and deliberately write-only. A field
+           shows how many keys are currently set and where they came from;
+           it never shows a key. Leaving one blank changes nothing, and
+           clearing a set one hands that setting back to app.env. -->
+      <details id="provEdit">
+        <summary>Set credentials</summary>
+        <p class="note">Credentials belong in <code>app.env</code> on the host.
+           Anything set here is written to the data directory, applies at once,
+           and overrides <code>app.env</code> until the field is cleared.
+           It is never shown again.</p>
+        <form id="provForm">
+          <p><label>Gemini keys <span class="kv" id="cntGemini"></span><br>
+             <input type="password" name="gemini_api_keys" autocomplete="off"
+                    placeholder="key1,key2,key3" size="52"></label></p>
+          <p><label>Sarvam keys <span class="kv" id="cntSarvam"></span><br>
+             <input type="password" name="sarvam_api_keys" autocomplete="off"
+                    placeholder="key1,key2,key3" size="52"></label></p>
+          <p><label><input type="checkbox" name="allow_external_ai" id="allowAi">
+             Allow external AI</label>
+             <label>Language model <select name="llm_provider" id="llmProv">
+             <option value="">(unchanged)</option><option value="auto">auto</option>
+             <option value="gemini">gemini</option><option value="anthropic">anthropic</option>
+             <option value="groq">groq</option><option value="openrouter">openrouter</option>
+             <option value="off">off</option>
+             </select></label></p>
+          <p><label>Dictation <select name="stream_asr_provider" id="asrProv">
+             <option value="">(unchanged)</option><option value="auto">auto</option>
+             <option value="sarvam">sarvam</option><option value="off">off</option>
+             </select></label>
+             <label>Spoken replies <select name="tts_provider" id="ttsProv">
+             <option value="">(unchanged)</option><option value="auto">auto</option>
+             <option value="sarvam">sarvam</option><option value="off">off</option>
+             </select></label></p>
+          <p><button type="submit">Save and apply</button>
+             <span class="kv" id="provSaved"></span></p>
+        </form>
+      </details>
+    </div>
+
     <h2>Capabilities</h2>
     <div class="card">
       <table>
@@ -154,6 +201,90 @@ function pill(state) {
   return `<span class="pill ${CLASS[state] || "idle"}">${esc(WORD[state] || state)}</span>`;
 }
 
+
+/* Providers. Nothing here ever receives a key from the service: the screen
+   is told how many are set, where they came from, and what each one's last
+   probe said, by position. */
+function drawProviders(data) {
+  const p = data || {};
+  $("provNote").textContent = p.note || "";
+  const counts = p.counts || {}, sources = p.sources || {};
+  $("cntGemini").textContent = `${counts.GEMINI_API_KEYS || 0} set \u00b7 ${sources.GEMINI_API_KEYS || "unset"}`;
+  $("cntSarvam").textContent = `${counts.SARVAM_API_KEYS || 0} set \u00b7 ${sources.SARVAM_API_KEYS || "unset"}`;
+  const s = p.settings || {};
+  $("allowAi").checked = Boolean(s.allow_external_ai);
+  if (s.stream_asr_provider) $("asrProv").value = "";
+  if (s.tts_provider) $("ttsProv").value = "";
+
+  const health = p.health || {};
+  $("provChecked").textContent = health.checked_at
+    ? `last checked ${esc(health.checked_at)}` : "not checked yet";
+  const rows = (health.providers || []).map(prov => {
+    const keys = (prov.keys || []).map(k =>
+      `<tr><td>key ${k.position}</td><td>${pill(k.state)}</td>` +
+      `<td>${esc(k.detail || "")}</td></tr>`).join("");
+    const summary = prov.total
+      ? `${prov.usable} of ${prov.total} usable`
+      : esc(prov.note || "not configured");
+    return `<h3>${esc(prov.name)} <span class="kv">${summary}</span></h3>` +
+           (keys ? `<table><tbody>${keys}</tbody></table>` : "");
+  }).join("");
+  $("provList").innerHTML = rows ||
+    "<p class=\"note\">No provider configured. Petitions use the standard wording; typing still works.</p>";
+  $("provAdvice").innerHTML = (p.advice || [])
+    .map(line => `<p class="note">${esc(line)}</p>`).join("");
+}
+
+async function providerRequest(path, options) {
+  const response = await fetch(path, {
+    ...options,
+    headers: {
+      ...(options && options.body ? { "Content-Type": "application/json" } : {}),
+      ...(TOKEN ? { "x-operator-token": TOKEN } : {}),
+    },
+  });
+  if (!response.ok) throw new Error(`The service answered ${response.status}.`);
+  return response.json();
+}
+
+if ($("provCheck")) {
+  $("provCheck").onclick = async () => {
+    $("provCheck").disabled = true;
+    $("provChecked").textContent = "checking\u2026";
+    try { drawProviders(await providerRequest("/api/operator/providers/check", { method: "POST" })); }
+    catch (err) { $("provChecked").textContent = err.message; }
+    finally { $("provCheck").disabled = false; }
+  };
+}
+
+if ($("provForm")) {
+  $("provForm").onsubmit = async (e) => {
+    e.preventDefault();
+    const form = new FormData($("provForm"));
+    const body = {};
+    for (const name of ["gemini_api_keys", "sarvam_api_keys", "llm_provider",
+                        "stream_asr_provider", "tts_provider"]) {
+      const value = (form.get(name) || "").toString();
+      // An untouched field is left alone; a field the operator emptied is
+      // sent as "" on purpose, which clears the override.
+      if (value !== "") body[name] = value;
+    }
+    body.allow_external_ai = $("allowAi").checked;
+    $("provSaved").textContent = "saving\u2026";
+    try {
+      drawProviders(await providerRequest("/api/operator/providers",
+        { method: "POST", body: JSON.stringify(body) }));
+      // Never leave a credential sitting in the DOM after it is sent.
+      $("provForm").reset();
+      $("provSaved").textContent = "applied";
+    } catch (err) { $("provSaved").textContent = err.message; }
+  };
+}
+
+async function loadProviders() {
+  try { drawProviders(await providerRequest("/api/operator/providers")); }
+  catch { /* the status call already reported why the screen is unreachable */ }
+}
 async function load() {
   let data;
   try {
@@ -174,6 +305,7 @@ async function load() {
   }
 
   $("body").hidden = false;
+  void loadProviders();
   const k = data.knowledge;
 
   $("kbHealth").outerHTML = pill(k.health).replace("<span", '<span id="kbHealth"');

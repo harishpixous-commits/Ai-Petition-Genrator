@@ -29,7 +29,7 @@ from .config import get_settings
 from .domain.templates import load_templates
 from .graph.workflow import workflow_lifespan
 from .logging_setup import configure_logging
-from .services import asr, llm
+from .services import asr, llm, provider_store
 from .services.render import pdf_status
 
 log = logging.getLogger(__name__)
@@ -40,6 +40,16 @@ ASSETS_DIR = Path(__file__).resolve().parent / "assets"
 
 def preflight() -> None:
     """Report what this deployment can and cannot do, once, at startup."""
+    # Before anything reads the configuration: an operator may have set
+    # provider credentials from the operator screen, and those are held in the
+    # data directory rather than in app.env, which the container cannot write.
+    # Applying them here means the rest of startup — and the preflight report
+    # below — sees the configuration the service will actually run with.
+    applied = provider_store.apply()
+    if applied.names:
+        log.info("preflight.operator_providers",
+                 extra={"names": list(applied.names), "source": applied.source})
+
     settings = get_settings()
 
     templates = load_templates()
