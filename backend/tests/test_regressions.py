@@ -815,9 +815,32 @@ class TestTheStateEmblem:
         markup = self._static("index.html")
         header = markup[markup.index("<header"):markup.index("</header>")]
 
-        assert '<img src="/assets/emblem/tamil-nadu.png"' in header
-        assert Path("app/assets/emblem/tamil-nadu.png").is_file(), (
+        assert '<img src="/assets/emblem/tamil-nadu-web.png"' in header
+        assert Path("app/assets/emblem/tamil-nadu-web.png").is_file(), (
             "the header points at an emblem that is not in the repository")
+
+    def test_the_browser_copy_is_sized_for_a_browser(self):
+        """The full emblem is 960x1054 and 279 KB, and the header draws it at
+        42 pixels. Every first visit paid 257 KB for the difference."""
+        from pathlib import Path
+
+        web = Path("app/assets/emblem/tamil-nadu-web.png")
+
+        assert web.stat().st_size < 40_000, f"{web.stat().st_size} bytes"
+
+    def test_and_the_document_still_has_a_printable_one(self):
+        """The DOCX letterhead is read from disk and printed at 300 DPI, so
+        shrinking the shared file to suit the browser would have degraded the
+        petition instead of the page."""
+        from pathlib import Path
+
+        from app.config import Settings
+
+        full = Path("app/assets/emblem/tamil-nadu.png")
+
+        assert full.is_file()
+        assert full.stat().st_size > 100_000, "the printable emblem was shrunk too"
+        assert Settings(_env_file=None).letter_emblem.endswith("tamil-nadu.png")
 
     def test_the_tab_icon_is_the_emblem_and_is_small(self):
         from pathlib import Path
@@ -1105,3 +1128,84 @@ class TestTheFooterSurvivesAMissingStylesheet:
         assert tag, "the footer has no logo"
         width = int(re.search(r'width="(\d+)"', tag.group(0)).group(1))
         assert width <= 120, f"unstyled fallback would render {width}px wide"
+
+
+class TestWhatAFirstVisitDownloads:
+    """A citizen at a counter on a slow link pays for every byte.
+
+    nginx compresses text/html by default and nothing else, so the page was
+    compressed and everything it loaded was not: 242 KB of stylesheet and
+    script, plus 1.4 MB of fonts, all uncompressed. Compression is done in the
+    application so it travels with it and is covered by these tests, rather
+    than living in a server configuration a second deployment has to remember.
+    """
+
+    @staticmethod
+    async def _fetch(path: str, *, gzip: bool):
+        import httpx
+
+        from app.main import create_app
+
+        headers = {"accept-encoding": "gzip"} if gzip else {"accept-encoding": "identity"}
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=create_app()), base_url="http://test",
+        ) as client:
+            return await client.get(path, headers=headers)
+
+    @pytest.mark.parametrize("path", ["/static/app.css", "/static/app.js",
+                                      "/static/navigation.js"])
+    async def test_text_is_compressed(self, path):
+        response = await self._fetch(path, gzip=True)
+
+        assert response.headers.get("content-encoding") == "gzip", (
+            f"{path} is sent uncompressed")
+
+    @staticmethod
+    async def _wire_bytes(path: str, *, gzip: bool) -> int:
+        """What actually goes over the wire.
+
+        Measured from the ASGI messages rather than through a client: an HTTP
+        client decompresses on the way in, and a compressed response is
+        streamed with no content-length, so from the outside both look like
+        the full file. This is the only place the real number exists.
+        """
+        from app.main import create_app
+
+        app = create_app()
+        scope = {
+            "type": "http", "asgi": {"version": "3.0"}, "http_version": "1.1",
+            "method": "GET", "path": path, "raw_path": path.encode(),
+            "query_string": b"", "root_path": "", "scheme": "http",
+            "client": ("test", 1), "server": ("test", 80),
+            "headers": [(b"host", b"test"),
+                        (b"accept-encoding", b"gzip" if gzip else b"identity")],
+        }
+        sent = 0
+
+        async def receive():
+            return {"type": "http.request", "body": b"", "more_body": False}
+
+        async def send(message):
+            nonlocal sent
+            if message["type"] == "http.response.body":
+                sent += len(message.get("body", b""))
+
+        async with app.router.lifespan_context(app):
+            await app(scope, receive, send)
+        return sent
+
+    async def test_and_it_is_worth_doing(self):
+        """Roughly three quarters off. Asserted so that a change which quietly
+        disables it shows up as a failure rather than as a slow page."""
+        compressed = await self._wire_bytes("/static/app.css", gzip=True)
+        plain = await self._wire_bytes("/static/app.css", gzip=False)
+
+        assert compressed < plain * 0.45, (
+            f"{compressed} of {plain} bytes — compression is barely working")
+
+    async def test_a_client_that_cannot_decompress_still_gets_the_file(self):
+        response = await self._fetch("/static/app.css", gzip=False)
+
+        assert response.status_code == 200
+        assert "content-encoding" not in response.headers
+        assert b".paper" in response.content

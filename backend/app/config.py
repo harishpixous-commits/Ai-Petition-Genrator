@@ -183,6 +183,15 @@ class Settings(BaseSettings):
     letter_emblem_align: str = "center"   # left | center | right
     letter_emblem_pages: str = "none"     # none | all | first
 
+    # Where this service is used, as an offset from UTC. A container runs in
+     # UTC; Tamil Nadu is +5:30. Between midnight and 05:30 local those are
+     # different DATES, and the date on a petition is the date it was made.
+     #
+     # An offset rather than a zone name because India has never observed
+     # daylight saving, so this is exact all year and needs no timezone
+     # database — which a slim container does not ship.
+    petition_utc_offset_minutes: int = 330
+
     letter_font: str = "Nirmala UI"  # carries Tamil on Windows; Noto Sans Tamil on Linux
 
     # -- operator screen ---------------------------------------------------- #

@@ -33,6 +33,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Any
 
+from . import clock
 from .spoken_numbers import spoken_cardinal
 
 # --------------------------------------------------------------------------- #
@@ -503,7 +504,7 @@ def _parse_date(raw: str) -> date | None:
     if m:
         d, mo, y = (int(x) for x in m.groups())
         if y < 100:
-            y += 2000 if y <= (date.today().year % 100) else 1900
+            y += 2000 if y <= (clock.today().year % 100) else 1900
         try:
             return date(y, mo, d)
         except ValueError:
@@ -528,7 +529,7 @@ def _parse_date(raw: str) -> date | None:
     m = re.search(r"\b(\d{4})\b", s)
     if m:
         year = int(m.group(1))
-        if 1900 <= year <= date.today().year:
+        if 1900 <= year <= clock.today().year:
             # A bare year is a real answer to "when did you retire". Anchor it to
             # 1 January and let the caller decide whether that precision is enough.
             return date(year, 1, 1)
@@ -548,7 +549,7 @@ def validate_past_date(raw: str) -> FieldResult:
     r = validate_date(raw)
     if not r.ok:
         return r
-    if date.fromisoformat(r.value) > date.today():
+    if date.fromisoformat(r.value) > clock.today():
         return FieldResult.bad("date.future")
     return r
 
@@ -558,7 +559,7 @@ def validate_dob(raw: str) -> FieldResult:
     if not r.ok:
         return r
     d = date.fromisoformat(r.value)
-    years = (date.today() - d).days // 365
+    years = (clock.today() - d).days // 365
     if years > 120:
         return FieldResult.bad("dob.range")
     return r

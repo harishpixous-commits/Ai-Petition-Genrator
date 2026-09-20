@@ -14,7 +14,11 @@
 
 <header class="app">
   <a class="brand" href="#home" data-route="home" aria-label="Citizen Petition Assistant home">
-    <div class="emblem" aria-hidden="true"><img src="/assets/emblem/tamil-nadu.png" alt="" width="960" height="1054" decoding="async"></div>
+    <div class="emblem" aria-hidden="true"><!-- The web copy. The full-resolution file beside it is for the DOCX
+           letterhead, read from disk server-side and printed at 300 DPI —
+           279 KB to draw a 42px mark in a browser is 257 KB of nothing. -->
+      <img src="/assets/emblem/tamil-nadu-web.png" alt="" width="42" height="46"
+           decoding="async"></div>
     <div class="brand-text">
       <h1 id="ui-title">Citizen Petition Assistant</h1>
       <p id="ui-subtitle">AI Assisted Petition Preparation</p>

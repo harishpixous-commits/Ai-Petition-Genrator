@@ -36,6 +36,7 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Any
 
+from . import clock
 from .fields import display_value
 from .phrasing import DISCLAIMER, Language
 from .templates import LetterTemplate
@@ -90,7 +91,7 @@ def reference_number(session_id: str, when: date | None = None) -> str:
     It does not appear in the body — the standard format has no reference line —
     but it is printed in the document footer, which is what an office files by.
     """
-    when = when or date.today()
+    when = when or clock.today()
     tail = session_id.replace("-", "")[-6:].upper()
     return f"AP/{when.year}/{tail}"
 
@@ -313,7 +314,7 @@ def build_letter_text(
     sentence about an earlier petition they confirmed. Both default to nothing,
     and nothing is what gets printed when they are absent.
     """
-    when = when or date.today()
+    when = when or clock.today()
     lines: list[str] = []
 
     # -- date and place, at the top ----------------------------------------- #

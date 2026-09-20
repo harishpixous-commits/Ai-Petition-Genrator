@@ -20,6 +20,7 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.requests import Request
@@ -132,6 +133,17 @@ def create_app() -> FastAPI:
                 "validates every official value in code, and produces a petition document.",
         lifespan=lifespan,
     )
+
+    # 242 KB of stylesheet and script went over the wire uncompressed on every
+    # first visit: nginx gzips text/html by default and nothing else, so the
+    # page was compressed and everything it loaded was not. Text of this kind
+    # compresses by roughly three quarters, and the fonts — 1.4 MB of TTF —
+    # by about forty per cent.
+    #
+    # Done here rather than in nginx so it travels with the application and is
+    # covered by its tests, instead of depending on a server configuration
+    # that a second deployment would have to remember to repeat.
+    app.add_middleware(GZipMiddleware, minimum_size=1024)
 
     app.add_middleware(
         CORSMiddleware,
