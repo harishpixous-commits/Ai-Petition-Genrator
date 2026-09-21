@@ -238,8 +238,10 @@ jobs:
       # never looked at what was in it. This prints variable NAMES only and
       # never a value.
       #
-      # Run as root: app.env is root:root 0600 deliberately, and an
-      # unprivileged shell reports every key as missing.
+      # Run as root so the file can be read. It is 0600 and owned by the
+      # deploy user, not by root: the deploy step below runs docker compose
+      # as that user, and a root-owned env file fails there with
+      # "open app.env: permission denied".
       # -------------------------------------------------------------------
       - name: Preflight the runtime environment file
         uses: appleboy/ssh-action@v1.2.0

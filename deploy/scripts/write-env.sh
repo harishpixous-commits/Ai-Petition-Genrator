@@ -111,6 +111,9 @@ if [ -f "$TARGET" ]; then
   backup="$TARGET.$(date -u +%Y%m%dT%H%M%SZ).bak"
   cp -p "$TARGET" "$backup"
   chmod 600 "$backup"
+  # Same ownership as the live file: a backup only root can read is a
+  # backup that cannot be restored by the account that deploys.
+  chown --reference="$APP_DIR" "$backup" 2>/dev/null || true
   note "previous file kept as $(basename "$backup")"
   # Keep the five most recent. These contain live credentials; an unbounded
   # pile of them on disk is a growing target.
@@ -153,8 +156,23 @@ for key in GEMINI_API_KEYS ANTHROPIC_API_KEY GROQ_API_KEYS OPENROUTER_API_KEYS \
   emit_if_set "$key"
 done
 
+# Owned by the account that RUNS the deployment, not by root.
+#
+# This script runs under sudo, so without an explicit chown the file lands
+# root:root 0600 — and `docker compose` in the deploy step runs as the SSH
+# user, which then cannot read it:
+#
+#     ==> Recreating service (project-scoped)
+#     open /opt/ai-petition-generator/app.env: permission denied
+#
+# The owner is taken from the application directory rather than hardcoded to
+# `ubuntu`, so this keeps working on a host where the deploy user is called
+# something else. 0600 still means only that account and root can read it,
+# and that account already has docker group access — which is root-equivalent
+# on this host — so nothing is given away by the change.
+owner="$(stat -c '%U:%G' "$APP_DIR" 2>/dev/null || echo 'root:root')"
 chmod 600 "$tmp"
-chown root:root "$tmp" 2>/dev/null || true
+chown "$owner" "$tmp" 2>/dev/null || true
 mv -f "$tmp" "$TARGET"
 trap - EXIT
 

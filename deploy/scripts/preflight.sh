@@ -19,9 +19,10 @@
 # NAME of a variable and whether it is set. This output goes to a CI log that
 # is far more widely readable than the file it is checking.
 #
-# Run as root: app.env is root:root 0600 on purpose, and an unprivileged
-# shell reports every key as missing. The permissions are not weakened to
-# suit this script.
+# Run as root so the file can be read: it is 0600, owned by the account that
+# runs docker compose. NOT root-owned — compose runs as that account in the
+# deploy step and a root-owned env file fails with "permission denied" after
+# the image has been pulled and the databases backed up.
 set -Eeuo pipefail
 
 APP_DIR="${APP_DIR:-/opt/ai-petition-generator}"
@@ -51,11 +52,24 @@ if [ ! -r "$ENV_FILE" ]; then
   exit 1
 fi
 
-perms=$(stat -c '%a %U:%G' "$ENV_FILE")
-case "$perms" in
-  "600 root:root") good "permissions $perms" ;;
-  *) soft "permissions are $perms; expected 600 root:root" ;;
-esac
+# 0600 owned by the account that runs docker compose. NOT root:root — the
+# deploy step runs compose as the SSH user, and a root-owned env file makes
+# it fail with "open app.env: permission denied" after the image has already
+# been pulled and the databases backed up.
+mode=$(stat -c '%a' "$ENV_FILE")
+owner=$(stat -c '%U' "$ENV_FILE")
+expected=$(stat -c '%U' "$APP_DIR" 2>/dev/null || echo root)
+if [ "$mode" != "600" ]; then
+  soft "permissions are $mode; expected 600"
+else
+  good "permissions 600"
+fi
+if [ "$owner" != "$expected" ]; then
+  bad "owned by $owner, but $APP_DIR is owned by $expected."
+  say "          docker compose runs as $expected and will fail to read it."
+else
+  good "owned by $owner, which is the account that runs compose"
+fi
 
 # Read the file WITHOUT sourcing it. Sourcing executes whatever is in there,
 # and a stray backtick in a pasted key would run as root.

@@ -269,3 +269,29 @@ class TestTheGeneratorCannotExpressTheContradiction:
 
         for name, value in env.items():
             assert not value.startswith(('"', "'")), name
+
+    def test_ownership_is_derived_from_the_app_dir_not_hardcoded_to_root(self):
+        """The bug that failed a live deploy AFTER the image had been pulled
+        and the databases backed up:
+
+            ==> Recreating service (project-scoped)
+            open /opt/ai-petition-generator/app.env: permission denied
+
+        write-env.sh runs under sudo, so without an explicit chown the file
+        landed root:root — and the deploy step runs docker compose as the SSH
+        user, which could not read it.
+
+        Asserted against the SOURCE, not against a written file, and that is
+        deliberate. A runtime check cannot catch this: `chown root:root`
+        fails silently for any non-root test process, so the file stays
+        correctly owned and the test passes whether the bug is present or
+        not. Checking the instruction is the only assertion with teeth here.
+        """
+        script = (SCRIPTS / "write-env.sh").read_text(encoding="utf-8")
+
+        assert 'chown "$owner"' in script, "the owner is not derived"
+        assert 'stat -c' in script and '"$APP_DIR"' in script, (
+            "the owner is not taken from the application directory")
+        assert "chown root:root" not in script, (
+            "a root-owned app.env cannot be read by the account that runs "
+            "docker compose")
