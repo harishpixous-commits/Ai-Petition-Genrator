@@ -252,6 +252,7 @@ def render_docx(
     enclosures: list | None = None,
     enclosure_heading: str = "Enclosure",
     enclosure_note: str = "",
+    index_title: str = "",
 ) -> Path:
     """Write `text` to `destination` as a formatted DOCX. Returns the path.
 
@@ -377,7 +378,7 @@ def render_docx(
     if enclosures:
         appended = enclosure_service.append_to_document(
             document, enclosures, heading=enclosure_heading,
-            caption_font=font, note=enclosure_note)
+            caption_font=font, note=enclosure_note, index_title=index_title)
         log.info("render.enclosures",
                  extra={"files": len(enclosures), "pages": appended.pages,
                         "failed": len(appended.failures)})

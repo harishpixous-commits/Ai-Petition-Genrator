@@ -70,6 +70,21 @@ jobs:
     needs: build-and-analyze
     runs-on: ubuntu-latest
 
+    # Production credentials are supplied to this job, so it runs inside a
+    # protected GitHub Environment rather than with repository-wide secrets.
+    #
+    # Two things follow from that, and the second is the point:
+    #
+    #   1. The provider keys are scoped to this environment. A workflow that
+    #      is not this one cannot reach them.
+    #   2. GitHub can require a named human to approve each run before the
+    #      job starts. Configure that in Settings > Environments >
+    #      production > Required reviewers. Without a reviewer configured
+    #      the environment still scopes the secrets; it just does not pause.
+    #
+    # This is what the sister application on this host already does.
+    environment: production
+
     # Company actor restriction — preserved exactly.
     if: >-
       github.actor == 'subashpixous' ||
@@ -158,10 +173,87 @@ jobs:
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           port: ${{ secrets.EC2_SSH_PORT }}
-          source: deploy/scripts/backup.sh,deploy/scripts/rollback.sh
+          source: deploy/scripts/backup.sh,deploy/scripts/rollback.sh,deploy/scripts/preflight.sh,deploy/scripts/write-env.sh
           target: ${{ secrets.EC2_APP_DIR }}
           strip_components: 2
           overwrite: true
+
+      # -------------------------------------------------------------------
+      # Write app.env on the host from the repository's secrets.
+      #
+      # WHY CI WRITES IT NOW. It used to be created once, by hand, on the
+      # EC2 — correct practice, and unusable here: the people who operate
+      # this application have GitHub access and no SSH. The result was a
+      # live service running for weeks with every AI feature switched off
+      # because nobody who could see the problem could reach the file.
+      #
+      # Secrets go through `envs:` rather than being interpolated into the
+      # script body. Interpolation pastes the key into the command text that
+      # is assembled and echoed on failure; `envs:` hands it to the remote
+      # shell as an environment variable instead.
+      #
+      # write-env.sh DERIVES LLM_PROVIDER, STREAM_ASR_PROVIDER and
+      # TTS_PROVIDER from which keys are present, so the "key set but
+      # provider off" state that caused the outage cannot be expressed at
+      # all. ALLOW_EXTERNAL_AI is deliberately NOT derived — a key must
+      # never open egress by existing. See the script.
+      #
+      # A missing OPERATOR_TOKEN or PUBLIC_ORIGIN aborts before writing, so
+      # a deleted secret cannot blank a working configuration.
+      # -------------------------------------------------------------------
+      - name: Write runtime environment file from repository secrets
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          APP_DIR: ${{ secrets.EC2_APP_DIR }}
+          OPERATOR_TOKEN: ${{ secrets.OPERATOR_TOKEN }}
+          PUBLIC_ORIGIN: ${{ vars.PUBLIC_ORIGIN }}
+          # A repository VARIABLE, not a secret: it is not confidential, and
+          # permitting citizen data to leave this server should be visible
+          # on the settings page rather than hidden among the keys.
+          ALLOW_EXTERNAL_AI: ${{ vars.ALLOW_EXTERNAL_AI }}
+          # Optional. Each one present switches on the feature it drives.
+          GEMINI_API_KEYS: ${{ secrets.GEMINI_API_KEYS }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GROQ_API_KEYS: ${{ secrets.GROQ_API_KEYS }}
+          OPENROUTER_API_KEYS: ${{ secrets.OPENROUTER_API_KEYS }}
+          SARVAM_API_KEYS: ${{ secrets.SARVAM_API_KEYS }}
+          DEEPGRAM_API_KEY: ${{ secrets.DEEPGRAM_API_KEY }}
+          ASSEMBLYAI_API_KEY: ${{ secrets.ASSEMBLYAI_API_KEY }}
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          port: ${{ secrets.EC2_SSH_PORT }}
+          command_timeout: 5m
+          envs: APP_DIR,OPERATOR_TOKEN,PUBLIC_ORIGIN,ALLOW_EXTERNAL_AI,GEMINI_API_KEYS,ANTHROPIC_API_KEY,GROQ_API_KEYS,OPENROUTER_API_KEYS,SARVAM_API_KEYS,DEEPGRAM_API_KEY,ASSEMBLYAI_API_KEY
+          script: |
+            set -Eeuo pipefail
+            sudo chmod 0750 "${APP_DIR}/write-env.sh"
+            sudo -E "${APP_DIR}/write-env.sh"
+
+      # -------------------------------------------------------------------
+      # Check the file that was just written, BEFORE anything is replaced.
+      #
+      # The deploy step already refuses to run when app.env is MISSING. It
+      # never looked at what was in it. This prints variable NAMES only and
+      # never a value.
+      #
+      # Run as root: app.env is root:root 0600 deliberately, and an
+      # unprivileged shell reports every key as missing.
+      # -------------------------------------------------------------------
+      - name: Preflight the runtime environment file
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          port: ${{ secrets.EC2_SSH_PORT }}
+          command_timeout: 5m
+          script: |
+            set -Eeuo pipefail
+            sudo chmod 0750 "${{ secrets.EC2_APP_DIR }}/preflight.sh"
+            sudo env APP_DIR="${{ secrets.EC2_APP_DIR }}" \
+                 "${{ secrets.EC2_APP_DIR }}/preflight.sh"
 
       # -------------------------------------------------------------------
       # Deploy.

@@ -290,6 +290,21 @@ PHRASES: dict[str, dict[Language, str]] = {
         "en": "That could not be processed. Your details are saved. Please try again.",
         "ta": "அதைச் செயலாக்க முடியவில்லை. உங்கள் விவரங்கள் சேமிக்கப்பட்டுள்ளன. மீண்டும் முயற்சிக்கவும்.",
     },
+    # Two different things, and they were being reported with one sentence.
+    # A single utterance that could not be transcribed leaves the microphone
+    # open and the session running: telling that citizen dictation has stopped
+    # is false, and it sends them to the keyboard when saying it again would
+    # have worked. `dictation_stopped` is kept for when it really has.
+    "dictation_failed": {
+        "en": "Voice recognition is temporarily unavailable. "
+              "Please say that again, or type instead.",
+        "ta": "குரல் அடையாளம் "
+              "தற்காலிகமாக "
+              "இயங்கவில்லை. "
+              "மீண்டும் சொல்லுங்கள், "
+              "அல்லது தட்டச்சு "
+              "செய்யவும்.",
+    },
     "dictation_stopped": {
         "en": "Dictation has stopped. You can type instead.",
         "ta": "ஒலிவாங்கி நிறுத்தப்பட்டது. நீங்கள் தட்டச்சு செய்யலாம்.",

@@ -230,6 +230,10 @@
         <div class="attach-strip" id="attachStrip" hidden>
           <ul class="as-chips" id="attachChips"></ul>
           <div id="attachConfirmList"></div>
+          <!-- Where a document the citizen has confirmed disagrees with what
+               they told us this time. Asked, never resolved automatically:
+               the current answer stays unless they choose otherwise. -->
+          <div id="attachConflictList"></div>
           <p class="as-note" id="attachNote" hidden></p>
         </div>
         <ul class="ap-progress" id="attachProgress" hidden></ul>
@@ -374,6 +378,14 @@
         <button class="btn" id="editCancel" type="button" hidden></button>
         <button class="btn" id="printBtn" type="button"></button>
         <button class="btn" id="copyBtn" type="button"></button>
+        <!-- Shown only when there is actually something attached. The default
+             is the full package, because that is what gets handed in; the
+             letter on its own is for reading, e-mailing, or printing when the
+             attachments are already paper in the envelope. -->
+        <label class="doc-package" id="packageToggle" hidden>
+          <input type="checkbox" id="withEnclosures" checked>
+          <span id="packageText"></span>
+        </label>
       </div>
 
       <p class="edit-hint" id="editHint" hidden></p>

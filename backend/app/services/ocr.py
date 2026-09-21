@@ -121,7 +121,12 @@ class TesseractEngine:
                 pages.append(page.get_textpage_ocr(
                     flags=0, language=self._language_argument(), full=True
                 ).extractText())
-        return "\n".join(pages)
+        # Form feed between pages, not a bare newline. A newline is
+        # indistinguishable from the line breaks inside a page, so the page a
+        # value came from was unrecoverable and a scanned acknowledgement
+        # could not be cited as "page 2" the way a text one can. Form feed is
+        # whitespace to everything downstream that does not care.
+        return "\n\f\n".join(pages)
 
 
 # The registry. A list rather than one slot so a deployment can install a

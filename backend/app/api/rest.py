@@ -21,14 +21,22 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, field_validator
 
 from ..config import get_settings
+from ..domain import attachment_relevance, prior_petition, revisions
 from ..domain import attachments as attachment_rules
-from ..domain import prior_petition, revisions
 from ..domain.fields import MAX_FREE_TEXT
 from ..domain.letter import verbatim_lines
 from ..domain.templates import missing_fields, the_template
 from ..graph.state import LetterState, new_state
 from ..logging_setup import preview, session_context
-from ..services import asr, attachment_store, extraction, llm, tts
+from ..services import (
+    asr,
+    attachment_store,
+    credential_check,
+    document_intelligence,
+    extraction,
+    llm,
+    tts,
+)
 from ..services.render import pdf_status
 from ..services.speech_text import speech_for
 from ..services.translate import language_of, translate_lines
@@ -193,10 +201,21 @@ async def health() -> dict:
         },
         "dictation": asr.status(settings),
         "spoken_replies": tts.status(settings),
+        # Keys that are present and switched off. `ok: true` is the normal
+        # state. When it is false the operator holds credentials that were
+        # read correctly and cannot be used — which otherwise presents as
+        # "the keys do not work", with nothing anywhere to contradict it.
+        "credentials": credential_check.summary(settings),
         # What can be done with a file a citizen encloses. `ocr.available` is
         # false on a machine with no engine, and that is a supported state:
         # photographs are attached and reported unreadable rather than guessed.
         "attachments": {
+            # Two readers, reported separately because they fail separately.
+            # `reader` is the document engine that handles scans, photographs,
+            # spreadsheets and the legacy Office formats; `ocr` is the older
+            # standalone engine the built-in readers fall back to. Either can
+            # be absent, and the service works with neither.
+            "reader": document_intelligence.status(),
             "ocr": extraction.ocr_status(),
             "max_files": attachment_rules.MAX_ATTACHMENTS,
             "max_bytes": attachment_rules.MAX_BYTES,
@@ -401,10 +420,14 @@ async def add_attachment(
 
         # Read it. A file that cannot be read is still attached - the citizen
         # brought it for a reason - it simply carries no extracted fields.
-        read = extraction.extract(stored.path)
+        # Through the router, and awaited. Reading is now genuinely heavy —
+        # OCR on a scanned page is most of a second — and this endpoint is
+        # async, so doing it inline would stop every other session in the
+        # service, including the WebSocket carrying somebody's voice.
+        read = await document_intelligence.read(stored.path)
         prior = prior_petition.analyse(
             read.text, readable=read.readable, reason=read.reason,
-            low_confidence=read.low_confidence)
+            low_confidence=read.low_confidence, segments=read.segments)
 
         chosen = kind.strip().lower()
         if chosen in attachment_rules.KIND_LABELS:
@@ -444,10 +467,22 @@ async def add_attachment(
         if read.method == "ocr" and attachment.kind != "aadhaar":
             attachment.confirmed = False
 
+        # How much this document bears on what the citizen has told us. Kept
+        # on the attachment so a reopened petition shows the same judgement,
+        # and so it survives without being recomputed against a grievance
+        # that has since been edited.
+        judgement = attachment_relevance.assess(
+            kind=attachment.kind, text=read.text,
+            grievance=str((state.get("fields") or {}).get("grievance") or ""),
+            readable=read.readable, language=state.get("language", "en"))
+        attachment.relevance = judgement.as_dict()
+
         current.items.append(attachment)
         log.info("attachment.added",
                  extra={"kind": attachment.kind, "readable": read.readable,
-                        "method": read.method, "extracted": prior.has_anything})
+                        "method": read.method, "extracted": prior.has_anything,
+                        "relevance": judgement.level,
+                        "tables": len(read.tables)})
         result = await _attachment_turn(
             session_id, request,
             intent="attach_added",
@@ -704,7 +739,54 @@ async def cancel_session(session_id: str, request: Request) -> dict:
 # --------------------------------------------------------------------------- #
 
 
-async def _document(request: Request, session_id: str, kind: str) -> FileResponse:
+async def _letter_only(state: LetterState, kind: str) -> Path:
+    """The petition re-rendered without the attachments appended to it.
+
+    Built on demand rather than alongside the main document: most citizens
+    download one form or the other, and producing both every time would add a
+    second LibreOffice conversion to every generation for a file that is
+    usually never fetched.
+
+    Cached under the version-stamped name of the document it came from, so a
+    petition edited after generation produces a new one rather than serving
+    the previous version's letter.
+    """
+    import asyncio
+
+    from ..domain import emblem
+    from ..services import render as render_service
+
+    settings = get_settings()
+    document = state.get("document") or {}
+    docx_path = Path(str(document.get("docx") or ""))
+
+    target = settings.document_dir / f"{docx_path.stem}-letter-only.docx"
+    if not target.is_file():
+        await asyncio.to_thread(
+            render_service.render_docx,
+            state.get("letter_text") or "", target,
+            reference=str(document.get("reference") or ""),
+            title=the_template().label_for("en"), settings=settings,
+            placement=emblem.placement_for(state.get("emblem"), settings),
+            enclosures=None,
+        )
+    if kind == "docx":
+        return target
+
+    pdf_path, error = await render_service.render_pdf(target, settings)
+    if pdf_path is None:
+        # The package PDF exists; this variant could not be made. Saying so is
+        # better than quietly handing back the one WITH the attachments, which
+        # is not what was asked for.
+        raise HTTPException(
+            503, "The letter-only PDF could not be produced on this service. "
+                 "The full petition PDF is available.")
+    log.info("document.letter_only", extra={"kind": kind, "error": error or ""})
+    return pdf_path
+
+
+async def _document(request: Request, session_id: str, kind: str, *,
+                    with_enclosures: bool = True) -> FileResponse:
     state = await _require_state(request, session_id)
     verification = state.get("verification") or {}
     # `hand_edited` passes the gate the same way `ok` does. The check failed
@@ -726,7 +808,16 @@ async def _document(request: Request, session_id: str, kind: str) -> FileRespons
     if not path.is_file():
         raise HTTPException(410, "The generated file is no longer on disk.")
 
+    # With no attachments the two forms are the same file, so nothing is
+    # re-rendered for a distinction that does not exist.
+    enclosed = attachment_rules.AttachmentSet.from_state(state.get("attachments"))
+    letter_only = not with_enclosures and bool(enclosed.items)
+    if letter_only:
+        path = await _letter_only(state, kind)
+
     reference = str(document.get("reference") or session_id).replace("/", "-")
+    if letter_only:
+        reference = f"{reference}-letter"
     media = (
         "application/pdf" if kind == "pdf"
         else "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
@@ -736,15 +827,26 @@ async def _document(request: Request, session_id: str, kind: str) -> FileRespons
 
 
 @router.get("/sessions/{session_id}/document.pdf")
-async def document_pdf(session_id: str, request: Request) -> FileResponse:
+async def document_pdf(session_id: str, request: Request,
+                       enclosures: bool = True) -> FileResponse:
+    """The petition. `?enclosures=0` for the letter without the files after it.
+
+    Two things a citizen legitimately wants at different moments: the whole
+    package to hand in at the office, and the letter on its own to read, to
+    e-mail, or to print when the attachments are already in the envelope as
+    paper. Default is the package, because that is what gets submitted.
+    """
     with session_context(session_id):
-        return await _document(request, session_id, "pdf")
+        return await _document(request, session_id, "pdf",
+                               with_enclosures=enclosures)
 
 
 @router.get("/sessions/{session_id}/document.docx")
-async def document_docx(session_id: str, request: Request) -> FileResponse:
+async def document_docx(session_id: str, request: Request,
+                        enclosures: bool = True) -> FileResponse:
     with session_context(session_id):
-        return await _document(request, session_id, "docx")
+        return await _document(request, session_id, "docx",
+                               with_enclosures=enclosures)
 
 
 # --------------------------------------------------------------------------- #

@@ -29,6 +29,61 @@ _PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
 )
 
 
+# Masking for the SCREEN, which is a different job from the redaction above.
+#
+# Text leaving the machine is redacted outright: the provider has no business
+# knowing an Aadhaar number exists. Text shown back to the citizen is a
+# different matter — they need to recognise WHICH card the document was read
+# from, and "[IDENTIFIER REDACTED]" tells them nothing. The last four digits
+# are what every Indian bank, telco and utility shows for exactly this reason.
+#
+# Deliberately only these two patterns. The catch-all `\d{9,18}` above would
+# swallow a government reference number like 2026/PG/44710012, and mangling
+# the one value the petition most needs to quote would be a worse failure
+# than the one this prevents.
+# Both patterns allow the internal grouping the numbers are actually written
+# with. The mobile one matters most: this service PRINTS "+91 93441 74752" on
+# every petition it produces, so a pattern requiring ten consecutive digits
+# fails on the service's own output — which is precisely the document a
+# returning citizen attaches.
+# The national number is CAPTURED, and the country code is matched but left
+# outside the group. Counting digits across the whole match instead made
+# "+91 93441 74752" twelve digits, which failed the ten-digit check and left
+# a mobile number in the clear — while a bare "9344174752" was masked.
+#
+# Mobiles are tried before Aadhaar so that "+919344174752" is recognised as
+# the phone it is rather than as twelve anonymous digits.
+_DISPLAY: tuple[tuple[re.Pattern[str], int], ...] = (
+    (re.compile(r"(?:\+91[ -]?)?\b([6-9]\d{4}[ -]?\d{5})\b"), 10),
+    (re.compile(r"(?:\+91[ -]?)?\b([6-9]\d{9})\b"), 10),
+    (re.compile(r"\b(\d{4}[ -]?\d{4}[ -]?\d{4})\b"), 12),
+)
+
+
+def _keep_last_four(match: re.Match[str], digits: int) -> str:
+    raw = re.sub(r"\D", "", match.group(1))
+    if len(raw) != digits:
+        return match.group(0)
+    hidden = "XXXX XXXX " if digits == 12 else "XXXXXX"
+    return f"{hidden}{raw[-4:]}"
+
+
+def mask_for_display(text: str) -> str:
+    """Hide identifiers but leave the last four digits readable.
+
+    Applied to anything read OUT of an attachment before it is stored on the
+    session or shown on a confirmation card. A previous petition carries the
+    petitioner's Aadhaar and mobile in its own header, and the evidence
+    snippet shown beside an extracted value is a line of that document — so
+    without this, confirming a reference number could put a full Aadhaar on
+    screen and into the checkpoint.
+    """
+    out = str(text or "")
+    for pattern, digits in _DISPLAY:
+        out = pattern.sub(lambda m, d=digits: _keep_last_four(m, d), out)
+    return out
+
+
 def mask_pii(text: str, names: Iterable[str] = ()) -> str:
     """Redact identifiers, and any supplied names, from `text`."""
     out = str(text or "")

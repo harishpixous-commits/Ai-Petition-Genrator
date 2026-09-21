@@ -33,8 +33,19 @@ const UI = {
     attachFailed: "That file could not be attached.",
     attachField: {
       reference_number: "Acknowledgement number", petition_number: "Petition number",
+      petitioner_name: "Name on the document", address: "Address on the document",
       submitted_on: "Submitted on", department: "Department",
       authority: "Authority", subject: "Subject", status: "Status",
+    },
+    includeAttachments: "Include the attached files",
+    attachConflictHead: "This document says something different",
+    attachConflictAsk: "Which should the petition use?",
+    attachConflictCurrent: "What you told me",
+    attachConflictDocument: "What the document says",
+    attachConflictKeep: "Keep mine",
+    attachConflictUse: "Use the document's",
+    attachConflictField: {
+      applicant_name: "Name", address: "Address",
     },
     analysisSources: "Sources",
     analysisPage: "page",
@@ -142,6 +153,7 @@ const UI = {
       user_speaking: "Speaking…",
       transcribing: "Transcribing…",
       processing: "Thinking…",
+      generating: "Writing your petition…",
       assistant_speaking: "Assistant speaking",
       reconnecting: "Reconnecting…",
       error: "Voice stopped",
@@ -194,9 +206,20 @@ const UI = {
     attachLowConfidence: "இது குறைந்த உறுதியுடன் படிக்கப்பட்டது \u2014 சரிபார்க்கவும்.",
     attachFailed: "அந்தக் கோப்பை இணைக்க முடியவில்லை.",
     attachField: {
+      petitioner_name: "ஆவணத்தில் உள்ள பெயர்", address: "ஆவணத்தில் உள்ள முகவரி",
       reference_number: "ஒப்புகை எண்", petition_number: "மனு எண்",
       submitted_on: "அளித்த தேதி", department: "துறை",
       authority: "அதிகாரி", subject: "பொருள்", status: "நிலை",
+    },
+    includeAttachments: "இணைக்கப்பட்ட ஆவணங்களையும் சேர்க்கவும்",
+    attachConflictHead: "இந்த ஆவணம் வேறு விவரம் கூறுகிறது",
+    attachConflictAsk: "மனுவில் எதைப் பயன்படுத்த வேண்டும்?",
+    attachConflictCurrent: "நீங்கள் கூறியது",
+    attachConflictDocument: "ஆவணம் கூறுவது",
+    attachConflictKeep: "என்னுடையதைப் பயன்படுத்து",
+    attachConflictUse: "ஆவணத்தில் உள்ளதைப் பயன்படுத்து",
+    attachConflictField: {
+      applicant_name: "பெயர்", address: "முகவரி",
     },
     analysisSources: "ஆதாரங்கள்",
     analysisPage: "பக்கம்",
@@ -304,6 +327,7 @@ const UI = {
       user_speaking: "பேசுகிறீர்கள்…",
       transcribing: "புரிந்துகொள்கிறேன்…",
       processing: "புரிந்துகொள்கிறேன்…",
+      generating: "மனுவை எழுதுகிறேன்…",
       assistant_speaking: "பதிலளிக்கிறேன்…",
       reconnecting: "மீண்டும் இணைக்கப்படுகிறது…",
       error: "குரல் நிறுத்தப்பட்டது",
@@ -909,8 +933,10 @@ function render(v) {
   // blocked behind the very lock the turn is holding — so it could only time
   // out after fifteen seconds and report a connection that was never lost,
   // in the middle of a composition that is going perfectly well.
+  // GENERATING as well as PROCESSING: composition is the case this guard was
+  // written for, and it is the one the socket now names separately.
   const voiceTurn = Boolean(voice.socket && voice.socket.readyState === 1
-    && voice.state === VOICE.PROCESSING);
+    && (voice.state === VOICE.PROCESSING || voice.state === VOICE.GENERATING));
   if (v.status === "generating" && !requestPending && !voiceTurn) {
     generationPoll = setTimeout(recover, 2500);
   }
@@ -1151,6 +1177,12 @@ function drawAnalysis(v) {
  * read is right. That card stays: nothing from a document may be used until the
  * citizen has looked at it.
  */
+// Conflicts the citizen has already answered, so the question is not
+// re-asked on every repaint. Held on the page rather than the server on
+// purpose: it records what they have SEEN, not what the petition says,
+// and the petition is the server's business.
+const dismissedConflicts = new Set();
+
 function drawAttachments(v) {
   const t = T();
   const a = v.attachments;
@@ -1187,6 +1219,7 @@ function drawAttachments(v) {
         <label for="af-${esc(item.attachment_id)}-${esc(f.name)}">${esc(t.attachField[f.name] || f.name)}</label>
         <input id="af-${esc(item.attachment_id)}-${esc(f.name)}" name="${esc(f.name)}" value="${esc(f.value)}">
         ${f.evidence ? `<q>${esc(f.evidence)}</q>` : ""}
+        ${f.where ? `<span class="ap-where">${esc(f.where)}</span>` : ""}
       </div>`).join("");
     const nothingToCheck = !rows;
     return `<form class="ap-confirm" data-confirm="${esc(item.attachment_id)}">
@@ -1200,6 +1233,58 @@ function drawAttachments(v) {
       </div>
     </form>`;
   }).join("");
+
+  // Where a confirmed document disagrees with what the citizen told us. Both
+  // values are shown with their source and NEITHER is applied: the current
+  // answer is already on the petition and stays there unless they pick the
+  // other one. Dismissing is therefore the safe default, which is why "Keep
+  // mine" needs no server call at all.
+  const conflicts = (a?.conflicts || []).filter(
+    c => !dismissedConflicts.has(`${c.attachment_id}:${c.field}`));
+  $("attachConflictList").innerHTML = conflicts.map(c => `
+    <div class="ap-conflict" data-conflict="${esc(c.attachment_id)}:${esc(c.field)}">
+      <p class="ap-conflict-head">${esc(t.attachConflictHead)}</p>
+      <p class="ap-conflict-ask">${esc(t.attachConflictField[c.field] || c.field)} —
+         ${esc(t.attachConflictAsk)}</p>
+      <div class="ap-conflict-pair">
+        <div>
+          <span>${esc(t.attachConflictCurrent)}</span>
+          <strong>${esc(c.current)}</strong>
+        </div>
+        <div>
+          <span>${esc(t.attachConflictDocument)}${c.where ? ` · ${esc(c.where)}` : ""}</span>
+          <strong>${esc(c.proposed)}</strong>
+          <q>${esc(c.filename)}</q>
+        </div>
+      </div>
+      <div class="ap-confirm-actions">
+        <button class="btn primary" type="button" data-keep="1">${esc(t.attachConflictKeep)}</button>
+        <button class="btn" type="button" data-use="${esc(c.field)}"
+                data-value="${esc(c.proposed)}">${esc(t.attachConflictUse)}</button>
+      </div>
+    </div>`).join("");
+
+  $("attachConflictList").querySelectorAll("[data-keep]").forEach(b => {
+    b.onclick = () => {
+      // Nothing to send. The petition already holds the citizen's own value;
+      // this only stops asking about a question they have answered.
+      dismissedConflicts.add(b.closest("[data-conflict]").dataset.conflict);
+      drawAttachments(view);
+    };
+  });
+  $("attachConflictList").querySelectorAll("[data-use]").forEach(b => {
+    b.onclick = () => {
+      // Through the ordinary field editor, so the value from a document is
+      // validated exactly as one the citizen typed would be. A malformed
+      // address read off a scan is rejected here, not printed.
+      dismissedConflicts.add(b.closest("[data-conflict]").dataset.conflict);
+      attachmentAction(`/api/sessions/${sid}/field`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: b.dataset.use, value: b.dataset.value }),
+      });
+    };
+  });
 
   // Documents an OFFICIAL source says are required. Almost always empty, and
   // never confused with the suggestions, which are no longer shown at all.
@@ -1332,8 +1417,17 @@ function drawOutcome(v) {
     $("outcome").hidden = true;
   }
 
-  setLink($("pdf"), doc.pdf_url, t.pdf, t.noPdf);
-  setLink($("docx"), doc.docx_url, t.docx);
+  // The package or the letter alone. Offered only when something is actually
+  // attached: with nothing enclosed the two files are identical and the
+  // choice would be a control that does nothing.
+  const enclosedCount = (v.attachments?.items || []).length;
+  $("packageToggle").hidden = !hasLetter || enclosedCount === 0;
+  $("packageText").textContent = t.includeAttachments;
+  const whole = $("withEnclosures").checked;
+  const form = (url) => (url && !whole ? `${url}?enclosures=0` : url);
+
+  setLink($("pdf"), form(doc.pdf_url), t.pdf, t.noPdf);
+  setLink($("docx"), form(doc.docx_url), t.docx);
   $("printBtn").disabled = !hasLetter;
   $("copyBtn").disabled = !hasLetter;
   $("reviseBtn").disabled = !hasLetter || busy;
@@ -1713,7 +1807,8 @@ $("copyBtn").onclick = async () => {
 const VOICE = {
   IDLE: "idle", CONNECTING: "connecting", LISTENING: "listening",
   USER_SPEAKING: "user_speaking", TRANSCRIBING: "transcribing",
-  PROCESSING: "processing", ASSISTANT_SPEAKING: "assistant_speaking",
+  PROCESSING: "processing", GENERATING: "generating",
+  ASSISTANT_SPEAKING: "assistant_speaking",
   RECONNECTING: "reconnecting", ERROR: "error", ENDED: "ended",
 };
 
@@ -1939,7 +2034,7 @@ function waveDrive() {
     // words the citizen is hearing rather than to a timer.
     return { amp: Math.min(1, voice.playRms / 0.30), speed: 1.25 };
   }
-  if (s === VOICE.PROCESSING || s === VOICE.TRANSCRIBING) {
+  if (s === VOICE.PROCESSING || s === VOICE.TRANSCRIBING || s === VOICE.GENERATING) {
     // Nothing is being heard. A steady, unhurried pulse says the service is
     // working without pretending to hear anything.
     return { amp: 0.34 + 0.12 * Math.sin(wave.t * 2.2), speed: 0.85 };
@@ -2352,6 +2447,10 @@ function stopVoice({ tell = true } = {}) {
 function toggleVoice() {
   if (voice.wants) stopVoice(); else startVoice();
 }
+
+// Switching between the package and the letter alone only changes where the
+// two download links point; nothing is fetched until one is tapped.
+$("withEnclosures").onchange = () => { if (view) drawOutcome(view); };
 
 $("mic").onclick = toggleVoice;
 $("micInline").onclick = toggleVoice;

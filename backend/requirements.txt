@@ -25,3 +25,22 @@ python-multipart>=0.0.9
 # binary is present — there is none on this machine, and photographs are
 # reported as unreadable rather than guessed at.
 PyMuPDF>=1.24
+
+# Document reading for attachments. A citizen brings a photograph of an
+# acknowledgement slip, a scanned petition, a ward's complaint spreadsheet, or
+# a .doc from a department that has not changed template since 2003. Measured
+# against this service's own readers on files produced by Office itself,
+# xberg read twelve formats they could not read at all — scans and
+# photographs through bundled OCR, the legacy .doc/.ppt/.xls binaries, and
+# spreadsheets with their tables intact — matched them on five, and lost on
+# one malformed .pptx, which is why the built-in readers remain as a fallback.
+#
+# MIT. No Python dependencies of its own. No network and no model download at
+# runtime, which is what makes it usable in a department deployment with
+# neither. Prebuilt wheels cover this image (manylinux_2_28, and bookworm is
+# glibc 2.36).
+#
+# OPTIONAL BY DESIGN: `app/services/document_intelligence.py` falls back to
+# the built-in readers when the import fails, so a platform without a wheel
+# degrades to the previous behaviour instead of failing to start.
+xberg>=1.2,<2

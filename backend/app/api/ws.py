@@ -130,6 +130,7 @@ class Phase(StrEnum):
     USER_SPEAKING = "user_speaking"
     TRANSCRIBING = "transcribing"
     PROCESSING = "processing"
+    GENERATING = "generating"
     ASSISTANT_SPEAKING = "assistant_speaking"
     ERROR = "error"
 
@@ -274,12 +275,20 @@ async def voice(websocket: WebSocket, session_id: str, language: str = "en") -> 
             knows what a generating state means and has a panel for it. A turn
             that is something else — a correction, a question — never reaches
             that status, so nothing is sent and nothing is claimed.
+
+            The phase moves too, and not only the panel. PROCESSING and
+            GENERATING are both "the assistant is busy", but they are not the
+            same wait: answering a question takes a second or two, and writing
+            the petition took two and a half minutes in the report above. A
+            citizen told "Thinking..." for two and a half minutes concludes it
+            has hung. Saying which wait they are in is the whole difference.
             """
             try:
                 while True:
                     await asyncio.sleep(_PROGRESS_POLL_S)
                     values = await workflow.peek(session_id)
                     if (values or {}).get("status") == "generating":
+                        await set_phase(Phase.GENERATING)
                         await websocket.send_json(
                             {"type": "state", "state": session_view(values)})
                         return
@@ -466,8 +475,17 @@ async def voice(websocket: WebSocket, session_id: str, language: str = "en") -> 
                 log.warning("asr.transcribe.failed", extra={"error": str(exc)[:200]})
                 await set_phase(Phase.LISTENING if listening else Phase.IDLE)
                 with contextlib.suppress(Exception):
+                    # Which message depends on what actually happened. The
+                    # phase above is the tell: still listening means one
+                    # utterance was lost and the next one will be heard, so
+                    # "dictation has stopped" is simply untrue — and it is the
+                    # kind of untrue that costs something, because it sends a
+                    # citizen to the keyboard when saying it again would have
+                    # worked.
                     await websocket.send_json(
-                        {"type": "error", "message": phrase("dictation_stopped", language),
+                        {"type": "error",
+                         "message": phrase(
+                             "dictation_failed" if listening else "dictation_stopped", language),
                          "detail": str(exc)[:200], "recoverable": True}
                     )
                 return

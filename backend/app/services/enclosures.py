@@ -50,6 +50,11 @@ class Enclosure:
     label: str              # "1. Acknowledgement receipt"
     path: Path
     filename: str = ""
+    # One line of what the document actually says — a reference number, a
+    # date — for the index page. Built only from values the citizen has
+    # CONFIRMED, so the index never asserts something the petition itself
+    # would not. Empty is normal and prints nothing.
+    detail: str = ""
 
 
 @dataclass
@@ -95,14 +100,71 @@ def _normalised_image(path: Path, workspace: Path) -> Path:
     return target
 
 
+def _index_page(document, enclosures: list[Enclosure], *, title: str,
+                caption_font: str) -> None:
+    """A contents page for the documents that follow.
+
+    An officer receiving a petition with six scans stapled behind it should be
+    able to see what is there without leafing through. The list is built from
+    the enclosures actually being appended, so it cannot name a file that is
+    not in the envelope — which is the same rule the enclosure section in the
+    letter follows.
+    """
+    from docx.shared import Pt
+
+    document.add_page_break()
+    head = document.add_paragraph()
+    run = head.add_run(title)
+    run.bold = True
+    run.font.name = caption_font
+    run.font.size = Pt(13)
+
+    for enclosure in enclosures:
+        line = document.add_paragraph()
+        line.paragraph_format.space_after = Pt(2)
+        label = line.add_run(enclosure.label)
+        label.bold = True
+        label.font.name = caption_font
+        label.font.size = Pt(10.5)
+
+        if enclosure.filename:
+            name = document.add_paragraph()
+            name.paragraph_format.left_indent = Pt(14)
+            name.paragraph_format.space_after = Pt(1)
+            run = name.add_run(enclosure.filename)
+            run.font.name = caption_font
+            run.font.size = Pt(9)
+            run.font.color.rgb = _grey()
+
+        if enclosure.detail:
+            extra = document.add_paragraph()
+            extra.paragraph_format.left_indent = Pt(14)
+            extra.paragraph_format.space_after = Pt(8)
+            run = extra.add_run(enclosure.detail)
+            run.font.name = caption_font
+            run.font.size = Pt(9)
+            run.font.color.rgb = _grey()
+
+
+def _grey():
+    from docx.shared import RGBColor
+
+    return RGBColor(0x77, 0x77, 0x77)
+
+
 def append_to_document(document, enclosures: list[Enclosure], *,
                        heading: str, caption_font: str,
-                       note: str = "") -> Appended:
+                       note: str = "", index_title: str = "") -> Appended:
     """Append each enclosure to an open python-docx document.
 
     Failures are collected rather than raised. An enclosure that cannot be
     rendered must not cost the citizen their petition — it stays listed in the
     enclosure section, which is still true: it IS in the envelope.
+
+    `index_title` adds a contents page before the documents. Only worth a page
+    of its own when there is more than one thing to index; with a single
+    enclosure the caption on its own page already says everything the index
+    would.
     """
     import tempfile
 
@@ -111,6 +173,10 @@ def append_to_document(document, enclosures: list[Enclosure], *,
 
     if not enclosures:
         return Appended()
+
+    if index_title and len(enclosures) > 1:
+        _index_page(document, enclosures, title=index_title,
+                    caption_font=caption_font)
 
     result = Appended()
     section = document.sections[0]

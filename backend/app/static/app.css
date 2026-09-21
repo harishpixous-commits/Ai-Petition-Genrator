@@ -50,7 +50,12 @@ header.app{position:sticky;top:0;z-index:40;min-height:var(--header-h);display:f
 .hbtn.primary:hover:not(:disabled){background:#24525b;transform:translateY(-1px)}
 .hbtn.help-btn{border-color:transparent;color:var(--muted);font-weight:400}
 .hbtn.voice-listening,.hbtn.voice-user_speaking{color:var(--bad);background:var(--bad-soft);border-color:#e6bbb6}
-.hbtn.voice-speaking{color:var(--ok);background:var(--ok-soft)}
+/* The state value is `assistant_speaking`, not `speaking`: the rule this
+   replaced never matched anything, so the button stayed grey while the
+   assistant talked. `generating` is the long wait, coloured apart from the
+   short one so a two-minute composition does not look like a hang. */
+.hbtn.voice-assistant_speaking{color:var(--ok);background:var(--ok-soft);border-color:#bcdccd}
+.hbtn.voice-generating{color:var(--warn);background:var(--warn-soft);border-color:#eedfbb}
 select.lang{min-height:39px;padding:8px 29px 8px 12px;border:1px solid var(--line);border-radius:8px;background:white url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='m3 5 3 3 3-3' fill='none' stroke='%236b7b84' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat right 10px center;color:var(--ink);font-size:12px;appearance:none}
 select.lang:hover{border-color:#a9c2c5}
 .workspace-intro{max-width:1488px;margin:0 auto;padding:31px 32px 27px;display:flex;align-items:center;justify-content:space-between;gap:32px}
@@ -745,6 +750,32 @@ details.drawer>summary .count{padding:1px 6px;background:var(--blue-soft);color:
             font-size:9px;line-height:1.5;color:var(--muted);quotes:none}
 .ap-confirm-actions{display:flex;flex-wrap:wrap;gap:7px}
 
+/* Which page or slide a value was read from, so the citizen checking it
+   against the paper in their hand knows where to look. */
+.ap-where{display:inline-block;margin-top:3px;padding:1px 6px;border-radius:100px;
+          background:var(--surface-2);font-size:8.5px;font-weight:600;
+          letter-spacing:.02em;color:var(--muted)}
+
+/* A disagreement between the document and what the citizen said. Deliberately
+   NOT styled as an error: neither value is wrong, and one of them is theirs.
+   The two are shown side by side at equal weight so the question reads as a
+   choice rather than as a correction being urged on them. */
+.ap-conflict{margin:0 0 8px;padding:11px 12px;border:1px solid #efdcac;
+             border-radius:var(--r);background:var(--warn-soft)}
+.ap-conflict-head{margin:0;font-size:10.5px;font-weight:700;color:#7a591b}
+.ap-conflict-ask{margin:3px 0 9px;font-size:10px;line-height:1.55;color:#7a591b}
+.ap-conflict-pair{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
+.ap-conflict-pair > div{padding:7px 9px;border:1px solid #eedfbb;border-radius:var(--r-sm);
+                        background:var(--surface);min-width:0}
+.ap-conflict-pair span{display:block;margin-bottom:3px;font-size:8.5px;font-weight:600;
+                       text-transform:uppercase;letter-spacing:.03em;color:var(--muted)}
+.ap-conflict-pair strong{display:block;font-size:11px;line-height:1.5;color:var(--ink);
+                         font-weight:600;overflow-wrap:anywhere}
+.ap-conflict-pair q{display:block;margin-top:4px;font-size:8.5px;color:var(--muted);
+                    quotes:none;overflow-wrap:anywhere}
+/* Two long addresses will not sit side by side on a phone. */
+@media (max-width:560px){.ap-conflict-pair{grid-template-columns:1fr}}
+
 /* One line per file while it uploads, so six photographs read as six lines
    filling in rather than one frozen composer. A refusal keeps its reason. */
 .ap-progress{margin:0 0 8px;padding:0;list-style:none}
@@ -989,3 +1020,11 @@ header.app{gap:24px}
 /* The whole row opens the petition. It looked clickable before it was. */
 .petition-item-main[role="button"]{cursor:pointer;border-radius:var(--r-sm)}
 .petition-item-main[role="button"]:focus-visible{outline:3px solid #5db1b5;outline-offset:3px}
+
+/* The package-or-letter choice, beside the downloads. Only rendered when
+   something is attached, so it never appears as a control that does nothing. */
+.doc-package{display:inline-flex;align-items:center;gap:7px;margin-left:auto;
+             padding:0 4px;font-size:10.5px;color:var(--muted);cursor:pointer;
+             user-select:none;white-space:nowrap}
+.doc-package input{width:14px;height:14px;accent-color:var(--navy);cursor:pointer}
+@media (max-width:820px){.doc-package{margin-left:0;width:100%}}

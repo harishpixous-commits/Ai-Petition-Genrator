@@ -87,9 +87,9 @@ Optional (only if external AI is approved): provider API keys in `app.env`.
 
 ---
 
-## 2. GitHub Secrets
+## 2. GitHub Secrets and Variables
 
-All nine already configured. Verify only:
+### 2.1 Infrastructure — already configured
 
 | Secret | Expected |
 |---|---|
@@ -101,8 +101,56 @@ All nine already configured. Verify only:
 | `DOCKERHUB_TOKEN` | needs **read + write** (write to push from CI, read to pull on EC2) |
 | `SONAR_HOST_URL`, `SONAR_TOKEN` | per company SonarQube |
 
-Sonar project key is `Ai-Petition-Genrator` in `sonar-project.properties` —
-set by you, left untouched.
+Sonar project key is `Ai-Petition-Genrator` in `sonar-project.properties`.
+
+### 2.2 Runtime configuration — set these to change the live service
+
+`app.env` on the EC2 is **generated on every deploy** by
+`deploy/scripts/write-env.sh` from the values below. You never need SSH to
+change a credential: set it here and re-run the workflow.
+
+**Settings → Secrets and variables → Actions → Secrets**
+
+| Secret | Required | What it does |
+|---|---|---|
+| `OPERATOR_TOKEN` | **yes** | Gates `/operator`. Generate with `openssl rand -hex 32`. A missing one aborts the deploy. |
+| `SARVAM_API_KEYS` | no | Switches on **both** halves of the voice agent — dictation and spoken replies. Comma-separate for failover. |
+| `GEMINI_API_KEYS` | no | Switches on the AI-written narrative. Comma-separate for failover. |
+| `ANTHROPIC_API_KEY`, `GROQ_API_KEYS`, `OPENROUTER_API_KEYS` | no | Alternative language models. |
+| `DEEPGRAM_API_KEY`, `ASSEMBLYAI_API_KEY` | no | Alternative dictation providers. |
+
+**Settings → Secrets and variables → Actions → Variables**
+
+| Variable | Required | What it does |
+|---|---|---|
+| `PUBLIC_ORIGIN` | **yes** | `https://ai-petition.pixoustech.app`. Becomes `CORS_ORIGINS`, with the Android app's origins appended automatically. |
+| `ALLOW_EXTERNAL_AI` | to use any key | `true` permits citizen text to leave the server. |
+
+### 2.3 ⛔ Two rules that are not negotiable
+
+**You do not set `LLM_PROVIDER`, `STREAM_ASR_PROVIDER` or `TTS_PROVIDER`.**
+`write-env.sh` derives them from which keys exist. This is why: a live
+deployment ran for weeks with correct keys and every feature off, because
+those switches default to `off` and **a key does not override a switch**. The
+service reported `provider: off`, which reads exactly like a key that does not
+work. If the switch cannot be typed, it cannot contradict the key.
+
+**`ALLOW_EXTERNAL_AI` is a variable, not derived from the keys.** When it is
+`true`, the citizen's name, address, Aadhaar number and grievance leave this
+server for a third party. That must be a separate, visible, deliberate act —
+not a side effect of pasting a key. It is a *variable* rather than a secret
+precisely so it is readable on the settings page and auditable.
+
+### 2.4 If keys still appear not to work
+
+Three places say so, in this order:
+
+1. The **workflow log** — the preflight step fails the deploy and names the
+   variable.
+2. `GET /api/health` → `credentials.ok: false`, listing each unused key.
+3. The container log: `docker logs ai-petition-generator | grep credential_unused`
+
+None of them ever print a key value.
 
 ---
 

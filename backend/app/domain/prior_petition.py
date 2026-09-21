@@ -120,9 +120,20 @@ class Extracted:
     value: str
     evidence: str = ""
     confidence: float = 0.0
+    # Where in the file it was read. `page` is 0 when the location could not
+    # be pinned down, which is a different thing from page 1 — see
+    # `extraction.locate`. `unit` names what is being counted, because a
+    # presentation has slides and telling somebody to check "page 4" of a
+    # deck sends them looking for something that does not exist.
+    page: int = 0
+    unit: str = ""
 
     def as_dict(self) -> dict[str, Any]:
         return asdict(self)
+
+    def where(self) -> str:
+        """"page 2", "slide 4", or nothing at all."""
+        return f"{self.unit} {self.page}" if self.page and self.unit else ""
 
 
 @dataclass
@@ -136,6 +147,12 @@ class PriorPetition:
     kind: str = "other"
     reference_number: Extracted | None = None
     petition_number: Extracted | None = None
+    # Who the earlier petition was from. Read so that it can be COMPARED with
+    # what the citizen has told us this time, not so that it can replace it —
+    # an old address on an old petition is evidence of where they used to
+    # live, which is exactly the thing worth asking about rather than acting on.
+    petitioner_name: Extracted | None = None
+    address: Extracted | None = None
     submitted_on: Extracted | None = None
     department: Extracted | None = None
     authority: Extracted | None = None
@@ -160,9 +177,9 @@ class PriorPetition:
                                "reason": self.reason,
                                "low_confidence": self.low_confidence,
                                "other_dates": list(self.other_dates)}
-        for name in ("reference_number", "petition_number", "submitted_on",
-                     "department", "authority", "subject", "grievance",
-                     "requested_action", "status"):
+        for name in ("reference_number", "petition_number", "petitioner_name",
+                     "address", "submitted_on", "department", "authority",
+                     "subject", "grievance", "requested_action", "status"):
             value = getattr(self, name)
             out[name] = value.as_dict() if value else None
         return out
@@ -176,14 +193,16 @@ class PriorPetition:
                   reason=str(value.get("reason") or ""),
                   low_confidence=bool(value.get("low_confidence")),
                   other_dates=[str(d) for d in (value.get("other_dates") or [])])
-        for name in ("reference_number", "petition_number", "submitted_on",
-                     "department", "authority", "subject", "grievance",
-                     "requested_action", "status"):
+        for name in ("reference_number", "petition_number", "petitioner_name",
+                     "address", "submitted_on", "department", "authority",
+                     "subject", "grievance", "requested_action", "status"):
             raw = value.get(name)
             if isinstance(raw, dict) and raw.get("value"):
                 setattr(out, name, Extracted(
                     value=str(raw["value"]), evidence=str(raw.get("evidence") or ""),
-                    confidence=float(raw.get("confidence") or 0.0)))
+                    confidence=float(raw.get("confidence") or 0.0),
+                    page=int(raw.get("page") or 0),
+                    unit=str(raw.get("unit") or "")))
         return out
 
 
@@ -320,13 +339,72 @@ def _status(text: str) -> Extracted | None:
     return None
 
 
+# The heading above the petitioner's own details, in both languages. A petition
+# this service produced writes exactly these; a petition typed elsewhere very
+# often does too, because it is the standard Indian letter form.
+_FROM_HEADINGS = frozenset({"from", "அனுப்புநர்"})
+_TO_HEADINGS = frozenset({"to", "பெறுநர்"})
+
+# "Age: 23", "Mobile number: +91 …" — the labelled lines that follow the name
+# and address and mark the end of them.
+_LABELLED_DETAIL = re.compile(r"\S\s*:\s*\S")
+
+
+def _heading(line: str) -> str:
+    return line.strip().rstrip(",:.").strip().casefold()
+
+
+def _sender(text: str) -> tuple[Extracted | None, Extracted | None]:
+    """The petitioner's name and address out of a petition's From block.
+
+    Positional rather than pattern-matched, because the form is positional:
+    the heading, then the name, then the address, then labelled details. There
+    is no regex for "is this line a person's name" that does not also match
+    half a letterhead.
+
+    Read ONLY to be compared against what the citizen has said this time. See
+    `attachment_conflicts` — an address found here never becomes the address on
+    the new petition without the citizen choosing it.
+    """
+    lines = text.splitlines()
+    for index, line in enumerate(lines):
+        if _heading(line) not in _FROM_HEADINGS:
+            continue
+        collected: list[str] = []
+        for following in lines[index + 1:index + 9]:
+            body = following.strip()
+            if not body:
+                if collected:
+                    break
+                continue                      # blank line before the block
+            if _LABELLED_DETAIL.search(body) or _heading(body) in _TO_HEADINGS:
+                break                         # into "Age: 23", or the To block
+            collected.append(body)
+        if not collected:
+            continue
+        name = Extracted(value=collected[0][:80], evidence=collected[0],
+                         confidence=0.8)
+        address = None
+        if len(collected) > 1:
+            joined = ", ".join(collected[1:])
+            address = Extracted(value=joined[:240], evidence=joined, confidence=0.8)
+        return name, address
+    return None, None
+
+
 def analyse(text: str, *, readable: bool = True, reason: str = "",
-            low_confidence: bool = False) -> PriorPetition:
+            low_confidence: bool = False, segments: Any = None) -> PriorPetition:
     """Read an attached document. Deterministic; no model involved.
 
     A document that could not be read comes back saying so, with no fields —
     which is the honest result and the one that makes the conversation ask the
     citizen to type the reference number instead of inventing one.
+
+    `segments` is optional. When the caller supplies the document's pages or
+    slides, each value is also told which one it came from, so the citizen is
+    asked "is this the reference number, from page 2?" rather than being asked
+    about a number with no address. Callers that do not have them lose only
+    that, and every other behaviour here is unchanged.
     """
     if not readable or not str(text or "").strip():
         return PriorPetition(readable=False,
@@ -356,16 +434,77 @@ def analyse(text: str, *, readable: bool = True, reason: str = "",
                        or _first(_AUTHORITY_TA, body, 0.75))
     prior.subject = _first(_SUBJECT, body, 0.85)
     prior.status = _status(body)
+    prior.petitioner_name, prior.address = _sender(body)
 
     # Confidence is scaled down wholesale when the text itself came in weak, so
     # an OCR read never presents as though it were a clean text layer.
     if low_confidence:
-        for name in ("reference_number", "petition_number", "submitted_on",
-                     "department", "authority", "subject", "status"):
+        for name in ("reference_number", "petition_number", "petitioner_name",
+                     "address", "submitted_on", "department", "authority",
+                     "subject", "status"):
             value = getattr(prior, name)
             if value:
                 value.confidence = round(value.confidence * 0.6, 2)
+
+    _attribute(prior, segments)
+    _mask(prior)
     return prior
+
+
+def _mask(prior: PriorPetition) -> None:
+    """Hide identifiers in anything that will be stored or shown.
+
+    The evidence snippet beside each value is a LINE of the citizen's
+    document, and a previous petition carries their Aadhaar and mobile in its
+    own header. Without this, confirming a reference number read from page 2
+    could put a full Aadhaar number onto the confirmation card and into the
+    checkpoint, which is the one place this service has always refused to
+    keep one.
+
+    The values themselves are masked too, not just the evidence. A reference
+    number is never twelve grouped digits, so nothing the petition needs to
+    quote is affected — and if a document ever does yield an identifier as a
+    value, it must not survive in full either.
+    """
+    from ..services.mask import mask_for_display
+
+    for name in ("reference_number", "petition_number", "petitioner_name",
+                 "address", "submitted_on", "department", "authority",
+                 "subject", "grievance", "requested_action", "status"):
+        value = getattr(prior, name, None)
+        if value is None:
+            continue
+        value.value = mask_for_display(value.value)
+        value.evidence = mask_for_display(value.evidence)
+
+
+def _attribute(prior: PriorPetition, segments: Any) -> None:
+    """Record which page or slide each value was read from.
+
+    Looked up by the value first and by the surrounding line second: a
+    reference number is distinctive enough to find on its own, and when it is
+    not — a bare date — the line it sits in usually is.
+
+    A value printed on several pages, as a header is, reports the FIRST page
+    it appears on. That is the honest reading of "where can I find this", and
+    it is the page a citizen turning to check will reach first. A value that
+    cannot be found at all is left unattributed rather than assigned to
+    page 1.
+    """
+    if not segments:
+        return
+    from ..services.extraction import locate
+
+    for name in ("reference_number", "petition_number", "petitioner_name",
+                 "address", "submitted_on", "department", "authority",
+                 "subject", "status"):
+        value = getattr(prior, name)
+        if not value:
+            continue
+        found = locate(segments, value.value) or locate(segments, value.evidence)
+        if found is not None:
+            value.page = found.number
+            value.unit = found.unit
 
 
 # --------------------------------------------------------------------------- #

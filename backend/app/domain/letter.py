@@ -68,6 +68,9 @@ LABELS: dict[str, dict[str, str]] = {
     "note":       {"en": "Note",                "ta": "குறிப்பு"},
     # The caption above each attached file, on its own page after the letter.
     "enclosure_page": {"en": "Enclosure", "ta": "இணைப்பு"},
+    # The contents page before them, when there is more than one. An officer
+    # holding six scans should see what is there without leafing through.
+    "enclosure_index": {"en": "Supporting documents", "ta": "ஆதார ஆவணங்கள்"},
     # Printed small under that caption. A reproduction is not the original, and
     # an officer comparing the two should be told which they are holding.
     "enclosure_note": {

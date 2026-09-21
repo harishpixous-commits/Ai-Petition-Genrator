@@ -30,7 +30,7 @@ from .config import get_settings
 from .domain.templates import load_templates
 from .graph.workflow import workflow_lifespan
 from .logging_setup import configure_logging
-from .services import asr, llm, provider_store
+from .services import asr, credential_check, llm, provider_store
 from .services.render import pdf_status
 
 log = logging.getLogger(__name__)
@@ -65,6 +65,19 @@ def preflight() -> None:
     log.info("preflight.language_model",
              extra={"provider": boundary["provider"], "egress": boundary["egress"],
                     "note": boundary["note"]})
+
+    # Keys that are present and cannot be used. WARNING and one line per
+    # credential, because the symptom an operator actually sees — "I put the
+    # keys in and nothing happened" — gives them nothing to search for, and
+    # this is the only place that names the reason.
+    for unused in credential_check.find(settings):
+        log.warning(
+            "preflight.credential_unused",
+            extra={"keys": unused.keys, "disabled_by": unused.setting,
+                   "fix": unused.fix,
+                   "note": (f"{unused.keys} is set but {unused.setting} "
+                            f"switches it off. The key was read correctly. "
+                            f"Set {unused.fix} and recreate the container.")})
 
     pdf = pdf_status(settings)
     # Warn unless the engine is one a server may depend on. A workstation that

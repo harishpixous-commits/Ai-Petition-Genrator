@@ -103,10 +103,38 @@ ALLOWED_TYPES: dict[str, str] = {
     "image/webp": ".webp",
     "image/heic": ".heic",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation": ".pptx",
+    # The pre-2007 binary formats. Accepted and carried, never opened: a
+    # citizen holding a .doc from an office should not be turned away, and
+    # nothing in this service parses them, so there is no parser to attack.
+    # `extraction` reports them as unreadable and asks the citizen to type
+    # what they say, rather than attaching an empty-looking document.
+    "application/msword": ".doc",
+    "application/vnd.ms-powerpoint": ".ppt",
+    # Spreadsheets. A ward's complaint register or a bill schedule arrives as
+    # one of these more often than as anything else.
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ".xlsx",
+    "application/vnd.ms-excel": ".xls",
+    "text/csv": ".csv",
+    "text/html": ".html",
     "text/plain": ".txt",
 }
 ALLOWED_SUFFIXES = frozenset({".pdf", ".jpg", ".jpeg", ".png", ".webp", ".heic",
-                              ".docx", ".txt"})
+                              ".docx", ".pptx", ".doc", ".ppt",
+                              ".xlsx", ".xls", ".csv", ".html", ".txt"})
+
+# Formats carried as plain text: no binary signature to check, so the content
+# is inspected for NUL bytes instead. HTML is here because an .html file IS
+# text — it is never executed by this service, only read for its words.
+TEXT_SUFFIXES = frozenset({".txt", ".csv", ".html"})
+
+# Formats whose bytes cannot be told apart from each other, so the declared
+# extension decides between them once the signature has proved the family.
+# .doc and .ppt are both OLE compound files; separating them needs a parser
+# for a format this service deliberately does not parse.
+INDISTINGUISHABLE: tuple[frozenset[str], ...] = (
+    frozenset({".doc", ".ppt", ".xls"}),
+)
 
 
 @dataclass
@@ -129,6 +157,10 @@ class Attachment:
     # True once the citizen has seen what was extracted and said it is right.
     # Until then nothing from `extracted` may appear in the petition.
     confirmed: bool = False
+    # How much this document appears to bear on the current grievance, as
+    # `attachment_relevance` judged it at upload. Advisory: it changes how the
+    # file is PRESENTED, never whether it is kept or listed.
+    relevance: dict[str, Any] | None = None
 
     def label(self, language: Language = "en") -> str:
         base = KIND_LABELS.get(self.kind, KIND_LABELS["other"]).get(

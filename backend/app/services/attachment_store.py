@@ -34,8 +34,10 @@ from ..config import Settings, get_settings
 from ..domain.attachments import (
     ALLOWED_SUFFIXES,
     ALLOWED_TYPES,
+    INDISTINGUISHABLE,
     MAX_ATTACHMENTS,
     MAX_BYTES,
+    TEXT_SUFFIXES,
     Attachment,
     AttachmentSet,
     sanitise_filename,
@@ -124,13 +126,18 @@ def save(
     # mismatch. Every allowed type except plain text has a signature, so
     # requiring one costs nothing and closes it.
     suffix = ".jpg" if suffix == ".jpeg" else suffix
-    if suffix != ".txt":
+    if suffix not in TEXT_SUFFIXES:
         sniffed = _sniff(content)
         if sniffed is None:
             raise AttachmentRejected(
                 "That file does not look like the kind of file it is named. "
                 "Please attach the original PDF, photograph or document.")
-        if sniffed != suffix:
+        # Two formats share the OLE header and cannot be told apart from the
+        # bytes. Within that one family the declared extension decides; every
+        # other mismatch is still a refusal.
+        interchangeable = any({sniffed, suffix} <= family
+                              for family in INDISTINGUISHABLE)
+        if sniffed != suffix and not interchangeable:
             raise AttachmentRejected(
                 f"That file is named '{suffix}' but its contents are "
                 f"'{sniffed}'. Please attach the original file.")
@@ -172,6 +179,36 @@ _MAGIC: tuple[tuple[bytes, str], ...] = (
     (b"\x89PNG\r\n\x1a\n", ".png"),
 )
 
+# The OLE compound-file header shared by .doc, .ppt and .xls. It proves the
+# family, not which member of it — see INDISTINGUISHABLE.
+_OLE_MAGIC = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
+
+
+def _ooxml(content: bytes) -> str | None:
+    """Which Office format a zip actually holds.
+
+    DOCX and PPTX are both zips with the same four leading bytes, so the
+    header alone cannot separate them and a presentation renamed .docx would
+    have been stored as a Word file and then handed to a Word parser. The
+    package's own layout is what decides: Word keeps word/document.xml,
+    PowerPoint keeps ppt/presentation.xml.
+    """
+    import io
+    import zipfile
+
+    try:
+        with zipfile.ZipFile(io.BytesIO(content)) as bundle:
+            names = bundle.namelist()
+    except Exception:  # noqa: BLE001 - a zip that will not open is not one
+        return None
+    if any(name.startswith("word/") for name in names):
+        return ".docx"
+    if any(name.startswith("ppt/") for name in names):
+        return ".pptx"
+    if any(name.startswith("xl/") for name in names):
+        return ".xlsx"
+    return None
+
 
 def _sniff(content: bytes) -> str | None:
     """The real type, from the header, or None when it is not one we allow."""
@@ -179,9 +216,11 @@ def _sniff(content: bytes) -> str | None:
         if content.startswith(magic):
             return suffix
     if content[:4] == b"PK\x03\x04":
-        # A zip. DOCX is one; so is a lot else, but within the allowlist it can
-        # only be DOCX.
-        return ".docx"
+        return _ooxml(content)
+    if content.startswith(_OLE_MAGIC):
+        # A pre-2007 Office document. Which one it is cannot be read from the
+        # header; `save` reconciles that against the declared extension.
+        return ".doc"
     if content[:4] == b"RIFF" and content[8:12] == b"WEBP":
         return ".webp"
     if content[4:8] == b"ftyp" and any(

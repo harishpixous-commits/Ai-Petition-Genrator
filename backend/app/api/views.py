@@ -14,8 +14,8 @@ from __future__ import annotations
 from typing import Any
 
 from ..config import get_settings
+from ..domain import attachment_conflicts, emblem, phrasing, prior_petition, revisions
 from ..domain import attachments as attachment_rules
-from ..domain import emblem, phrasing, prior_petition, revisions
 from ..domain.fields import MAX_FREE_TEXT, display_value
 from ..domain.letter import verbatim_lines
 from ..domain.phrasing import DISCLAIMER
@@ -140,8 +140,9 @@ def attachments_view(state: LetterState, language: str,
         prior = prior_petition.PriorPetition.from_dict(extracted) if extracted else None
         fields = []
         if prior is not None:
-            for name in ("reference_number", "petition_number", "submitted_on",
-                         "department", "authority", "subject", "status"):
+            for name in ("reference_number", "petition_number", "petitioner_name",
+                         "address", "submitted_on", "department", "authority",
+                         "subject", "status"):
                 value = getattr(prior, name, None)
                 if value:
                     fields.append({
@@ -149,6 +150,11 @@ def attachments_view(state: LetterState, language: str,
                         "value": value.value,
                         "evidence": value.evidence,
                         "confidence": round(value.confidence, 2),
+                        # "page 2" / "slide 4", so the citizen checking the
+                        # value against the paper knows where to look. Empty
+                        # when it could not be pinned down, which is not the
+                        # same as page 1.
+                        "where": value.where(),
                     })
         items.append({
             "attachment_id": attachment.attachment_id,
@@ -170,6 +176,10 @@ def attachments_view(state: LetterState, language: str,
             # The English detail, for an operator reading a support ticket.
             "reason_detail": prior.reason if prior else "",
             "low_confidence": bool(prior.low_confidence) if prior else False,
+            # Advisory only. It changes how the file is presented — a document
+            # that has nothing to do with the complaint is offered as evidence
+            # rather than as figures to check — and never whether it is kept.
+            "relevance": attachment.relevance or None,
             "fields": fields,
         })
 
@@ -177,6 +187,12 @@ def attachments_view(state: LetterState, language: str,
         "status": state.get("status"),
         "offered": bool(state.get("attachments_offered")),
         "done": bool(state.get("attachments_done")),
+        # Where a confirmed attachment disagrees with what the citizen has
+        # told us this time. Reported, never applied: the current answer stays
+        # on the petition unless the citizen picks the other one. See
+        # `attachment_conflicts`.
+        "conflicts": [c.as_dict() for c in attachment_conflicts.find(
+            state.get("fields") or {}, enclosed)],
         # The citizen has just said yes and has not sent a file yet. The page
         # opens the picker on this rather than leaving them to hunt for the
         # button after answering a question with "yes".

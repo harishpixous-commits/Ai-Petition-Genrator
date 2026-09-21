@@ -1279,8 +1279,37 @@ def _enclosure_files(state: LetterState, language: str) -> list:
                      extra={"attachment_id": attachment.attachment_id})
             continue
         out.append(Enclosure(label=f"{index}. {attachment.label(language)}",
-                             path=path, filename=attachment.filename))
+                             path=path, filename=attachment.filename,
+                             detail=_enclosure_detail(attachment, language)))
     return out
+
+
+def _enclosure_detail(attachment: Any, language: str) -> str:
+    """One line for the index page, from CONFIRMED values only.
+
+    An index that prints a reference number the citizen has not agreed to
+    would be the extraction leaking onto the document by the back door — the
+    one thing the whole confirmation step exists to prevent. An unconfirmed
+    attachment is listed by name and nothing else, which is true.
+    """
+    if not getattr(attachment, "confirmed", False):
+        return ""
+    prior = prior_petition.PriorPetition.from_dict(
+        getattr(attachment, "extracted", None))
+    if prior is None:
+        return ""
+
+    labels = {
+        "reference_number": {"en": "Reference", "ta": "குறிப்பு எண்"},
+        "submitted_on": {"en": "Dated", "ta": "நாள்"},
+    }
+    parts = []
+    for name, wording in labels.items():
+        value = getattr(prior, name, None)
+        if value and value.value.strip():
+            parts.append(f"{wording[language if language in wording else 'en']}: "
+                         f"{value.value.strip()}")
+    return "   ".join(parts)
 
 
 def _prior_reference(enclosed: Any, language: str) -> str:
@@ -1465,6 +1494,7 @@ async def render(state: LetterState) -> dict[str, Any]:
                 enclosures=_enclosure_files(state, language),
                 enclosure_heading=letter_label("enclosure_page", language),
                 enclosure_note=letter_label("enclosure_note", language),
+                index_title=letter_label("enclosure_index", language),
             )
         except Exception as exc:  # noqa: BLE001
             log.exception("render.docx.failed")
