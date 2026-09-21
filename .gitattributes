@@ -1,0 +1,56 @@
+# Line endings.
+#
+# This repository is edited on Windows and executed on Linux. Git's
+# core.autocrlf=true converts working-copy files to CRLF, and for a shell
+# script that is not a formatting preference — it is a broken deployment:
+#
+#     sudo ./write-env.sh
+#     /usr/bin/env: 'bash\r': No such file or directory
+#
+# and, more insidiously when the script is invoked as `bash script.sh` so the
+# shebang is never read, every assignment silently gains a trailing carriage
+# return. VALUE=true becomes "true\r", which compares equal to nothing and
+# turns a working configuration into an inexplicable one.
+#
+# Anything the Linux host executes or parses byte-for-byte is pinned to LF
+# here, regardless of the developer's autocrlf setting.
+*.sh            text eol=lf
+Dockerfile      text eol=lf
+*.dockerfile    text eol=lf
+.dockerignore   text eol=lf
+
+# Compose and CI read these, and while both tolerate CRLF, a heredoc inside
+# them does not.
+*.yml           text eol=lf
+*.yaml          text eol=lf
+
+# nginx includes these verbatim.
+*.conf          text eol=lf
+
+# Served to browsers and packaged into the Android APK; keeping them LF keeps
+# the bytes identical between the website and the app bundle.
+*.py            text eol=lf
+*.js            text eol=lf
+*.css           text eol=lf
+*.html          text eol=lf
+*.json          text eol=lf
+*.md            text eol=lf
+
+# Binary, never converted. The font files in particular are corrupted by any
+# byte substitution, and a corrupted Tamil font produces a petition of empty
+# boxes.
+*.png           binary
+*.jpg           binary
+*.jpeg          binary
+*.webp          binary
+*.heic          binary
+*.pdf           binary
+*.ttf           binary
+*.woff          binary
+*.woff2         binary
+*.docx          binary
+*.xlsx          binary
+*.pptx          binary
+*.sqlite        binary
+*.jks           binary
+*.keystore      binary
