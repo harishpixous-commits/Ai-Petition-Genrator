@@ -682,6 +682,46 @@ details.drawer>summary .count{padding:1px 6px;background:var(--blue-soft);color:
 .modal .help-note{padding:12px 14px;background:var(--blue-soft);border-radius:9px;font-size:11px}
 @media(min-width:1600px){main.workspace{min-height:650px}.workspace-intro{padding-top:36px;padding-bottom:32px}.stepper{padding-inline:34px}}
 @media(max-width:1488px){.stepper,.connection-banner{margin-left:32px;margin-right:32px}}
+/* ------------------------------------------------- reading the petition
+   A finished petition is a DOCUMENT, and a document is read at its own
+   length.
+
+   It was being shown through a hole. The workspace is a fixed-height grid
+   — right for the conversation, where the newest message is at the bottom
+   and nothing above it needs to be on screen. Applied to a two-page letter
+   on a laptop it left about 274px for the paper: roughly eleven lines of
+   forty, behind a nested scrollbar, inside a page that was already
+   scrolling. A citizen checking their own address had to scroll a small
+   box inside a big one to find it.
+
+   So in the finished state the middle column stops being a panel and
+   becomes the page: the paper renders at its full height and the ordinary
+   page scroll moves through it. The conversation and the details stick
+   beside it instead of being stretched to the height of the letter, which
+   is what `align-items:start` would otherwise do to them.
+
+   Only where the three-column layout applies. Below 1180px the columns
+   stack and each already gets the full width, with its own height rules
+   further down. */
+@media(min-width:1181px){
+  /* `:not(.generating)` throughout. Both classes are present while a change
+     is being drafted against a petition that already exists, and in that
+     moment the document is hidden behind the drafting animation — sizing
+     the grid to a document nobody can see would make the page jump as the
+     animation ends. */
+  main.workspace.done:not(.generating){height:auto;align-items:start;
+    min-height:calc(100dvh - 290px - var(--footer-h))}
+  /* Below the sticky header, and short enough that the footer is reachable
+     without the column running under it. Both already scroll internally. */
+  main.workspace.done:not(.generating) .left,
+  main.workspace.done:not(.generating) .right{
+    position:sticky;top:calc(var(--header-h) + 16px);
+    height:calc(100dvh - var(--header-h) - 48px)}
+  main.workspace.done:not(.generating) .middle{min-height:0}
+  main.workspace.done:not(.generating) #docCard{flex:none}
+  main.workspace.done:not(.generating) .paper-wrap{flex:none;overflow:visible}
+}
+
 @media(max-width:1180px){
   .help-btn .txt{display:none}.hbtn.help-btn{padding:8px}
   main.workspace{grid-template-columns:minmax(0,1fr) 315px}
