@@ -11,7 +11,9 @@ from typing import Any
 
 _SUBJECT = re.compile(r"^(?:Subject|Sub|பொருள்)\s*:", re.I)
 _RECIPIENT = re.compile(r"^(?:To|பெறுநர்)\s*[,：:]?\s*$", re.I)
-_CLOSING = re.compile(r"^(?:Thank you|நன்றி|Yours faithfully|இப்படிக்கு)", re.I)
+_CLOSING = re.compile(
+    r"^(?:Thanking you|Thank you|நன்றி|Yours faithfully|தங்கள் உண்மையுள்ள|இப்படிக்கு)",
+    re.I)
 _ACK = re.compile(r"^(?:ok(?:ay)?|yes|no|thanks?|thank you|good|sure|சரி|ஆம்|நன்றி)[.! ]*$", re.I)
 
 

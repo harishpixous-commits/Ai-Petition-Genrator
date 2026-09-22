@@ -66,14 +66,40 @@ class TestLetterText:
 
     def test_it_follows_the_standard_petition_format(self, english_letter):
         for marker in ("From,", "To,", "Respected Sir / Madam,", "Subject:",
-                       "Thank you!", "Yours faithfully,", "Date:", "Place:"):
+                       "Thanking you,", "Yours faithfully,", "Date:", "Place:"):
             assert marker in english_letter, marker
+
+    def test_the_closing_is_written_the_way_a_petition_closes_it(self, english_letter):
+        """"Thanking you," not "Thank you!". An exclamation mark is the wrong
+        register for a document an officer files, and it is the detail that
+        makes a letter read as generated rather than written."""
+        assert "Thanking you," in english_letter
+        assert "Thank you!" not in english_letter
+        assert "!" not in english_letter.split("Thanking you,")[1]
+
+    def test_the_sign_off_comes_from_the_template(self):
+        """`petition.yaml` carried a `closing:` that nothing read: an office
+        changing the prescribed sign-off there saw no effect and no error."""
+        import dataclasses
+
+        from app.domain.letter import build_letter_text
+        from app.domain.templates import the_template
+
+        template = dataclasses.replace(
+            the_template(),
+            closing={"en": "Respectfully submitted,", "ta": "வணக்கத்துடன்,"})
+        text = build_letter_text(
+            template=template, fields={"applicant_name": "Ravi Kumar"},
+            language="en", composition=None, session_id="abc-123")
+
+        assert "Respectfully submitted," in text
+        assert "Yours faithfully," not in text
 
     def test_the_blocks_come_in_the_prescribed_order(self, english_letter):
         # The date and place lead the letter now, printed flush right, which is
         # where a letter carries them. They used to sit under the signature.
         order = ["Date:", "Place:", "From,", "To,", "Respected Sir / Madam,",
-                 "Subject:", "Thank you!", "Yours faithfully,"]
+                 "Subject:", "Thanking you,", "Yours faithfully,"]
         positions = [english_letter.index(marker) for marker in order]
         assert positions == sorted(positions), "the letter reads top to bottom"
 
@@ -115,8 +141,23 @@ class TestLetterText:
         assert "Date:" in text
 
     def test_the_disclaimer_is_present_in_both_languages(self, english_letter, tamil_letter):
-        assert "not legal advice" in english_letter
-        assert "சட்ட ஆலோசனை அல்ல" in tamil_letter
+        assert "does not constitute legal advice" in english_letter
+        assert "சட்ட ஆலோசனையாக கருதப்படாது" in tamil_letter
+
+    def test_the_note_never_judges_the_citizens_case(self, english_letter, tamil_letter):
+        """The note says what the document IS, and stops there.
+
+        An earlier wording added "and it does not decide your eligibility",
+        which reads to the person holding it as a verdict the assistant has
+        already reached about their claim. It is also untrue in the direction
+        that matters: nothing here has assessed their eligibility either way,
+        so telling them it has not "decided" it implies the question was
+        looked at. Asked for removal, and kept out by this.
+        """
+        for letter in (english_letter, tamil_letter):
+            lowered = letter.lower()
+            assert "eligib" not in lowered
+            assert "தகுதி" not in letter
 
     def test_the_reference_is_stable_and_not_in_the_body(self, english_letter):
         """The format has no reference line, so it lives in the document footer.
@@ -200,6 +241,10 @@ class TestLineClassification:
             ("நாள்: 15-09-2026", "foot"),
             ("Place: Coimbatore", "foot"),
             ("இடம்: கோயம்புத்தூர்", "foot"),
+            ("Thanking you,", "thanks"),
+            ("நன்றி,", "thanks"),
+            # The previous wording, which still arrives from a petition saved
+            # before the format was reviewed and from an AI-written closing.
             ("Thank you!", "thanks"),
             ("நன்றி!", "thanks"),
             ("Yours faithfully,", "signoff"),
@@ -536,7 +581,7 @@ class TestRepresentation:
         standard = fallback_composition(the_template(), {}, "en")
         assert standard.background is None
         assert "Respected Sir / Madam," in english_letter
-        assert "Thank you!" in english_letter
+        assert "Thanking you," in english_letter
 
 
 class TestProductionReadinessIsEarned:
@@ -764,3 +809,107 @@ class TestItIsPrintedOnTheRight:
         ]
 
         assert right == ["Date: 17-09-2026", "Place: Coimbatore"], right
+
+
+class TestALongGrievanceSurvivesToTheDocument:
+    """A grievance dictated over two minutes is about two thousand
+    characters. The sentence that gets cut is the last one, and the last one
+    is where the citizen says what they want done — so the whole of it has to
+    reach the page, not most of it.
+
+    The voice layer's own tests prove the transcript is assembled intact.
+    These prove the document does not then quietly shorten it.
+    """
+
+    @staticmethod
+    def _long_grievance() -> str:
+        return " ".join(
+            f"Point {i}: the water supply to our street failed again and the "
+            f"office was informed on the {i}th."
+            for i in range(1, 21))
+
+    def test_the_letter_carries_every_word(self):
+        from app.domain.letter import build_letter_text
+        from app.domain.templates import the_template
+
+        grievance = self._long_grievance()
+        assert len(grievance) > 1500, "the fixture stopped being long"
+        text = build_letter_text(
+            template=the_template(),
+            fields={"applicant_name": "Ravi Kumar", "age": 45,
+                    "mobile": "9344174752", "aadhaar": "234567890124",
+                    "address": "12 Gandhi Street, Coimbatore",
+                    "grievance": grievance},
+            language="en", composition=None, session_id="abc-123")
+
+        assert grievance in text
+        assert "Point 20:" in text, "the end of the complaint was dropped"
+        assert "Point 1:" in text
+
+    def test_the_verifier_would_catch_it_being_shortened(self):
+        """The check that runs against the generated DOCX asks for the field
+        VERBATIM, so a document that truncated it would fail verification
+        rather than being handed over quietly."""
+        from app.domain.letter import verification_targets
+        from app.domain.templates import the_template
+
+        grievance = self._long_grievance()
+        targets = verification_targets(
+            the_template(),
+            {"applicant_name": "Ravi Kumar", "age": 45, "mobile": "9344174752",
+             "aadhaar": "234567890124", "address": "12 Gandhi Street, Coimbatore",
+             "grievance": grievance},
+            "en")
+
+        assert targets.get("grievance") == grievance
+
+    def test_a_long_tamil_grievance_is_kept_whole(self):
+        from app.domain.letter import build_letter_text
+        from app.domain.templates import the_template
+
+        grievance = " ".join(
+            f"{i}. எங்கள் தெருவில் தண்ணீர் வரவில்லை, அலுவலகத்தில் தெரிவித்தோம்."
+            for i in range(1, 21))
+        text = build_letter_text(
+            template=the_template(),
+            fields={"applicant_name": "ரவி குமார்", "age": 45,
+                    "mobile": "9344174752", "aadhaar": "234567890124",
+                    "address": "12 காந்தி தெரு, கோயம்புத்தூர்",
+                    "grievance": grievance},
+            language="ta", composition=None, session_id="abc-123")
+
+        assert grievance in text
+        assert text.count("எங்கள் தெருவில்") == 20
+
+    def test_the_word_document_contains_the_whole_complaint(self, tmp_path):
+        """Not the letter text — the actual .docx a citizen downloads.
+
+        Read back out of `word/document.xml`, because a renderer that split,
+        dropped or reflowed a long paragraph would still have produced a
+        plausible-looking letter string on the way in.
+        """
+        import re
+        import zipfile
+
+        from app.domain.letter import build_letter_text
+        from app.domain.templates import the_template
+        from app.services.render import render_docx
+
+        grievance = self._long_grievance()
+        text = build_letter_text(
+            template=the_template(),
+            fields={"applicant_name": "Ravi Kumar", "age": 45,
+                    "mobile": "9344174752", "aadhaar": "234567890124",
+                    "address": "12 Gandhi Street, Coimbatore",
+                    "grievance": grievance},
+            language="en", composition=None, session_id="abc-123")
+        path = render_docx(text, tmp_path / "petition.docx")
+
+        with zipfile.ZipFile(path) as archive:
+            xml = archive.read("word/document.xml").decode("utf-8")
+        # Runs can be split anywhere by the writer, so compare the visible
+        # characters rather than the markup.
+        visible = re.sub(r"<[^>]+>", "", xml)
+
+        assert grievance in visible, "the complaint was altered on the way in"
+        assert "Point 20:" in visible, "the end of the complaint is missing"

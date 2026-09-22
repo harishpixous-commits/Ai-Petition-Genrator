@@ -32,9 +32,17 @@ subject:
   en: Petition seeking redressal of a grievance
   ta: குறை தீர்க்கக் கோரி மனு
 
+# The sign-off, printed above the signature space. This is now what the
+# document actually uses — until the format was reviewed nothing read it, and
+# the Tamil letter printed "இப்படிக்கு," from a hard-coded default while this
+# said something else.
+#
+# Set to the wording that has been going out, not to the literal translation
+# that sat here unused: "இப்படிக்கு," is the ordinary closing on a Tamil
+# letter to a government office. Change it here to change the document.
 closing:
   en: Yours faithfully,
-  ta: தங்கள் உண்மையுள்ள,
+  ta: இப்படிக்கு,
 
 # Handed to the model as the purpose of the form, so that the subject line and
 # the closing request it writes are about the right kind of document.

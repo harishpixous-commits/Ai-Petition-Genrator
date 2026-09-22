@@ -11,7 +11,7 @@ Corporation Commissioner:
     வணக்கம். …             the opening
     <the grievance>        the citizen's own words, verbatim
     எனவே, …                the prayer
-    நன்றி!
+    நன்றி,
     இப்படிக்கு,            the signature block
     நாள்: / இடம்:           date and place, at the foot
 
@@ -60,7 +60,17 @@ LABELS: dict[str, dict[str, str]] = {
     "to":         {"en": "To,",                 "ta": "பெறுநர்,"},
     "salutation": {"en": "Respected Sir / Madam,", "ta": "மதிப்பிற்குரிய ஐயா / அம்மா,"},
     "subject":    {"en": "Subject",             "ta": "பொருள்"},
-    "thanks":     {"en": "Thank you!",          "ta": "நன்றி!"},
+    # "Thanking you," — the closing a petition to a Collectorate carries.
+    # It was "Thank you!" until the format was reviewed: an exclamation mark
+    # is the wrong register for a document an officer files, and it is the
+    # detail that makes a letter read as generated rather than written.
+    #
+    # `render.py` and `revisions.py` both match this line by its opening
+    # words, and `speech_text.py` breaks the read-aloud on it. All three were
+    # updated with it; changing it again means changing them again.
+    "thanks":     {"en": "Thanking you,",       "ta": "நன்றி,"},
+    # The DEFAULT sign-off. `petition.yaml` overrides it through `closing`,
+    # which is where the prescribed format belongs.
     "signoff":    {"en": "Yours faithfully,",   "ta": "இப்படிக்கு,"},
     "date":       {"en": "Date",                "ta": "நாள்"},
     "place":      {"en": "Place",               "ta": "இடம்"},
@@ -441,7 +451,12 @@ def build_letter_text(
     # -- thanks, sign-off, signature ---------------------------------------- #
     lines.append(label("thanks", language))
     lines.append("")
-    lines.append(label("signoff", language))
+    # The template's closing, not this module's, when the template has one.
+    # `petition.yaml` has carried a `closing:` since it was written and
+    # nothing read it: an office changing the prescribed sign-off there saw
+    # no effect and no error, which is the exact failure that keeping the
+    # format in YAML is supposed to prevent.
+    lines.append(template.text_for("closing", language) or label("signoff", language))
     lines.extend([""] * SIGN_GAP)
     name = next((fields[n] for n in SENDER_NAME_FIELDS if fields.get(n)), "")
     if name:

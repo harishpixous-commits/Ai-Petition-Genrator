@@ -131,7 +131,7 @@ def _add_emblem_header(document, settings: Settings, placement: Placement) -> bo
 #   மதிப்பிற்குரிய ஐயா / அம்மா,
 #   பொருள்: …  தொடர்பாக.    bold, one line
 #   body paragraphs, the middle one being the citizen's own words
-#   நன்றி!
+#   நன்றி,
 #   இப்படிக்கு,            sign-off, then the signature
 #   நாள்: / இடம்:           at the foot
 
@@ -142,7 +142,11 @@ _SUBJECT = re.compile(r"^(Subject|Sub\b|பொருள்)[^:]*:", re.I)
 # Date and place close the letter and are read as a pair.
 _FOOT = re.compile(r"^(Date|Place|நாள்|இடம்)\s*:", re.I)
 _SIGNOFF = re.compile(r"^(Yours faithfully|Yours sincerely|இப்படிக்கு|தங்கள் உண்மையுள்ள)", re.I)
-_THANKS = re.compile(r"^(Thank you|நன்றி)", re.I)
+# "Thanking you" as well as "Thank you": the letter says the first, and an
+# AI-written closing or an older saved petition may say the second. A
+# sign-off this does not recognise is centred as body text, which puts the
+# signature block in the middle of the page.
+_THANKS = re.compile(r"^(Thanking you|Thank you|நன்றி)", re.I)
 _NUMBERED = re.compile(r"^\s*\d+\.\s")
 _NOTE = re.compile(r"^(Note|குறிப்பு)\s*:", re.I)
 _SECTION_WORDS = re.compile(r"^(Encl|Enclosure|இணைப்புகள்)", re.I)

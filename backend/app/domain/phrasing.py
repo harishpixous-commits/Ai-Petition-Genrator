@@ -319,16 +319,34 @@ PHRASES: dict[str, dict[Language, str]] = {
     },
 }
 
+# The note printed at the foot of every petition, in both languages.
+#
+# ONE definition. `letter.py` appends it to the document and `views.py`
+# exposes it to any client, so changing it here changes the preview, the
+# DOCX, the PDF and both languages at once — including petitions written by
+# a model, because the model never writes this line.
+#
+# The "Note:" / "குறிப்பு:" label is NOT part of the text. `letter.py`
+# prefixes it from the same table that names every other block on the page,
+# so a department translating the document does not have to find this
+# sentence to change one word of it.
+#
+# The eligibility clause was removed deliberately. "It does not decide your
+# eligibility" reads as though eligibility were something this service had
+# considered and declined to rule on — which invites exactly the question it
+# means to deflect. The petition states what the citizen said; whether they
+# qualify for anything is not a matter it touches, and the quieter sentence
+# is the more accurate one.
 DISCLAIMER: dict[Language, str] = {
     "en": (
-        "This letter was prepared from what you told the assistant. Check every "
-        "detail before signing or submitting it. It is not legal advice and it "
-        "does not decide your eligibility."
+        "This petition was prepared based on the information provided by the "
+        "petitioner. Please verify all details before signing or submitting "
+        "it. This does not constitute legal advice."
     ),
     "ta": (
-        "இந்தக் கடிதம் நீங்கள் உதவியாளரிடம் சொன்னதிலிருந்து தயாரிக்கப்பட்டது. "
-        "கையொப்பமிடுவதற்கு அல்லது சமர்ப்பிப்பதற்கு முன் ஒவ்வொரு விவரத்தையும் சரிபார்க்கவும். "
-        "இது சட்ட ஆலோசனை அல்ல; உங்கள் தகுதியை இது தீர்மானிக்காது."
+        "மனுதாரர் வழங்கிய தகவல்களின் அடிப்படையில் இந்த மனு தயாரிக்கப்பட்டுள்ளது. "
+        "கையொப்பமிட்டு சமர்ப்பிப்பதற்கு முன் அனைத்து விவரங்களையும் சரிபார்க்கவும். "
+        "இது சட்ட ஆலோசனையாக கருதப்படாது."
     ),
 }
 
