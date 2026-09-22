@@ -194,7 +194,8 @@ class Session:
 
 
 @contextlib.contextmanager
-def talking(workflow, *, reports_playback: bool = False, **overrides):
+def talking(workflow, *, reports_playback: bool = False, mode: str = "conversation",
+            **overrides):
     """One live voice socket, with any settings overridden AFTER startup.
 
     After, not before, and that is not a detail. The application's own
@@ -215,7 +216,8 @@ def talking(workflow, *, reports_playback: bool = False, **overrides):
             with client.websocket_connect(f"/ws/voice/{uuid.uuid4()}") as ws:
                 session = Session(ws)
                 ws.send_json({"type": "voice.start",
-                              "reports_playback": reports_playback})
+                              "reports_playback": reports_playback,
+                              "mode": mode})
                 yield session
         finally:
             for name, value in restore.items():
@@ -602,3 +604,96 @@ class TestTheRuleHoldsAtEveryQuestion:
 
         for coupling in ("field", "status", "spec", "template"):
             assert coupling not in gate, coupling
+
+
+class TestDictationIsTheMicrophoneAlone:
+    """The microphone beside the TEXT BOX, not the one in the header.
+
+    The hands-free conversation is right when a citizen wants to be led
+    through the form and wrong when they just want to stop typing: it speaks
+    every question, reads every answer back and asks them to confirm it —
+    three spoken turns to enter a name they could have said in one.
+    Somebody who reaches for the microphone next to the box means "write
+    down what I say".
+
+    What is IN FRONT of the transcript is unchanged, and the audio here goes
+    through the same detector and the same commit guard as everywhere else.
+    Only what happens after a transcript settles is different.
+    """
+
+    @staticmethod
+    def _dictate(session):
+        session.speak(room(320))
+        session.speak(speech(1280))
+        session.speak(room(960))
+        return session.drain("stt.final")
+
+    def test_the_words_come_back_and_nothing_else_happens(
+            self, dictation_available, transcribes, speaks):
+        workflow = Asking()
+        with talking(workflow, mode="dictation") as session:
+            final = self._dictate(session)
+            session.settle(Phase.LISTENING)
+
+        assert final["text"], "no transcript came back"
+        assert workflow.invoked == [], "dictation reached the petition workflow"
+        # No read-back was offered, so nothing is waiting to be confirmed.
+        assert "voice.answer" not in session.kinds(), session.kinds()
+
+    def test_the_assistant_never_speaks(self, dictation_available, transcribes, speaks):
+        """The complaint this mode answers. TTS is configured in this test,
+        so silence is a decision rather than an absence."""
+        workflow = Asking()
+        with talking(workflow, mode="dictation") as session:
+            self._dictate(session)
+            session.settle(Phase.LISTENING)
+
+        assert "tts.start" not in session.kinds(), session.kinds()
+
+    def test_not_even_the_question_on_the_way_in(
+            self, dictation_available, transcribes, speaks):
+        """Somebody pressing the microphone to write one sentence does not
+        want the form read to them first."""
+        workflow = Asking()
+        with talking(workflow, mode="dictation") as session:
+            session.settle(Phase.LISTENING)
+
+        assert "tts.start" not in session.kinds(), session.kinds()
+
+    def test_the_same_audio_does_run_the_workflow_in_conversation_mode(
+            self, dictation_available, transcribes, speaks):
+        """The control. Without it, "nothing happened" would be satisfied by
+        audio that never worked."""
+        workflow = Asking()
+        with talking(workflow) as session:
+            session.drain("tts.start")
+            session.settle(Phase.LISTENING)
+            self._dictate(session)
+            session.drain("voice.answer")
+
+        assert "tts.start" in session.kinds()
+
+    def test_it_rests_in_plain_listening(self, dictation_available, transcribes, speaks):
+        """Not LONG_LISTENING, whatever field the form is on. The citizen is
+        writing a sentence into a box, and "Recording grievance…" over that
+        would be a lie about what is being captured."""
+        workflow = AtGrievance()
+        with talking(workflow, mode="dictation") as session:
+            self._dictate(session)
+            session.settle(Phase.LISTENING)
+
+        assert Phase.LONG_LISTENING.value not in session.phases(), session.phases()
+
+    def test_the_noise_and_speech_gates_are_untouched(
+            self, dictation_available, transcribes, speaks):
+        """Silence must still produce nothing. The mode changes what happens
+        to a transcript, not what counts as speech."""
+        workflow = Asking()
+        with talking(workflow, mode="dictation") as session:
+            session.settle(Phase.LISTENING)
+            session.speak(room(2400))          # a quiet room, and nothing said
+            session.ws.send_json({"type": "voice.end"})
+            session.drain("voice.ended")
+
+        assert "stt.final" not in session.kinds(), session.kinds()
+        assert transcribes["calls"] == 0, "silence was sent to be transcribed"

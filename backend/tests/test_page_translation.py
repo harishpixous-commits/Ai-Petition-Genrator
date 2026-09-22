@@ -124,3 +124,52 @@ def test_the_tamil_actually_says_what_it_should(key, expected):
     """Spot checks, so a future edit that empties a string or pastes the
     wrong one is caught rather than merely being different from English."""
     assert table("ta")[key] == expected
+
+
+# ---------------------------------------------------------------------------
+# The two microphones
+# ---------------------------------------------------------------------------
+
+def app_js() -> str:
+    return (STATIC / "app.js").read_text(encoding="utf-8")
+
+
+def test_the_two_microphones_do_different_things():
+    """The one in the header runs the hands-free conversation; the one
+    beside the text box dictates into it. They were the same handler, and a
+    citizen who wanted to say one sentence instead of typing it got the
+    whole form read aloud."""
+    js = app_js()
+
+    assert re.search(r'\$\("mic"\)\.onclick\s*=\s*toggleVoice', js)
+    assert re.search(r'\$\("micInline"\)\.onclick\s*=\s*toggleDictation', js)
+
+
+def test_dictation_asks_the_server_for_dictation():
+    js = app_js()
+
+    assert 'startVoice("dictation")' in js
+    assert "mode: voice.mode" in js
+
+
+def test_a_dictated_transcript_goes_to_the_box_not_to_a_turn():
+    js = app_js()
+    handler = js[js.index('case "stt.final":'):]
+    handler = handler[:handler.index('case "state":')]
+
+    assert 'voice.mode === "dictation"' in handler
+    assert "writeIntoTheBox" in handler
+    # And it stops there: the conversation path must not also run.
+    assert handler.index("writeIntoTheBox") < handler.index("VOICE.PROCESSING")
+
+
+def test_dictation_appends_rather_than_replacing():
+    """A second press adds a sentence to what is already there. Replacing
+    would wipe a half-typed answer the moment somebody reached for the
+    microphone to finish it."""
+    js = app_js()
+    fn = js[js.index("function writeIntoTheBox"):]
+    fn = fn[:fn.index("\n}") + 2]
+
+    assert "existing ?" in fn
+    assert "box.maxLength" in fn, "the box has a hard cap and setting .value walks past it"

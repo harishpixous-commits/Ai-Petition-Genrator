@@ -178,6 +178,7 @@ const UI = {
     dictationRestart: "Start over",
     dictationCount: (n) => n === 1 ? "1 part" : `${n} parts`,
     dictationSafe: "Connection interrupted. Your recorded grievance is safe. Please continue.",
+    dictationFull: "The box is full. Please send what is there before saying more.",
     voiceRetry: "Retry Voice", voiceContinueText: "Continue with Text",
     voiceUnavailable: "Voice is not available on this service. Your petition is safe — please type instead.",
     voiceLost: "The voice connection was lost. Your petition progress is safe.",
@@ -371,6 +372,7 @@ const UI = {
     dictationRestart: "மீண்டும் தொடங்கு",
     dictationCount: (n) => n === 1 ? "1 பகுதி" : `${n} பகுதிகள்`,
     dictationSafe: "இணைப்பு தற்காலிகமாக துண்டிக்கப்பட்டது. இதுவரை பதிவு செய்யப்பட்ட குறை பாதுகாப்பாக உள்ளது. தொடர்ந்து சொல்லுங்கள்.",
+    dictationFull: "பெட்டி நிரம்பிவிட்டது. மேலும் சொல்வதற்கு முன் உள்ளதை அனுப்பவும்.",
     voiceRetry: "மீண்டும் முயற்சி", voiceContinueText: "தட்டச்சில் தொடர்",
     voiceUnavailable: "இந்தச் சேவையில் குரல் வசதி இல்லை. உங்கள் மனு பாதுகாப்பாக உள்ளது — தட்டச்சு செய்யவும்.",
     voiceLost: "குரல் இணைப்பு துண்டிக்கப்பட்டது. உங்கள் மனு பாதுகாப்பாக உள்ளது.",
@@ -1882,6 +1884,10 @@ const voice = {
   floorRms: 0,
   noisyRoom: false,
   bargeIn: false,       // the server says whether interrupting is allowed
+  // "conversation" — the assistant asks, reads back and waits for a spoken
+  // answer. "dictation" — the microphone alone: what is said is written
+  // into the text box and nothing is spoken back.
+  mode: "conversation",
   playAnalyser: null,
   playBins: null,
   meterRaf: null,
@@ -2587,7 +2593,7 @@ function openSocket() {
         // Declared, not assumed. The server waits for our `tts.played` only
         // because we said we send it; a page that cannot is timed by the
         // length of the audio instead of stalling every turn.
-        send({ type: "voice.start", reports_playback: true });
+        send({ type: "voice.start", reports_playback: true, mode: voice.mode });
         break;
 
       case "voice.state":
@@ -2598,6 +2604,15 @@ function openSocket() {
         break;
 
       case "stt.final":
+        // Dictation: the words go in the box and stop there. The citizen
+        // reads them, edits them if the microphone misheard, and presses
+        // send when they are ready — which is the whole point of asking for
+        // the microphone beside the text box rather than the one in the
+        // header.
+        if (voice.mode === "dictation") {
+          writeIntoTheBox(m.text);
+          break;
+        }
         // Only a settled transcript becomes a conversation turn, and the
         // server's `state` message is what actually writes it — this is the
         // panel showing what was heard, not a second copy of the message.
@@ -2723,7 +2738,7 @@ function openSocket() {
 
 /* --------------------------------------------------------------- lifecycle */
 
-async function startVoice() {
+async function startVoice(mode = "conversation") {
   if (!sid || voice.wants || busy || requestPending || connectionLost || editingLetter || !SENDABLE_STATUSES.includes(view?.status)) return;
   if (healthState && !healthState.dictation?.ok) {
     voiceFail(T().voiceUnavailable, { recoverable: false });
@@ -2734,6 +2749,7 @@ async function startVoice() {
     return;
   }
   voice.wants = true;
+  voice.mode = mode;
   voice.muted = false;
   voice.attempts = 0;
   $("voiceError").hidden = true;
@@ -2774,7 +2790,45 @@ function stopVoice({ tell = true } = {}) {
 }
 
 function toggleVoice() {
-  if (voice.wants) stopVoice(); else startVoice();
+  if (voice.wants) stopVoice(); else startVoice("conversation");
+}
+
+/** Press to talk, press again to stop. The assistant stays silent. */
+function toggleDictation() {
+  if (voice.wants) { stopVoice(); return; }
+  startVoice("dictation");
+}
+
+/** Put dictated words where the citizen can see and change them.
+ *
+ *  Appended rather than replacing, so a second press adds a sentence to
+ *  what is already there instead of wiping it. The cursor is left at the
+ *  end and the box keeps focus, because the next thing they do is either
+ *  keep talking or press send.
+ */
+function writeIntoTheBox(text) {
+  const said = String(text || "").trim();
+  if (!said) return;
+  const box = $("text");
+  const existing = box.value.trim();
+  const joined = existing ? `${existing} ${said}` : said;
+  // The box has a hard cap, and setting `.value` in script walks straight
+  // past it — the characters would be accepted here and refused on send.
+  // Stop at the limit and say so, rather than losing the end of a sentence
+  // somewhere between the microphone and the server.
+  const cap = box.maxLength > 0 ? box.maxLength : joined.length;
+  if (joined.length > cap) {
+    bubble("system", T().dictationFull);
+    box.value = existing;
+    return;
+  }
+  box.value = joined;
+  // The counter and the send button read from an input event, so a value
+  // set in script has to announce itself.
+  box.dispatchEvent(new Event("input", { bubbles: true }));
+  box.focus();
+  box.setSelectionRange(box.value.length, box.value.length);
+  voiceState(VOICE.LISTENING, { transcript: said, live: false });
 }
 
 // Switching between the package and the letter alone only changes where the
@@ -2782,7 +2836,11 @@ function toggleVoice() {
 $("withEnclosures").onchange = () => { if (view) drawOutcome(view); };
 
 $("mic").onclick = toggleVoice;
-$("micInline").onclick = toggleVoice;
+// The microphone BESIDE THE TEXT BOX dictates into it. The one in the
+// header runs the hands-free conversation. They were the same button, and
+// a citizen who wanted to say one sentence instead of typing it got the
+// whole form read aloud to them.
+$("micInline").onclick = toggleDictation;
 $("voiceEnd").onclick = () => stopVoice();
 $("voiceMute").onclick = () => {
   voice.muted = !voice.muted;

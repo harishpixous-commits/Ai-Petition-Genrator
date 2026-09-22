@@ -19,7 +19,9 @@ goes in the document.
 
 Protocol, client to server:
     binary frames                 16-bit little-endian PCM at the advertised rate
-    {"type":"voice.start"}        begin hands-free listening
+    {"type":"voice.start"}        begin listening. `mode:"dictation"` asks
+                                  for the microphone ALONE: transcripts come
+                                  back as text and nothing else happens
     {"type":"voice.end"}          stop listening; the petition is untouched
     {"type":"voice.interrupt"}    the citizen spoke over the assistant.
                                   `reason: "typed"` is always honoured; an
@@ -367,6 +369,23 @@ async def voice(websocket: WebSocket, session_id: str, language: str = "en") -> 
         # waited on forever.
         reports_playback = False
 
+        # Dictation only: a microphone attached to the text box, and nothing
+        # more.
+        #
+        # WHY IT EXISTS. The hands-free conversation is the right shape when
+        # a citizen wants to be led through the form, and the wrong one when
+        # they just want to stop typing. It speaks every question, reads
+        # every answer back and asks them to confirm it — three spoken turns
+        # to enter a name they could have said in one. Somebody who reaches
+        # for the microphone beside the text box means "write down what I
+        # say", and that is all this does: transcribe, put the words in the
+        # box, stay quiet.
+        #
+        # Everything in FRONT of the transcript is unchanged — the same VAD,
+        # pre-roll, commit guard and noise handling decide what counts as
+        # speech. Only what happens AFTER a transcript settles is different.
+        dictation_only = False
+
         # --- long-form dictation -------------------------------------------
         # The grievance arrives as several utterances with thinking pauses
         # between them. They are kept IN ORDER and joined at the end; nothing
@@ -408,7 +427,8 @@ async def voice(websocket: WebSocket, session_id: str, language: str = "en") -> 
             everything it has learnt about the room survives, and every test
             that decides whether a sound was speech is untouched.
             """
-            vad.set_hangover(settings.voice_long_silence_ms if long_mode
+            patient = long_mode and not dictation_only
+            vad.set_hangover(settings.voice_long_silence_ms if patient
                              else settings.voice_silence_ms)
 
         def assistant_has_the_floor() -> bool:
@@ -431,6 +451,13 @@ async def voice(websocket: WebSocket, session_id: str, language: str = "en") -> 
             """
             if not listening:
                 return Phase.IDLE
+            # Plain listening in dictation mode, whatever field the form
+            # happens to be on: the citizen is writing a sentence into a
+            # box, not answering the grievance question at length, and
+            # "Recording grievance…" over that would be a lie about what is
+            # being captured.
+            if dictation_only:
+                return Phase.LISTENING
             if pending is not None:
                 return Phase.WAITING_CONFIRMATION
             return Phase.LONG_LISTENING if long_mode else Phase.LISTENING
@@ -1235,6 +1262,15 @@ async def voice(websocket: WebSocket, session_id: str, language: str = "en") -> 
             await websocket.send_json(
                 {"type": "stt.final", "text": decision.text, "turn": utterance.turn})
 
+            # Dictation: the words, and nothing else. No read-back, no
+            # confirmation, no workflow turn, no reply spoken over them —
+            # the page puts the text in the box and the citizen decides what
+            # to do with it.
+            if dictation_only:
+                log.info("voice.dictated", extra={"chars": len(decision.text)})
+                await set_phase(resting())
+                return
+
             # A finished petition is a terminal state in the workflow: the
             # router stops at `ready`, so anything said now would vanish. The
             # assistant has just offered to read the document aloud, and an
@@ -1359,7 +1395,10 @@ async def voice(websocket: WebSocket, session_id: str, language: str = "en") -> 
                             "threshold": round(vad.speech_threshold, 1)})
             with contextlib.suppress(Exception):
                 await websocket.send_json({"type": "voice.noise", "high": True})
-            await start_speaking(speech_text.phrase("noisy_room", language))
+            # Shown on the page either way; SAID only where the assistant
+            # speaks at all. Dictation is silent by definition.
+            if not dictation_only:
+                await start_speaking(speech_text.phrase("noisy_room", language))
 
         async def watchdog() -> None:
             """Nudge, then ask, then stop — without touching the petition."""
@@ -1402,6 +1441,17 @@ async def voice(websocket: WebSocket, session_id: str, language: str = "en") -> 
                             await websocket.send_json(
                                 {"type": "voice.ended", "reason": "idle"})
                         return
+                    # Nudges are for a citizen being LED through the form.
+                    # In dictation mode nobody asked them a question, so
+                    # there is nothing to prompt them about — and a
+                    # microphone button that starts talking after twelve
+                    # seconds of thinking is the behaviour this mode exists
+                    # to escape.
+                    #
+                    # The idle timeout above still applies: an open
+                    # microphone nobody is using should still close.
+                    if dictation_only:
+                        continue
                     if quiet > settings.voice_ask_after_s and nudges < 2:
                         nudges = 2
                         await start_speaking(speech_text.phrase("still_there", language))
@@ -1464,6 +1514,7 @@ async def voice(websocket: WebSocket, session_id: str, language: str = "en") -> 
                              "message": phrase("dictation_stopped", language)})
                         continue
                     listening = True
+                    dictation_only = payload.get("mode") == "dictation"
                     # Declared by the page rather than assumed. A page that
                     # cannot report playback is timed by the length of the
                     # audio instead of being waited on until a grace period
@@ -1479,8 +1530,12 @@ async def voice(websocket: WebSocket, session_id: str, language: str = "en") -> 
                         watchdog_task = asyncio.create_task(watchdog())
                     # Greet with the question that is actually outstanding,
                     # asked by the workflow rather than invented here.
+                    #
+                    # Not in dictation mode. Somebody who pressed the
+                    # microphone beside the text box to write one sentence
+                    # does not want the form read to them first.
                     current = await workflow.snapshot(session_id)
-                    if current:
+                    if current and not dictation_only:
                         await respond(current)
                     # What the citizen had already said before the connection
                     # dropped. Sent AFTER the question, so the page draws the

@@ -624,8 +624,17 @@ class TestTheDocumentAppearsWhereTheAnimationPlayed:
         for anchor, side, what in routes:
             assert anchor in script, f"{what}: {anchor!r} is gone from the page"
             at = script.index(anchor)
-            # Wide enough to clear the comment that explains each one.
-            window = script[max(0, at - 800):at] if side == "before"                 else script[at:at + 800]
+            if side == "before":
+                # Wide enough to clear the comment that explains each one.
+                window = script[max(0, at - 800):at]
+            else:
+                # To the END OF THE BLOCK, not a fixed number of characters.
+                # A character count measures how much COMMENT sits between
+                # the anchor and the call: explaining the dictation branch
+                # pushed `beginDocumentWork` past 800 characters and failed a
+                # test about behaviour that had not changed.
+                nxt = script.find("      case ", at + 1)
+                window = script[at:nxt if nxt != -1 else at + 2000]
             assert "beginDocumentWork(" in window, (
                 f"{what} no longer opens the drafting panel")
 
