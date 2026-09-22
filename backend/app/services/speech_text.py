@@ -22,10 +22,10 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from ..domain.fields import SENSITIVE_TYPES
+from ..domain.fields import SENSITIVE_TYPES, SPEAK_NEVER_TYPES
 from ..domain.phrasing import Language
 from ..domain.templates import LetterTemplate
-from .mask import mask_pii
+from .mask import mask_for_display, mask_pii
 
 # Digits, in groups or not, long enough to be an identifier. Deliberately
 # broad: a number that turns out to be harmless read aloud costs nothing,
@@ -41,11 +41,15 @@ SPOKEN: dict[str, dict[str, str]] = {
         "en": "I have recorded your {label} ending in {last4}.",
         "ta": "{last4} இல் முடியும் உங்கள் {label} பதிவு செய்யப்பட்டது.",
     },
+    # Spoken INSTEAD of the question for an identifier that must never be
+    # said in a room with a queue in it. The Tamil avoids putting the label
+    # in the accusative, because it is interpolated: "{label} ஐ" produced
+    # "ஆதார் எண் ஐ", which is not how the word is written.
     "type_it": {
-        "en": ("For your security, please type your {label} in the box rather "
-               "than saying it aloud."),
-        "ta": ("உங்கள் பாதுகாப்பிற்காக, {label} ஐ வாய்விட்டுச் சொல்லாமல் "
-               "பெட்டியில் தட்டச்சு செய்யவும்."),
+        "en": ("For your security, please type your {label} in the box on "
+               "screen rather than saying it aloud."),
+        "ta": ("பாதுகாப்பிற்காக, உங்கள் {label} வாய்விட்டுச் சொல்லாமல் "
+               "திரையில் உள்ள இடத்தில் உள்ளிடுங்கள்."),
     },
     "read_back": {
         "en": "I have all your details. Shall I prepare your petition?",
@@ -82,9 +86,26 @@ SPOKEN: dict[str, dict[str, str]] = {
     # `heard` carries the answer with identifiers already masked by the
     # caller: the screen shows the full value to the person standing at it,
     # the speaker is heard by the queue behind them.
+    # Used when the field being answered is not known — a bare quotation.
     "heard": {
         "en": "I heard: {answer}. Is that correct?",
         "ta": "நான் கேட்டது: {answer}. இது சரியா?",
+    },
+    # Preferred over `heard` wherever the field IS known, because naming it
+    # is what lets the citizen catch the answer landing in the wrong place.
+    # "I heard Harish" is agreeable even when Harish was meant to be the
+    # town; "I have recorded your name as Harish" is not.
+    "heard_field": {
+        "en": "I have recorded your {label} as {answer}. Is that correct?",
+        "ta": "உங்கள் {label} {answer} என்று பதிவு செய்துள்ளேன். இது சரியா?",
+    },
+    # For a number the room should not hear. The last four digits are what
+    # every bank and telco shows for exactly this purpose: enough for the
+    # citizen to recognise which number it is, not enough for the queue
+    # behind them to write it down.
+    "heard_last4": {
+        "en": "I have recorded your {label} ending in {last4}. Is that correct?",
+        "ta": "{last4} என்று முடியும் உங்கள் {label} பதிவு செய்துள்ளேன். இது சரியா?",
     },
     "say_again": {
         "en": "Okay, please tell me again.",
@@ -103,13 +124,15 @@ SPOKEN: dict[str, dict[str, str]] = {
     # free text. A citizen asked "tell me your grievance" the way they were
     # asked their age answers in one sentence and stops; being told they may
     # take their time is what produces the complaint they actually have.
+    # ONLY the pacing. The question itself lives in the template, where the
+    # rest of the form's wording lives; this is the part that is true of
+    # speaking and not of typing, and it is appended to the question rather
+    # than replacing it.
     "long_intro": {
-        "en": ("Please explain your grievance in detail. You may speak "
-               "continuously. Take your time. When you are finished, pause "
+        "en": ("Take as much time as you need. When you are finished, pause "
                "or say 'finished'."),
-        "ta": ("உங்கள் குறையை முழுமையாக சொல்லுங்கள். தேவையான அளவு விரிவாக "
-               "பேசலாம். நீங்கள் முடித்ததும் சிறிது நேரம் அமைதியாக இருக்கலாம் "
-               "அல்லது 'முடிந்தது' என்று சொல்லலாம்."),
+        "ta": ("தேவையான அளவு விரிவாக பேசுங்கள். நீங்கள் முடித்ததும் "
+               "'முடிந்தது' என்று சொல்லலாம்."),
     },
     # After a long grievance. The text is NOT read back: two minutes of
     # speech read back is two minutes nobody listens to, and the whole of it
@@ -268,7 +291,7 @@ def should_type_instead(field_type: str, allow_spoken_identifiers: bool) -> bool
     person this service exists for; an operator can turn spoken identifiers on
     for an assisted counter where that trade is the right one.
     """
-    return field_type in SENSITIVE_TYPES and not allow_spoken_identifiers
+    return field_type in SPEAK_NEVER_TYPES and not allow_spoken_identifiers
 
 
 def speech_for(
@@ -307,6 +330,50 @@ def speech_for(
             return phrase("type_it", language, label=spec.label_for(language))
 
     return redact_for_speech(display_text)
+
+
+def read_back_sentence(
+    spec: Any,
+    answer: str,
+    language: Language,
+    *,
+    lengthy: bool = False,
+) -> str:
+    """How a captured answer is said back to the citizen.
+
+    Names the field wherever one is known, because that is what lets someone
+    catch an answer landing in the wrong place. "I heard Harish" is agreeable
+    even when Harish was meant to be the town; "I have recorded your name as
+    Harish" is not.
+
+    An identifier is described by its last four digits rather than recited.
+    The screen beside them carries the full value; the queue behind them does
+    not need it.
+
+    A long answer is summarised — two minutes of speech read back is two
+    minutes nobody listens to, and the whole of it is on the screen.
+
+    Lives here rather than inside the socket so it can be tested as the
+    function it is. It was a closure, and a test that reproduced its logic
+    instead of calling it passed happily while the real one was broken.
+    """
+    if lengthy:
+        return phrase("long_captured", language)
+
+    spoken = mask_for_display(str(answer))
+    if spec is None:
+        return phrase("heard", language, answer=spoken)
+
+    label = spec.speech_label_for(language)
+    if spec.type in SENSITIVE_TYPES:
+        digits = re.sub(r"\D", "", str(answer))
+        if len(digits) >= 4:
+            return phrase("heard_last4", language, label=label, last4=digits[-4:])
+    # A full stop inside the quotation collides with the sentence built
+    # around it: "your grievance: no water came. is that correct?" reads as
+    # two broken sentences when spoken.
+    return phrase("heard_field", language, label=label,
+                  answer=spoken.rstrip(" .।"))
 
 
 def acknowledgement(

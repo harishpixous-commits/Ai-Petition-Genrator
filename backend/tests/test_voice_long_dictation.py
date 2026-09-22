@@ -382,7 +382,7 @@ class TestWhatTheAssistantSays:
             session.drain("tts.start")
             said = " ".join(session.spoken_lines())
 
-        assert "take your time" in said.lower(), said
+        assert "as much time as you need" in said.lower(), said
         # Appended to the workflow's own question, not instead of it.
         assert AtGrievance.question() in said, said
 

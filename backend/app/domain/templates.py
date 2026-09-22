@@ -45,9 +45,18 @@ class TemplateField:
     # Words a citizen may use to name this field when correcting it, per
     # language. Data, so that local usage can be added without a code change.
     aliases: dict[str, tuple[str, ...]] = dc_field(default_factory=dict)
+    # What to call this field in a SPOKEN sentence, when the form's own label
+    # does not sit well in one. A form column reads "Name of petitioner";
+    # said aloud that becomes "your name of petitioner". Optional, and falls
+    # back to the label, so only the fields that need it carry one.
+    speech_label: dict[str, str] = dc_field(default_factory=dict)
 
     def label_for(self, language: Language) -> str:
         return self.label.get(language) or self.label.get("en") or self.name
+
+    def speech_label_for(self, language: Language) -> str:
+        return (self.speech_label.get(language) or self.speech_label.get("en")
+                or self.label_for(language))
 
     def prompt_for(self, language: Language) -> str:
         return self.prompt.get(language) or self.prompt.get("en") or self.label_for(language)
@@ -122,6 +131,10 @@ def _load_one(path: Path) -> LetterTemplate:
                 required=bool(entry.get("required", True)),
                 label=_as_lang_map(entry.get("label"), name.replace("_", " ").title()),
                 prompt=_as_lang_map(entry.get("prompt")),
+                # Empty unless the template supplies one, so `speech_label_for`
+                # falls back to the label for every field that does not.
+                speech_label=(_as_lang_map(entry["speech_label"])
+                              if entry.get("speech_label") else {}),
                 skippable=bool(entry.get("skippable", not entry.get("required", True))),
                 aliases={
                     str(lang): tuple(str(a).lower() for a in words)

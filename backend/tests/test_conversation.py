@@ -90,7 +90,10 @@ class TestTamilFlow:
         c = chat("en")
         state = await c.open("எனக்கு ஒரு மனு வேண்டும்")
         assert state["language"] == "ta"
-        assert "பெயர்" in state["reply"]
+        # The STEM. The question asks for "பெயரை" (accusative), and "பெயர்"
+        # with its pulli is not a substring of it — Tamil inflects by suffix,
+        # and an assertion on the citation form fails on a correct sentence.
+        assert "பெயர" in state["reply"]
 
     async def test_validation_errors_come_back_in_tamil(self, chat):
         c = chat("ta")

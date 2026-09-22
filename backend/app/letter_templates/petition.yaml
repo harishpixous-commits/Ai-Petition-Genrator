@@ -67,9 +67,15 @@ fields:
       en: [name, my name, full name]
       ta: [பெயர், என் பெயர், எனது பெயர், பெயரை, பேர்]
     label: {en: Name of petitioner, ta: மனுதாரர் பெயர்}
+    # The form column says "Name of petitioner"; a sentence says "your name".
+    speech_label: {en: name, ta: பெயர்}
     prompt:
-      en: What is your name?
-      ta: உங்கள் பெயர் என்ன?
+      en: >-
+        Hello. I will ask you a few details so your petition can be prepared.
+        First, please tell me your name.
+      ta: >-
+        வணக்கம். உங்கள் மனுவை பதிவு செய்ய சில தகவல்களை கேட்கிறேன்.
+        முதலில் உங்கள் பெயரை சொல்லுங்கள்.
 
   - name: age
     type: age
@@ -79,8 +85,8 @@ fields:
       ta: [வயது, என் வயது, வயதை, வயசு, வயசை]
     label: {en: Age, ta: வயது}
     prompt:
-      en: What is your age?
-      ta: உங்கள் வயது என்ன?
+      en: Thank you. Please tell me your age.
+      ta: நன்றி. உங்கள் வயதை சொல்லுங்கள்.
 
   - name: mobile
     type: mobile
@@ -89,9 +95,13 @@ fields:
       en: [mobile, phone, phone number, mobile number, contact number]
       ta: [கைபேசி, கைபேசி எண், கைபேசி எண்ணை, தொலைபேசி, போன், மொபைல், தொடர்பு எண்]
     label: {en: Mobile number, ta: கைபேசி எண்}
+    # The document says "கைபேசி எண்", which is the formal word. The spoken
+    # conversation says "மொபைல் எண்", which is what the question asks for —
+    # one conversation should not use two words for the same thing.
+    speech_label: {en: mobile number, ta: மொபைல் எண்}
     prompt:
-      en: What is your mobile number?
-      ta: உங்கள் கைபேசி எண் என்ன?
+      en: Right. Next, please tell me your contact mobile number.
+      ta: சரி. அடுத்து உங்கள் தொடர்பு மொபைல் எண்ணை சொல்லுங்கள்.
 
   - name: address
     type: address
@@ -101,8 +111,8 @@ fields:
       ta: [முகவரி, என் முகவரி, முகவரியை, வீடு, விலாசம்]
     label: {en: Address, ta: முகவரி}
     prompt:
-      en: What is your full address?
-      ta: உங்கள் முழு முகவரி என்ன?
+      en: Thank you. Now please tell me your full address.
+      ta: நன்றி. இப்போது உங்கள் முழு முகவரியை சொல்லுங்கள்.
 
   - name: aadhaar
     type: aadhaar
@@ -112,8 +122,12 @@ fields:
       ta: [ஆதார், ஆதார் எண், ஆதார் எண்ணை, ஆதாரை, அடையாள எண்]
     label: {en: Aadhaar number, ta: ஆதார் எண்}
     prompt:
-      en: Please say your 12-digit Aadhaar number.
-      ta: உங்கள் 12 இலக்க ஆதார் எண்ணைச் சொல்லுங்கள்.
+      en: >-
+        Next I need your Aadhaar details. For your security, please type your
+        12-digit Aadhaar number in the box rather than saying it aloud.
+      ta: >-
+        அடுத்து ஆதார் விவரம் தேவைப்படுகிறது. பாதுகாப்பிற்காக, உங்கள் ஆதார்
+        எண்ணை பேசுவதற்கு பதிலாக திரையில் உள்ள இடத்தில் உள்ளிடுங்கள்.
 
   # The whole substance of the petition. Free text, deliberately: a grievance
   # that has to fit a dropdown is a grievance that has been changed. It is
@@ -126,8 +140,14 @@ fields:
       ta: [குறை, குறையை, புகார், புகாரை, பிரச்சனை, பிரச்சினை, விவகாரம்]
     label: {en: Grievance, ta: குறை}
     prompt:
-      en: Now please tell me your grievance, in your own words.
-      ta: இப்போது உங்கள் குறையை உங்கள் சொந்த வார்த்தைகளில் சொல்லுங்கள்.
+      en: >-
+        Thank you. Now please describe your grievance fully. Tell me what the
+        problem is, when it started, and whether you have submitted any
+        petition or complaint about it before.
+      ta: >-
+        நன்றி. இப்போது உங்கள் குறையை முழுமையாக சொல்லுங்கள். என்ன பிரச்சனை
+        ஏற்பட்டுள்ளது, எப்போது தொடங்கியது, இதற்கு முன்பு ஏதேனும் மனு அல்லது
+        புகார் அளித்திருந்தால் அதையும் சொல்லலாம்.
 
 # Printed on the petition so a receiving office can tell what should have
 # arrived with it. Both lists are edited here, never in code.

@@ -645,6 +645,25 @@ def is_sensitive(field_type: str) -> bool:
     return field_type in SENSITIVE_TYPES
 
 
+# The identifiers a citizen must never be ASKED to say out loud. A narrower
+# set than the one above, and narrower on purpose.
+#
+# Everything in SENSITIVE_TYPES is kept out of model prompts and masked on
+# the way back. That is about where a value travels. This is about a
+# different risk: a room. A government counter has a queue in it, and an
+# Aadhaar or a bank account number said aloud there is heard by strangers
+# and cannot be taken back.
+#
+# A mobile number is not in the same class. Citizens read theirs out at
+# counters constantly, it is printed on the petition they are about to sign,
+# and asking them to type it instead adds a keyboard step to a voice form
+# for a number they will say anyway. It is still masked to its last four
+# digits whenever the assistant speaks it back.
+SPEAK_NEVER_TYPES: frozenset[str] = frozenset(
+    {"aadhaar", "bank_account", "ifsc", "pan", "ration_card", "voter_id"}
+)
+
+
 def validate_field(field_type: str, raw: str) -> FieldResult:
     """Validate `raw` as `field_type`. An unknown type is a template bug, not a
     citizen error, so it fails loudly rather than silently accepting anything."""

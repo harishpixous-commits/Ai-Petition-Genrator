@@ -194,6 +194,21 @@ def expects_confirmation(state: dict | None) -> bool:
             or bool(values.get("awaiting_correction")))
 
 
+def field_on_the_table(state: dict | None):
+    """The field the citizen is answering right now, or None.
+
+    Taken from the template and the answers already given — the same call
+    the workflow makes to decide what to ask — rather than tracked
+    separately here. A voice layer with its own idea of which question is
+    outstanding is a voice layer that will eventually disagree with the
+    form.
+    """
+    values = state or {}
+    if str(values.get("status") or "") != "collecting":
+        return None
+    return next_field(the_template(), values.get("fields") or {})
+
+
 def wants_long_dictation(state: dict | None) -> bool:
     """Is the question on the table one a citizen answers at length?
 
@@ -289,6 +304,7 @@ async def voice(websocket: WebSocket, session_id: str, language: str = "en") -> 
         read_back_wanted = settings.voice_read_back and wants_read_back(state)
         long_mode = wants_long_dictation(state)
         long_introduced = False
+        asking = field_on_the_table(state)
 
         # ---------------------------------------------------------------- #
         # Session state. One phase, one lock, one cancellable speech task.
@@ -648,7 +664,7 @@ async def voice(websocket: WebSocket, session_id: str, language: str = "en") -> 
             if result is None:
                 return
             nonlocal confirmation_expected, read_back_wanted, long_mode
-            nonlocal long_introduced
+            nonlocal long_introduced, asking
             language = result.get("language", language)
             confirmation_expected = expects_confirmation(result)
             # Re-read after every turn. The workflow moves from collecting to
@@ -656,6 +672,7 @@ async def voice(websocket: WebSocket, session_id: str, language: str = "en") -> 
             # would ask the citizen to confirm their own "yes".
             read_back_wanted = settings.voice_read_back and wants_read_back(result)
             long_mode = wants_long_dictation(result)
+            asking = field_on_the_table(result)
             apply_pace()
             view = session_view(result)
             reply = result.get("reply") or ""
@@ -872,9 +889,8 @@ async def voice(websocket: WebSocket, session_id: str, language: str = "en") -> 
             # nobody listens to, and the whole of it is already on screen. A
             # short answer is recited, because hearing it is the only way a
             # citizen who cannot read the screen can check it.
-            sentence = said or (
-                speech_text.phrase("long_captured", language) if lengthy
-                else speech_text.phrase("heard", language, answer=spoken))
+            sentence = said or speech_text.read_back_sentence(
+                asking, answer, language, lengthy=lengthy)
             await start_speaking(sentence, as_phase=Phase.READING_BACK)
 
         async def confirm_pending() -> None:

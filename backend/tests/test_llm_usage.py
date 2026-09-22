@@ -31,11 +31,16 @@ class TestHappyPathMakesNoModelCall:
             assert state["understood_by"] == "fast-path", value
 
     async def test_asking_a_question_is_never_a_model_call(self, chat, answers, llm_spy):
-        """"What is your name?" is a sentence someone wrote. It is not generated."""
+        """The opening question is a sentence somebody wrote in the template.
+        It is not generated, and this compares against the template rather
+        than against a copy of the words — a wording change is an edit to
+        `petition.yaml`, not a reason for this test to fail."""
+        from app.domain.templates import next_field, the_template
+
         c = chat()
         state = await c.open()
         assert llm_spy.count == 0
-        assert state["reply"] == "What is your name?"
+        assert state["reply"] == next_field(the_template(), {}).prompt_for("en")
 
     async def test_the_read_back_and_confirmation_call_nothing(
         self, chat, answers, llm_spy
@@ -105,8 +110,11 @@ class TestTheModelIsUsedWhereItHelps:
         c = chat()
         await c.open()
         state = await c.say("what documents do I need?")
+        from app.domain.templates import next_field, the_template
+
         assert "Aadhaar card" in state["reply"], "the answer"
-        assert "What is your name?" in state["reply"], "and then the question again"
+        assert next_field(the_template(), {}).prompt_for("en") in state["reply"], (
+            "and then the question again")
 
     async def test_a_fourth_failure_gets_a_fresh_phrasing(
         self, chat, answers, fake_llm
@@ -181,8 +189,10 @@ class TestModelUnavailable:
         c = chat()
         await c.open()
         state = await c.say("why do you need this?")
+        from app.domain.templates import next_field, the_template
+
         assert phrasing.phrase("not_understood", "en") in state["reply"]
-        assert "What is your name?" in state["reply"]
+        assert next_field(the_template(), {}).prompt_for("en") in state["reply"]
         assert state["awaiting"] == "applicant_name"
 
     async def test_a_model_that_returns_nonsense_cannot_widen_the_record(
