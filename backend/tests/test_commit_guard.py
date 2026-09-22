@@ -131,6 +131,41 @@ class TestDuplicatesAndStaleResults:
             guard.judge(filler, spoken())
         assert guard.judge("Harish Kumar", spoken()).ok
 
+    def test_an_answer_the_citizen_was_asked_to_repeat_is_not_a_duplicate(self):
+        """They rejected the read-back and are saying it again ON PURPOSE.
+
+        Without this the loop traps them: the assistant asks them to repeat
+        the answer and then discards the repetition, silently, every time.
+        """
+        guard = SpeechCommitGuard()
+        assert guard.judge("12 Kumar Street", spoken()).ok
+        guard.forget("12 Kumar Street")
+        assert guard.judge("12 Kumar Street", spoken()).ok
+
+    def test_forgetting_one_answer_does_not_forget_the_others(self):
+        guard = SpeechCommitGuard()
+        guard.judge("12 Kumar Street", spoken())
+        guard.judge("Harish Kumar", spoken())
+        guard.forget("12 Kumar Street")
+        assert guard.judge("Harish Kumar", spoken()).verdict is Verdict.DUPLICATE
+
+    def test_agreeing_twice_running_is_not_repeating_yourself(self):
+        """Every field now ends with a confirmation, so "yes" is said after
+        the name and again after the address. Treating the second one as a
+        duplicate leaves the citizen confirming into silence."""
+        guard = SpeechCommitGuard()
+        first = guard.judge("yes that is right", spoken(), expecting_confirmation=True)
+        second = guard.judge("yes that is right", spoken(), expecting_confirmation=True)
+        assert first.ok and second.ok, second.verdict
+
+    def test_but_answers_are_still_deduplicated(self):
+        """The exemption is for confirmations only. A repeated ANSWER is
+        still the same answer arriving twice."""
+        guard = SpeechCommitGuard()
+        assert guard.judge("12 Kumar Street", spoken()).ok
+        assert (guard.judge("12 Kumar Street", spoken()).verdict
+                is Verdict.DUPLICATE)
+
     def test_a_result_from_a_previous_turn_is_refused(self):
         """The connection stalls, the citizen moves on, the old result lands.
         It must not answer the question they are on now."""

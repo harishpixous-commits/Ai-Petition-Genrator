@@ -278,13 +278,39 @@ class SpeechCommitGuard:
         if confidence is not None and confidence < min_confidence:
             return Decision(Verdict.LOW_CONFIDENCE)
 
-        digest = hashlib.sha1(normalised.encode("utf-8")).hexdigest()[:16]
-        if digest in self._recent:
-            return Decision(Verdict.DUPLICATE)
-        self._recent.append(digest)
-        del self._recent[:-6]
+        # Duplicate protection is about CONTENT arriving twice. A reply to
+        # "is that correct?" is not content, and every field now ends with
+        # one: with per-answer read-back a citizen says "yes" after their
+        # name and "yes" again after their address, and the second one was
+        # dropped as a duplicate, leaving them confirming into silence.
+        #
+        # Nothing is weakened for answers. Stale-turn protection is separate
+        # and still applies, and a confirmation cannot become a field value —
+        # it is consumed by the read-back loop and never reaches the workflow.
+        if not expecting_confirmation:
+            digest = hashlib.sha1(normalised.encode("utf-8")).hexdigest()[:16]
+            if digest in self._recent:
+                return Decision(Verdict.DUPLICATE)
+            self._recent.append(digest)
+            del self._recent[:-6]
 
         return Decision(Verdict.COMMIT, cleaned)
+
+    def forget(self, text: str) -> None:
+        """Drop one transcript from the duplicate cache.
+
+        Called when the citizen REJECTS an answer that was read back to them.
+        They are about to say the same thing again on purpose, and refusing it
+        as a duplicate would trap them: the assistant asks them to repeat it
+        and then discards the repetition, silently, forever.
+
+        This narrows duplicate protection to what it is for — the same
+        transcript arriving twice without anyone intending it — rather than
+        removing it.
+        """
+        digest = hashlib.sha1(
+            _normalise(str(text or "")).encode("utf-8")).hexdigest()[:16]
+        self._recent[:] = [d for d in self._recent if d != digest]
 
     @staticmethod
     def _script_matches(text: str, language: Language) -> bool:

@@ -114,7 +114,12 @@ class TestTheLongWaitIsNamedApartFromTheShortOne:
         body = body[:body.index("async def run_turn")]
 
         assert "set_phase(Phase.GENERATING)" in body
-        assert socket.count("Phase.GENERATING") == 1, (
+        # Counts the ASSIGNMENT, not the mention. Counting mentions also
+        # caught reads — the watchdog names GENERATING to know it is a busy
+        # phase and must not time the session out mid-composition — and a
+        # test that fails on a correct read teaches people to delete the
+        # test rather than to keep the rule.
+        assert socket.count("set_phase(Phase.GENERATING)") == 1, (
             "the generating phase is set somewhere other than the announcer")
 
     def test_the_two_waits_do_not_read_the_same_to_a_citizen(self):
@@ -168,10 +173,50 @@ class TestTheButtonRuleMatchesTheStateItNames:
         unreachable = rules - page_states()
         assert not unreachable, f"CSS for states that cannot occur: {unreachable}"
 
+    @staticmethod
+    def _declarations(css: str, state: str) -> str:
+        """What the button is styled as in one state.
+
+        Looks the rule up by the SELECTOR it contains rather than by an exact
+        string, because states that should look the same are grouped — a
+        read-back is the assistant speaking and shares its colour. Pinning
+        the spelling instead made grouping two states fail a test about
+        whether two OTHER states differ.
+        """
+        # Comments first. A `/* ... */` above a rule is part of the text
+        # between the previous `}` and this `{`, so without this the selector
+        # never matches and every rule reads as absent — which looks exactly
+        # like the missing-CSS bug these tests exist to catch.
+        css = re.sub(r"/\*.*?\*/", " ", css, flags=re.S)
+        for selectors, body in re.findall(r"([^{}]+)\{([^{}]*)\}", css):
+            names = [part.strip() for part in selectors.split(",")]
+            if f".hbtn.voice-{state}" in names:
+                return body.strip()
+        return ""
+
     def test_the_two_busy_states_are_told_apart(self):
         css = read("app.css")
-        assert ".hbtn.voice-assistant_speaking{" in css
-        assert ".hbtn.voice-generating{" in css
+        speaking = self._declarations(css, "assistant_speaking")
+        generating = self._declarations(css, "generating")
+        assert speaking, "no rule for the assistant speaking"
+        assert generating, "no rule for writing the petition"
+        assert speaking != generating, (
+            "the two waits look identical, which is the bug the states exist to fix")
+
+    def test_a_read_back_looks_like_the_assistant_speaking(self):
+        """Because it is. A separate colour for it would say something
+        changed about the session when only the question did."""
+        css = read("app.css")
+        assert (self._declarations(css, "reading_back")
+                == self._declarations(css, "assistant_speaking") != "")
+
+    def test_waiting_for_agreement_still_looks_like_an_open_microphone(self):
+        """The citizen can answer by speaking. A neutral button there reads
+        as voice having stopped, and they press Start Voice again — which is
+        the one thing this whole loop is meant to stop them having to do."""
+        css = read("app.css")
+        assert (self._declarations(css, "waiting_confirmation")
+                == self._declarations(css, "listening") != "")
 
 
 class TestAFailedUtteranceIsNotAFailedSession:

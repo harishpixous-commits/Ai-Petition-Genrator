@@ -113,6 +113,69 @@ class Settings(BaseSettings):
     # spoken identifier reaches the room and the speech provider, and the
     # keyboard path for it already exists. An assisted counter can turn it on.
     voice_spoken_identifiers: bool = False
+    # Read each captured answer back and wait for the citizen to agree before
+    # it is used. On by default: dictation into a government form is the case
+    # where a misheard house number is discovered at the counter rather than
+    # on the screen. An assisted counter where the operator watches the text
+    # appear can turn it off and save a turn per field.
+    voice_read_back: bool = True
+
+    # -- turn-taking -------------------------------------------------------- #
+    #
+    # The assistant finishes speaking before the microphone is allowed to
+    # produce an answer. On by default, and it OVERRIDES `voice_barge_in`.
+    #
+    # The reason is the failure it prevents rather than the politeness it
+    # buys. The microphone is open during playback so that a citizen can cut
+    # in; with laptop speakers a foot from the microphone, what it hears is
+    # the assistant. Sarvam transcribes that perfectly well, and the result is
+    # a fabricated answer in the citizen's own form — the assistant asking
+    # "is that correct?" about a sentence it said itself.
+    #
+    # Echo rejection exists (`during_playback` / ECHO_SUSPECTED) and catches
+    # most of it. Most is not enough for a government record, so the default
+    # is sequential: reliability over interruption. A deployment with headsets
+    # can set this false and get barge-in back.
+    voice_half_duplex: bool = True
+    # How long to wait for the page to report that playback actually finished
+    # before giving up and using the measured length of the audio instead.
+    # Only a backstop: the page reports the real event, and this stops a page
+    # that cannot (an old client, a muted tab) from stalling the turn.
+    voice_playback_grace_s: float = 8.0
+
+    # -- long-form dictation (the grievance) -------------------------------- #
+    #
+    # A name is three words; a grievance is a story, told with pauses. The
+    # same end-of-speech rule cannot serve both — 700 ms of silence is a
+    # breath in the middle of a sentence, and ending the answer there hands
+    # in half a complaint.
+    voice_long_silence_ms: int = 2500
+    # After this much further quiet, a long answer is taken as finished. It
+    # is on top of the silence above, so the citizen gets roughly six seconds
+    # of thinking time before being asked to confirm.
+    voice_long_finish_s: float = 3.5
+    # Longer than this and the read-back is a summary rather than the text:
+    # a two-minute grievance read back word for word is a two-minute wait
+    # that nobody listens to. The full text is on screen either way, and
+    # "read it to me" plays the whole thing on request.
+    voice_long_readback_chars: int = 240
+
+    # -- telling the citizen the room is too loud --------------------------- #
+    #
+    # ADVISORY ONLY. Nothing is rejected for being said in a noisy room — the
+    # speech threshold is already relative to the measured floor, so a loud
+    # room raises the bar rather than closing the door. This is the point at
+    # which raising the bar starts to cost a soft-voiced citizen their answer,
+    # and saying so is more use than silently failing to hear them.
+    #
+    # 600 RMS out of 32768 is about -35 dBFS: a noticeably loud room. The
+    # detector would then need roughly 1900 RMS to call something speech, and
+    # a quiet speaker sits near 1500 — which is exactly when moving closer to
+    # the microphone is the thing that helps.
+    voice_noise_advisory_rms: float = 600.0
+    # How many consecutive two-second checks must agree before saying so. A
+    # door slamming is not a noisy room.
+    voice_noise_advisory_checks: int = 3
 
     # -- what is allowed to become an answer -------------------------------- #
     #

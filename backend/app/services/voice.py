@@ -217,6 +217,25 @@ class VoiceActivityDetector:
             return Speech.CONTINUING
         return Speech.SILENCE
 
+    def set_hangover(self, ms: int) -> None:
+        """How long a silence must last before the utterance is over.
+
+        Changed mid-session when the question changes shape. A name is three
+        words and 700 ms of silence after it means the citizen has finished;
+        a grievance is a story told with pauses, and ending it at the first
+        breath hands in half a complaint. The rest of what the detector has
+        learnt about the room is deliberately kept — only the patience
+        changes.
+
+        Clamped below at the frame size, because a hangover shorter than one
+        frame would end every utterance on the frame it started.
+        """
+        self.s.hangover_ms = max(int(ms), self.s.frame_ms)
+
+    @property
+    def hangover_ms(self) -> int:
+        return self.s.hangover_ms
+
     @property
     def speaking(self) -> bool:
         return self._in_speech

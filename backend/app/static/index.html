@@ -197,6 +197,7 @@
           <canvas id="voiceWave" aria-hidden="true"></canvas>
           <div class="vf-status">
             <span id="voiceStatus"></span>
+            <span class="vf-note" id="voiceNote"></span>
             <span class="vf-heard" id="voiceTranscript"></span>
           </div>
         </div>
@@ -209,6 +210,47 @@
       <div class="vb-under">
         <div class="vb-meter" id="voiceMeter" aria-hidden="true" hidden><i></i><u></u></div>
         <div class="vb-diag" id="voiceDiag" hidden></div>
+      </div>
+
+      <!-- A grievance being told at length. Shown while it is being
+           captured, so the citizen can watch their own words arrive and see
+           that nothing has been dropped — which is the only way to trust a
+           machine with a complaint you cannot see. -->
+      <div class="dictation" id="dictation" hidden role="group" aria-live="polite">
+        <div class="dc-head">
+          <span class="dc-dot" aria-hidden="true"></span>
+          <span class="dc-title" id="dictationTitle"></span>
+          <span class="dc-time" id="dictationTime">00:00</span>
+          <span class="dc-count" id="dictationCount"></span>
+        </div>
+        <p class="dc-text" id="dictationText"></p>
+        <div class="dc-acts">
+          <button class="btn primary" id="dictationFinish" type="button"></button>
+          <button class="btn" id="dictationRestart" type="button"></button>
+        </div>
+      </div>
+
+      <!-- What was heard, before it is used. The buttons do exactly what
+           saying "yes" and "no" do — same socket, same server call — so a
+           citizen whose voice is not being picked up cleanly can finish the
+           answer by tapping without starting over. `aria-live` because the
+           assistant is asking a question the screen reader user must hear
+           about; `assertive` because they are being asked to decide. -->
+      <div class="answer-check" id="answerCheck" hidden role="group"
+           aria-live="assertive" aria-atomic="true">
+        <div class="ac-text">
+          <span class="ac-label" id="answerHeading"></span>
+          <strong class="ac-value" id="answerValue"></strong>
+          <span class="ac-ask" id="answerAsk"></span>
+        </div>
+        <div class="ac-acts">
+          <button class="btn primary" id="answerConfirm" type="button"></button>
+          <button class="btn" id="answerRetry" type="button"></button>
+          <!-- Only for an answer too long to have been read out. The
+               assistant said "review the text on screen"; a citizen who
+               cannot read it needs this. -->
+          <button class="btn" id="answerReadOut" type="button" hidden></button>
+        </div>
       </div>
 
       <div class="voice-error-banner" id="voiceError" hidden role="alert">

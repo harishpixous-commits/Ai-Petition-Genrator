@@ -54,7 +54,12 @@ header.app{position:sticky;top:0;z-index:40;min-height:var(--header-h);display:f
    replaced never matched anything, so the button stayed grey while the
    assistant talked. `generating` is the long wait, coloured apart from the
    short one so a two-minute composition does not look like a hang. */
-.hbtn.voice-assistant_speaking{color:var(--ok);background:var(--ok-soft);border-color:#bcdccd}
+/* Reading an answer back is the assistant speaking, and looks like it. */
+.hbtn.voice-assistant_speaking,.hbtn.voice-reading_back{color:var(--ok);background:var(--ok-soft);border-color:#bcdccd}
+/* Waiting for the citizen to agree. The microphone IS open, so this keeps
+   the listening colour — a header button that goes neutral here reads as
+   voice having stopped, and the citizen presses Start Voice again. */
+.hbtn.voice-waiting_confirmation{color:var(--bad);background:var(--bad-soft);border-color:#e6bbb6}
 .hbtn.voice-generating{color:var(--warn);background:var(--warn-soft);border-color:#eedfbb}
 select.lang{min-height:39px;padding:8px 29px 8px 12px;border:1px solid var(--line);border-radius:8px;background:white url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='m3 5 3 3 3-3' fill='none' stroke='%236b7b84' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat right 10px center;color:var(--ink);font-size:12px;appearance:none}
 select.lang:hover{border-color:#a9c2c5}
@@ -552,6 +557,73 @@ details.drawer>summary .count{padding:1px 6px;background:var(--blue-soft);color:
 /* The meter and the diagnostics live under the field, out of the way. */
 .vb-under { flex: none; width: 100%; }
 
+/* The quiet second line under the voice state: "noise reduction active", or
+   the advisory when the room is too loud for that to be enough. Deliberately
+   understated — it is reassurance, not an alert. */
+.vf-note { font-size: 10.5px; letter-spacing: .2px; opacity: .78; }
+.vf-note.warn { opacity: 1; color: var(--warn); font-weight: 600; }
+
+/* A grievance being told. The live transcript is the point: a citizen who
+   can see their sentences arriving knows nothing has been lost, and a blank
+   panel with a timer on it proves nothing at all. */
+.dictation {
+  margin: 10px 16px 0; padding: 12px 14px;
+  border-radius: var(--r); font-size: 13px;
+  background: var(--surface-2); border: 1px solid var(--line);
+  animation: rise var(--step);
+}
+.dictation .dc-head {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 11px; font-weight: 700; letter-spacing: .4px;
+  text-transform: uppercase; color: var(--muted);
+}
+.dictation .dc-dot {
+  width: 8px; height: 8px; border-radius: 50%; background: var(--bad);
+  animation: dcpulse 1.4s ease-in-out infinite;
+}
+@keyframes dcpulse { 0%,100% { opacity: 1 } 50% { opacity: .25 } }
+.dictation .dc-time { margin-left: auto; font-variant-numeric: tabular-nums; }
+.dictation .dc-count { color: var(--muted); }
+/* Capped and scrollable rather than endless: a two-minute grievance would
+   otherwise push the composer off the screen while the citizen is still
+   talking into it. */
+.dictation .dc-text {
+  margin: 8px 0 0; max-height: 132px; overflow-y: auto;
+  font-size: 14px; line-height: 1.55; white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.dictation .dc-text:empty::before {
+  content: attr(data-empty); color: var(--muted); font-style: italic;
+}
+.dictation .dc-acts { display: flex; gap: 8px; margin-top: 10px; }
+.dictation .btn { height: 34px; padding: 0 14px; font-size: 12.5px; }
+
+/* The answer that was heard, waiting to be agreed with.
+   Sits above the error banner and below the waveform, in the citizen's line
+   of sight between the microphone and the conversation — this is the one
+   thing on the page they have to act on, and it is deliberately not styled
+   as a warning: nothing has gone wrong, they are simply being asked. */
+.answer-check {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  margin: 10px 16px 0; padding: 12px 14px;
+  border-radius: var(--r); font-size: 13px;
+  background: var(--surface-2); border: 1px solid var(--line);
+  animation: rise var(--step);
+}
+.answer-check .ac-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.answer-check .ac-label {
+  font-size: 10.5px; font-weight: 700; letter-spacing: .5px;
+  text-transform: uppercase; color: var(--muted);
+}
+/* The value wraps rather than being cut off. A truncated address is worse
+   than a tall panel: the citizen is being asked whether it is right. */
+.answer-check .ac-value {
+  font-size: 15px; line-height: 1.4; word-break: break-word;
+}
+.answer-check .ac-ask { font-size: 12px; color: var(--muted); }
+.answer-check .ac-acts { margin-left: auto; display: flex; gap: 8px; flex: none; }
+.answer-check .btn { height: 34px; padding: 0 14px; font-size: 12.5px; }
+
 /* Voice failed. The petition has not, and the page says so. */
 .voice-error-banner {
   display: flex; align-items: flex-start; gap: 10px;
@@ -669,6 +741,13 @@ details.drawer>summary .count{padding:1px 6px;background:var(--blue-soft);color:
   main.workspace,main.workspace.done,main.workspace.generating{padding:16px 12px 22px}.card{border-radius:13px}.card-head{padding:16px 15px;gap:9px}.ai-badge{width:33px;height:33px}.card-head h2{font-size:12px}.card-head .sub{font-size:8.5px}.details-toggle{font-size:9px;padding:7px}.details-toggle svg{width:14px;height:14px}
   .left{height:590px;min-height:490px;max-height:calc(100dvh - 95px)}#log{padding:20px 14px;gap:18px}.turn{gap:7px}.avatar{width:24px;height:24px;border-radius:8px;font-size:11px}.bubble{padding:11px 13px;font-size:12px;max-width:89%;line-height:1.9}.turn.citizen .bubble{max-width:84%}.q-label{font-size:8px;letter-spacing:.45px}.q-label .req{font-size:7px}
   .composer{padding:12px}.composer textarea{padding-left:10px}.send-btn{padding:9px 11px;gap:5px}.send-btn svg{width:16px;height:16px}.icon-btn{width:30px}.composer-hint{font-size:8px;gap:8px}.composer-actions{gap:4px;margin-top:9px}.composer-actions #confirm{font-size:11px}
+  .dictation{margin:10px 10px 0;padding:10px;font-size:12px}
+  .dictation .dc-text{font-size:13px;max-height:110px}
+  .dictation .dc-acts .btn{flex:1 1 0;min-height:40px;height:auto}
+  .answer-check{margin:10px 10px 0;padding:10px;gap:9px;font-size:12px}
+  .answer-check .ac-value{font-size:14px}
+  .answer-check .ac-acts{margin-left:0;width:100%}
+  .answer-check .ac-acts .btn{flex:1 1 0;min-height:40px;height:auto}
   .voicebar{padding:10px;gap:9px}.mic-round{width:36px;height:36px}.voice-field{padding-inline:8px}.voice-field canvas{height:48px}.voice-field .vf-status{left:8px;font-size:8px}.vb-actions .btn{padding:7px;font-size:9px;min-height:32px;height:auto}.voice-error-banner{margin:10px 10px 0;padding:10px;gap:8px;flex-wrap:wrap;font-size:11px}.voice-error-banner .acts{margin-left:20px}.voice-error-banner .btn{font-size:10px;min-height:30px;height:auto}
   .doc-toolbar{gap:6px;padding:12px}.doc-toolbar .btn{flex:1 1 auto;font-size:9px;padding:7px 9px}.paper-wrap{padding:12px}.paper{padding:25px 20px;font-size:12px}.banner{padding:14px;gap:9px}.banner .ic{width:26px;height:26px;font-size:13px}.banner h3{font-size:12px}.banner p{font-size:10px}.banner .ref{margin-left:35px;text-align:left}.banner .ref b{font-size:9px}
   .modal{padding:23px 21px}.modal h3{font-size:17px}.modal p{font-size:12px}.modal-actions .btn{min-height:40px}

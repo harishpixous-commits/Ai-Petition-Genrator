@@ -149,9 +149,12 @@ const UI = {
     voiceState: {
       idle: "Voice off",
       connecting: "Connecting…",
-      listening: "Listening",
-      user_speaking: "Speaking…",
+      listening: "Listening…",
+      long_listening: "Recording grievance…",
+      user_speaking: "You're speaking…",
       transcribing: "Transcribing…",
+      reading_back: "Reading back…",
+      waiting_confirmation: "Waiting for confirmation",
       processing: "Thinking…",
       generating: "Writing your petition…",
       assistant_speaking: "Assistant speaking",
@@ -159,6 +162,22 @@ const UI = {
       error: "Voice stopped",
       ended: "Voice off",
     },
+    answerHeading: "Your answer",
+    answerAsk: "Is that correct?",
+    answerConfirm: "Confirm",
+    answerRetryBtn: "Retry",
+    answerSaved: "Confirmed ✓",
+    answerRetrying: "Retrying — please say it again",
+    answerReadOut: "Read it to me",
+    noiseOn: "✓ Noise reduction active",
+    noiseHigh: "High background noise — please speak a little closer to the microphone.",
+    dictationTitle: "Recording grievance…",
+    dictationPaused: "Grievance captured",
+    dictationEmpty: "Your words will appear here as you speak.",
+    dictationFinish: "Finish",
+    dictationRestart: "Start over",
+    dictationCount: (n) => n === 1 ? "1 part" : `${n} parts`,
+    dictationSafe: "Connection interrupted. Your recorded grievance is safe. Please continue.",
     voiceRetry: "Retry Voice", voiceContinueText: "Continue with Text",
     voiceUnavailable: "Voice is not available on this service. Your petition is safe — please type instead.",
     voiceLost: "The voice connection was lost. Your petition progress is safe.",
@@ -324,8 +343,11 @@ const UI = {
       idle: "குரல் நிறுத்தப்பட்டது",
       connecting: "இணைக்கப்படுகிறது…",
       listening: "கேட்கிறேன்…",
-      user_speaking: "பேசுகிறீர்கள்…",
+      long_listening: "குறை பதிவாகிறது…",
+      user_speaking: "நீங்கள் பேசுகிறீர்கள்…",
       transcribing: "புரிந்துகொள்கிறேன்…",
+      reading_back: "மீண்டும் வாசிக்கிறேன்…",
+      waiting_confirmation: "உறுதிப்படுத்தலுக்குக் காத்திருக்கிறேன்",
       processing: "புரிந்துகொள்கிறேன்…",
       generating: "மனுவை எழுதுகிறேன்…",
       assistant_speaking: "பதிலளிக்கிறேன்…",
@@ -333,6 +355,22 @@ const UI = {
       error: "குரல் நிறுத்தப்பட்டது",
       ended: "குரல் நிறுத்தப்பட்டது",
     },
+    answerHeading: "உங்கள் பதில்",
+    answerAsk: "இது சரியா?",
+    answerConfirm: "சரி",
+    answerRetryBtn: "மீண்டும்",
+    answerSaved: "உறுதி செய்யப்பட்டது ✓",
+    answerRetrying: "மீண்டும் சொல்லுங்கள்",
+    answerReadOut: "படித்துக் காட்டு",
+    noiseOn: "✓ பின்னணி சத்தம் குறைக்கப்படுகிறது",
+    noiseHigh: "பின்னணி சத்தம் அதிகமாக உள்ளது. மைக்ரோஃபோனுக்கு அருகில் பேசுங்கள்.",
+    dictationTitle: "குறை பதிவாகிறது…",
+    dictationPaused: "குறை பதிவு செய்யப்பட்டது",
+    dictationEmpty: "நீங்கள் பேசும்போது உங்கள் வார்த்தைகள் இங்கே தோன்றும்.",
+    dictationFinish: "முடிந்தது",
+    dictationRestart: "மீண்டும் தொடங்கு",
+    dictationCount: (n) => n === 1 ? "1 பகுதி" : `${n} பகுதிகள்`,
+    dictationSafe: "இணைப்பு தற்காலிகமாக துண்டிக்கப்பட்டது. இதுவரை பதிவு செய்யப்பட்ட குறை பாதுகாப்பாக உள்ளது. தொடர்ந்து சொல்லுங்கள்.",
     voiceRetry: "மீண்டும் முயற்சி", voiceContinueText: "தட்டச்சில் தொடர்",
     voiceUnavailable: "இந்தச் சேவையில் குரல் வசதி இல்லை. உங்கள் மனு பாதுகாப்பாக உள்ளது — தட்டச்சு செய்யவும்.",
     voiceLost: "குரல் இணைப்பு துண்டிக்கப்பட்டது. உங்கள் மனு பாதுகாப்பாக உள்ளது.",
@@ -1807,6 +1845,8 @@ $("copyBtn").onclick = async () => {
 const VOICE = {
   IDLE: "idle", CONNECTING: "connecting", LISTENING: "listening",
   USER_SPEAKING: "user_speaking", TRANSCRIBING: "transcribing",
+  READING_BACK: "reading_back", WAITING_CONFIRMATION: "waiting_confirmation",
+  LONG_LISTENING: "long_listening",
   PROCESSING: "processing", GENERATING: "generating",
   ASSISTANT_SPEAKING: "assistant_speaking",
   RECONNECTING: "reconnecting", ERROR: "error", ENDED: "ended",
@@ -1823,6 +1863,8 @@ const voice = {
   playing: [],          // sources currently scheduled
   queue: Promise.resolve(),
   playToken: 0,         // bumped to invalidate audio decoded before an interrupt
+  playedId: 0,          // the reply whose playback the server is waiting on
+  droppedMidDictation: false,   // the connection failed during a long answer
   muted: false,
   wants: false,         // the citizen asked for voice and has not ended it
   attempts: 0,
@@ -1830,6 +1872,13 @@ const voice = {
   partial: "",
   rms: 0,
   playRms: 0,
+  // What the browser's own audio processing actually settled on, read back
+  // from the track rather than assumed from what was requested.
+  processing: {},
+  // A slow estimate of the room, kept for the WAVEFORM ONLY. It never gates
+  // anything: what the server hears is untouched by it.
+  floorRms: 0,
+  noisyRoom: false,
   playAnalyser: null,
   playBins: null,
   meterRaf: null,
@@ -1858,6 +1907,26 @@ function paintVoice(extra) {
   $("voiceBar").hidden = !(voice.wants || s === VOICE.CONNECTING);
   $("voiceStatus").textContent = t.voiceState[s] || "";
 
+  // A second, quieter line under the state. It says only two things, and
+  // only while the microphone is actually open: that the room is being
+  // handled, or that it is too loud to handle. No levels, no thresholds, no
+  // codec — a citizen at a counter is not debugging an audio pipeline.
+  const note = $("voiceNote");
+  const openMic = [VOICE.LISTENING, VOICE.LONG_LISTENING, VOICE.USER_SPEAKING,
+                   VOICE.WAITING_CONFIRMATION].includes(s);
+  if (openMic && voice.noisyRoom) {
+    note.textContent = t.noiseHigh;
+    note.className = "vf-note warn";
+  } else if (openMic && voice.processing.noise === true) {
+    // Only when the track REPORTED it on. A claim the citizen cannot check
+    // is worse than no claim.
+    note.textContent = t.noiseOn;
+    note.className = "vf-note";
+  } else {
+    note.textContent = "";
+    note.className = "vf-note";
+  }
+
   if (extra.transcript !== undefined) {
     $("voiceTranscript").textContent = extra.transcript;
     $("voiceTranscript").classList.toggle("live", Boolean(extra.live));
@@ -1869,16 +1938,136 @@ function paintVoice(extra) {
   btn.className = "hbtn" + (s === VOICE.IDLE || s === VOICE.ENDED ? "" : " voice-" + s);
   $("micText").textContent = live || s === VOICE.CONNECTING ? t.voiceStop : t.voiceStart;
   btn.setAttribute("aria-label", $("micText").textContent);
-  $("micInline").classList.toggle("listening", s === VOICE.LISTENING || s === VOICE.USER_SPEAKING);
+  // WAITING_CONFIRMATION is in both lists below because the microphone is
+  // genuinely open then: the citizen can just say "yes". An indicator that
+  // goes dark there tells them to press something, which is the opposite of
+  // what the assistant has just asked for.
+  const micOpen = s === VOICE.LISTENING || s === VOICE.USER_SPEAKING
+    || s === VOICE.WAITING_CONFIRMATION || s === VOICE.LONG_LISTENING;
+  $("micInline").classList.toggle("listening", micOpen);
 
   const mute = $("voiceMute");
   mute.classList.toggle("muted", voice.muted);
-  mute.classList.toggle("live", !voice.muted && (s === VOICE.LISTENING || s === VOICE.USER_SPEAKING));
+  mute.classList.toggle("live", !voice.muted && micOpen);
   mute.setAttribute("aria-pressed", String(voice.muted));
   mute.setAttribute("aria-label", voice.muted ? t.unmute : t.mute);
   mute.title = voice.muted ? t.unmute : t.mute;
   $("voiceEnd").textContent = t.voiceEnd;
+
+  // Relabel the outstanding answer if the citizen changed language while it
+  // was up. The VALUE is left alone: it is what they said, not a label.
+  if (!$("answerCheck").hidden) {
+    $("answerHeading").textContent = t.answerHeading;
+    $("answerAsk").textContent = t.answerAsk;
+    $("answerConfirm").textContent = t.answerConfirm;
+    $("answerRetry").textContent = t.answerRetryBtn;
+  }
 }
+
+/* ------------------------------------------------- confirming one answer */
+/* The server reads each captured answer back and waits to be told it is
+   right. This is the visible half of that: the same question the assistant
+   just asked out loud, with the two replies as buttons.
+
+   The buttons do NOT decide anything locally. They send `answer.confirm` and
+   `answer.retry` and the server runs exactly the code it runs when it hears
+   "yes" or "no" — so the spoken and tapped paths cannot drift apart, and the
+   value that reaches the petition came from one place either way. */
+
+/* ------------------------------------------------- a grievance at length */
+/* The citizen is telling a story, and the panel is the receipt: every
+   sentence they finish appears in it. That matters more than the timer or
+   the count — a complaint you cannot see is a complaint you cannot check,
+   and this is the field where the whole petition lives. */
+
+function showDictation(m) {
+  const t = T();
+  const panel = $("dictation");
+  if (!m || (!m.capturing && !m.text)) {
+    panel.hidden = true;
+    stopDictationClock();
+    return;
+  }
+  $("dictationTitle").textContent = m.capturing ? t.dictationTitle : t.dictationPaused;
+  $("dictationCount").textContent = m.segments ? t.dictationCount(m.segments) : "";
+  $("dictationText").textContent = m.text || "";
+  $("dictationText").dataset.empty = t.dictationEmpty;
+  $("dictationFinish").textContent = t.dictationFinish;
+  $("dictationRestart").textContent = t.dictationRestart;
+  $("dictationFinish").disabled = !m.segments;
+  panel.hidden = false;
+  // The transcript grows downwards; a citizen watching it wants the words
+  // they just said, not the ones they opened with.
+  $("dictationText").scrollTop = $("dictationText").scrollHeight;
+  if (m.capturing) startDictationClock(); else stopDictationClock();
+}
+
+let dictationStartedAt = 0;
+let dictationTimer = null;
+
+function startDictationClock() {
+  if (dictationTimer) return;
+  dictationStartedAt = dictationStartedAt || Date.now();
+  const tick = () => {
+    const secs = Math.floor((Date.now() - dictationStartedAt) / 1000);
+    const mm = String(Math.floor(secs / 60)).padStart(2, "0");
+    const ss = String(secs % 60).padStart(2, "0");
+    $("dictationTime").textContent = `${mm}:${ss}`;
+  };
+  tick();
+  dictationTimer = setInterval(tick, 1000);
+}
+
+function stopDictationClock() {
+  if (dictationTimer) { clearInterval(dictationTimer); dictationTimer = null; }
+  if ($("dictation").hidden) { dictationStartedAt = 0; $("dictationTime").textContent = "00:00"; }
+}
+
+$("dictationFinish").onclick = () => {
+  $("dictationFinish").disabled = true;
+  send({ type: "dictation.finish" });
+};
+
+$("dictationRestart").onclick = () => {
+  send({ type: "dictation.restart" });
+};
+
+function showAnswer(answer, { lengthy = false } = {}) {
+  const t = T();
+  const panel = $("answerCheck");
+  if (!answer) { panel.hidden = true; return; }
+  $("answerHeading").textContent = t.answerHeading;
+  $("answerValue").textContent = answer;
+  $("answerAsk").textContent = t.answerAsk;
+  $("answerConfirm").textContent = t.answerConfirm;
+  $("answerRetry").textContent = t.answerRetryBtn;
+  $("answerConfirm").disabled = false;
+  $("answerRetry").disabled = false;
+  // Offered only when the assistant summarised instead of reciting. It told
+  // the citizen to read the screen; this is for the one who cannot.
+  $("answerReadOut").textContent = t.answerReadOut;
+  $("answerReadOut").hidden = !lengthy;
+  panel.hidden = false;
+}
+
+$("answerReadOut").onclick = () => { send({ type: "answer.read" }); };
+
+$("answerConfirm").onclick = () => {
+  // Disabled immediately, not on the reply. A second press would send a
+  // second confirm, and the server would have already cleared the pending
+  // answer — so the second one does nothing except look broken.
+  $("answerConfirm").disabled = true;
+  $("answerRetry").disabled = true;
+  $("voiceStatus").textContent = T().answerSaved;
+  send({ type: "answer.confirm" });
+};
+
+$("answerRetry").onclick = () => {
+  $("answerConfirm").disabled = true;
+  $("answerRetry").disabled = true;
+  $("voiceStatus").textContent = T().answerRetrying;
+  send({ type: "answer.retry" });
+};
 
 /* ----------------------------------------------------------------- errors */
 
@@ -1943,6 +2132,11 @@ function stopPlayback() {
   for (const src of voice.playing) { try { src.stop(); } catch {} }
   voice.playing = [];
   voice.queue = Promise.resolve();
+  // Stopped audio has still stopped. Telling the server so releases the
+  // microphone now rather than at the end of a grace period it is waiting
+  // out for a clip that will never play.
+  if (voice.playedId) { send({ type: "tts.played", id: voice.playedId }); }
+  voice.playedId = 0;
 }
 
 /* ------------------------------------------------------------------ capture */
@@ -2022,16 +2216,36 @@ function resizeWave() {
   canvas.height = Math.round(rect.height * wave.dpr);
 }
 
+/** How much of what the microphone hears is louder than the room.
+ *
+ *  Zero when the level is at or below the tracked floor, which is what a fan,
+ *  an air conditioner or a room hum sits at. DISPLAY ONLY — the server's
+ *  detector works on the untouched audio, and nothing here can stop a quiet
+ *  citizen being heard.
+ */
+function voiceAboveTheRoom() {
+  return Math.max(0, voice.rms - voice.floorRms * 1.6);
+}
+
 /** How tall the bands should be right now, and how fast they move. */
 function waveDrive() {
   const s = voice.state;
   if (s === VOICE.USER_SPEAKING) {
-    // The citizen's own voice, straight off the microphone analyser.
-    return { amp: Math.min(1, voice.rms / 0.16), speed: 1.6 };
+    // The citizen's own voice, ABOVE the room rather than including it.
+    //
+    // A fan holds a steady level, and a ribbon driven by raw RMS sits
+    // permanently half-height in an office — which reads as the microphone
+    // hearing someone when it is hearing furniture. Subtracting the tracked
+    // floor makes the motion belong to the speech.
+    //
+    // Display only. The server's detector sees the untouched audio and makes
+    // every decision about what was actually said.
+    return { amp: Math.min(1, voiceAboveTheRoom() / 0.16), speed: 1.6 };
   }
-  if (s === VOICE.ASSISTANT_SPEAKING) {
+  if (s === VOICE.ASSISTANT_SPEAKING || s === VOICE.READING_BACK) {
     // The reply, off the playback analyser, so the ribbon moves with the
-    // words the citizen is hearing rather than to a timer.
+    // words the citizen is hearing rather than to a timer. A read-back is
+    // the assistant speaking and moves with its voice like any other reply.
     return { amp: Math.min(1, voice.playRms / 0.30), speed: 1.25 };
   }
   if (s === VOICE.PROCESSING || s === VOICE.TRANSCRIBING || s === VOICE.GENERATING) {
@@ -2040,8 +2254,15 @@ function waveDrive() {
     return { amp: 0.34 + 0.12 * Math.sin(wave.t * 2.2), speed: 0.85 };
   }
   if (s === VOICE.ERROR) return { amp: 0.06, speed: 0.12 };
-  // Listening, connecting, idle: a small, patient motion. Never flat — a flat
-  // line reads as a dead microphone.
+  if (s === VOICE.LISTENING || s === VOICE.LONG_LISTENING
+      || s === VOICE.WAITING_CONFIRMATION) {
+    // Waiting. A patient idle motion, lifted only by sound that is actually
+    // above the room — so a fan moves it barely and a voice moves it plainly.
+    const base = 0.16 + 0.05 * Math.sin(wave.t * 1.1);
+    return { amp: Math.min(1, base + voiceAboveTheRoom() * 2.2), speed: 0.7 };
+  }
+  // Connecting, idle: a small, patient motion. Never flat — a flat line
+  // reads as a dead microphone.
   return { amp: 0.16 + 0.05 * Math.sin(wave.t * 1.1), speed: 0.55 };
 }
 
@@ -2136,6 +2357,15 @@ function startMeter() {
     }
     voice.rms = Math.sqrt(sum / bins.length);
 
+    // Track the room: fall to a new quiet quickly, rise towards a louder one
+    // slowly. The asymmetry is the point — rising as fast as it falls would
+    // let a long spoken answer teach the meter that speech is background,
+    // and the ribbon would flatten in the middle of a sentence.
+    const pull = voice.rms < voice.floorRms ? 0.08 : 0.0015;
+    voice.floorRms = voice.floorRms
+      ? voice.floorRms + pull * (voice.rms - voice.floorRms)
+      : voice.rms;
+
     if (voice.playAnalyser) {
       voice.playAnalyser.getByteTimeDomainData(voice.playBins);
       let p = 0;
@@ -2193,6 +2423,7 @@ function stopMeter() {
   voice.meterRaf = null;
   voice.rms = 0;
   voice.playRms = 0;
+  voice.floorRms = 0;
   stopWave();
   const meter = $("voiceMeter");
   if (meter && meter.firstElementChild) {
@@ -2217,6 +2448,26 @@ async function openMicrophone() {
     audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true,
              autoGainControl: true },
   });
+
+  // ASKED FOR is not the same as GOT. These three are advisory constraints:
+  // Firefox applies some, Safari applies them differently, a USB conference
+  // microphone may do its own processing and refuse, and none of that fails
+  // `getUserMedia`. Read back what the track actually settled on, so the
+  // panel can say "noise reduction active" only when it IS active — a claim
+  // the citizen cannot check is worse than no claim.
+  voice.processing = {};
+  try {
+    const settings = voice.stream.getAudioTracks()[0].getSettings();
+    voice.processing = {
+      echo: settings.echoCancellation === true,
+      noise: settings.noiseSuppression === true,
+      gain: settings.autoGainControl === true,
+      // Some browsers report nothing at all rather than false. That is
+      // "unknown", not "off", and it is why `paintVoice` checks for an
+      // explicit true rather than trusting a missing key.
+      reported: "noiseSuppression" in settings,
+    };
+  } catch { /* getSettings is not universal; unknown is a fine answer */ }
   voice.ctx = new AudioContext({ sampleRate: 16000 });
   if (voice.ctx.state === "suspended") await voice.ctx.resume();
 
@@ -2313,7 +2564,10 @@ function openSocket() {
           return;
         }
         voice.attempts = 0;
-        send({ type: "voice.start" });
+        // Declared, not assumed. The server waits for our `tts.played` only
+        // because we said we send it; a page that cannot is timed by the
+        // length of the audio instead of stalling every turn.
+        send({ type: "voice.start", reports_playback: true });
         break;
 
       case "voice.state":
@@ -2346,6 +2600,52 @@ function openSocket() {
         break;
 
       case "tts.end":
+        // The server has sent the last clip; it has NOT finished playing.
+        // Chaining onto the playback queue reports the real moment the
+        // speaker goes quiet, which is when the server opens the microphone.
+        // Without it the assistant hears its own last sentence and
+        // transcribes it as the citizen's answer.
+        {
+          const token = voice.playToken;
+          const id = m.id;
+          voice.queue = voice.queue.then(() => {
+            // A newer token means an interruption already stopped this
+            // audio, and `stopPlayback` has reported it.
+            if (token === voice.playToken) send({ type: "tts.played", id });
+          });
+          voice.playedId = id;
+        }
+        break;
+
+      case "voice.answer":
+        // The server is the only thing that knows whether an answer is
+        // outstanding. The page never guesses — it draws what it is told,
+        // including being told there is nothing, which is what closes the
+        // panel after a confirm, a retry or a dropped connection.
+        showAnswer(m.awaiting ? (m.answer || "") : null, { lengthy: Boolean(m.lengthy) });
+        break;
+
+      case "voice.noise":
+        // Advisory. Nothing was rejected for it, and nothing about the
+        // microphone changes — the citizen is simply told the one thing
+        // that helps.
+        voice.noisyRoom = Boolean(m.high);
+        paintVoice({});
+        break;
+
+      case "voice.dictation":
+        // Reassurance, once, when the panel returns after a drop. A citizen
+        // who watched the connection fail mid-sentence has no way of
+        // knowing their words survived unless they are told.
+        if (voice.droppedMidDictation && m.capturing && m.segments) {
+          voice.droppedMidDictation = false;
+          bubble("system", T().dictationSafe);
+        }
+        // How much of a long answer has been captured. The server is the
+        // only thing that knows; the page draws what it is told, including
+        // being told there is nothing left, which is what closes the panel
+        // after a confirm or a start-over.
+        showDictation(m);
         break;
 
       case "voice.interrupted":
@@ -2384,6 +2684,9 @@ function openSocket() {
     // the server and untouched by any of this; only the audio path is lost.
     if (voice.attempts < 3) {
       voice.attempts++;
+      // Remember that a narration was in flight, so the page can say so
+      // once it is back rather than leaving the citizen to guess.
+      if (!$("dictation").hidden) voice.droppedMidDictation = true;
       voiceState(VOICE.RECONNECTING);
       setTimeout(() => { if (voice.wants) voice.socket = openSocket(); },
                  400 * voice.attempts);
@@ -2440,6 +2743,12 @@ function stopVoice({ tell = true } = {}) {
   }
   if (voice.playCtx) { try { voice.playCtx.close(); } catch {} voice.playCtx = null; }
   voice.partial = "";
+  // The candidate answer goes with the session. It was never on the
+  // petition — the server only sends it to the workflow once it has been
+  // agreed with — and leaving its buttons on screen with no socket behind
+  // them offers the citizen an action that cannot happen.
+  showAnswer(null);
+  showDictation(null);
   voiceState(wanted ? VOICE.ENDED : VOICE.IDLE, { transcript: "", live: false });
   $("voiceBar").hidden = true;
 }

@@ -72,6 +72,82 @@ SPOKEN: dict[str, dict[str, str]] = {
         "en": "Sorry, I did not catch that. Could you say it again?",
         "ta": "மன்னிக்கவும், அது எனக்குப் புரியவில்லை. மீண்டும் சொல்ல முடியுமா?",
     },
+    # --- the per-answer read-back loop ------------------------------------
+    #
+    # Said after every answer the citizen gives, before it is used. The value
+    # is quoted back so they hear what was actually captured rather than
+    # discovering it on the finished petition, where a misheard house number
+    # is a wasted trip to a government office.
+    #
+    # `heard` carries the answer with identifiers already masked by the
+    # caller: the screen shows the full value to the person standing at it,
+    # the speaker is heard by the queue behind them.
+    "heard": {
+        "en": "I heard: {answer}. Is that correct?",
+        "ta": "நான் கேட்டது: {answer}. இது சரியா?",
+    },
+    "say_again": {
+        "en": "Okay, please tell me again.",
+        "ta": "சரி, மீண்டும் சொல்லுங்கள்.",
+    },
+    "confirmed": {
+        "en": "Saved.",
+        "ta": "பதிவு செய்யப்பட்டது.",
+    },
+    # Distinct from `not_caught`. That one is said when something was heard
+    # and judged not to be an answer; this is said when the transcription
+    # came back with nothing in it at all.
+    # --- long-form dictation (the grievance) ------------------------------
+    #
+    # Said INSTEAD of the ordinary question when the field being collected is
+    # free text. A citizen asked "tell me your grievance" the way they were
+    # asked their age answers in one sentence and stops; being told they may
+    # take their time is what produces the complaint they actually have.
+    "long_intro": {
+        "en": ("Please explain your grievance in detail. You may speak "
+               "continuously. Take your time. When you are finished, pause "
+               "or say 'finished'."),
+        "ta": ("உங்கள் குறையை முழுமையாக சொல்லுங்கள். தேவையான அளவு விரிவாக "
+               "பேசலாம். நீங்கள் முடித்ததும் சிறிது நேரம் அமைதியாக இருக்கலாம் "
+               "அல்லது 'முடிந்தது' என்று சொல்லலாம்."),
+    },
+    # After a long grievance. The text is NOT read back: two minutes of
+    # speech read back is two minutes nobody listens to, and the whole of it
+    # is on the screen in front of them.
+    "long_captured": {
+        "en": ("I captured your full grievance. Please review the text on "
+               "screen. Would you like to confirm it, add more details, or "
+               "say it again?"),
+        "ta": ("உங்கள் முழு குறையும் பதிவு செய்யப்பட்டுள்ளது. திரையில் உள்ள "
+               "உரையை சரிபார்க்கவும். உறுதி செய்யலாமா, மேலும் விவரம் "
+               "சேர்க்கலாமா, அல்லது மீண்டும் சொல்ல வேண்டுமா?"),
+    },
+    "long_continue": {
+        "en": "Please continue.",
+        "ta": "தொடர்ந்து சொல்லுங்கள்.",
+    },
+    # The one place a hard limit is allowed to change the outcome, and the
+    # citizen is told before anything is lost rather than after.
+    "long_full": {
+        "en": ("That is as much as this form can hold. Everything you have "
+               "said so far is saved. Please review it on screen."),
+        "ta": ("இந்தப் படிவத்தில் இடம்பிடிக்கக்கூடிய அளவு நிறைந்துவிட்டது. "
+               "இதுவரை சொன்ன அனைத்தும் பதிவு செய்யப்பட்டுள்ளது. திரையில் "
+               "சரிபார்க்கவும்."),
+    },
+    # Said ONCE per session, when the room has been measurably loud for
+    # several seconds. Advisory: nothing is rejected for it, and the citizen
+    # is given the one instruction that actually helps.
+    "noisy_room": {
+        "en": ("High background noise detected. Please speak a little closer "
+               "to the microphone."),
+        "ta": ("பின்னணி சத்தம் அதிகமாக உள்ளது. மைக்ரோஃபோனுக்கு அருகில் "
+               "பேசுங்கள்."),
+    },
+    "not_understood": {
+        "en": "I couldn't understand that. Please say it again.",
+        "ta": "எனக்கு தெளிவாக புரியவில்லை. மீண்டும் சொல்லுங்கள்.",
+    },
     "reading": {
         "en": "Here is your petition. Say stop at any time.",
         "ta": "உங்கள் மனு இதோ. எப்போது வேண்டுமானாலும் 'நிறுத்து' எனச் சொல்லலாம்.",
@@ -99,7 +175,8 @@ def phrase(key: str, language: Language, **kwargs: Any) -> str:
 # Section headings the letter itself uses, so reading aloud can stop between
 # them. Matched against the start of a line only.
 _SECTION_STARTS = (
-    "From,", "To,", "Subject", "Respected", "Thank you", "Yours faithfully",
+    "From,", "To,", "Subject", "Respected", "Thanking you", "Thank you",
+    "Yours faithfully",
     "Date", "Place", "Note", "Enclosures",
     "அனுப்புநர்", "பெறுநர்", "பொருள்", "மதிப்பிற்குரிய", "நன்றி",
     "இப்படிக்கு", "நாள்", "இடம்", "குறிப்பு", "இணைப்புகள்",
