@@ -142,6 +142,17 @@ class Settings(BaseSettings):
     # Only a backstop: the page reports the real event, and this stops a page
     # that cannot (an old client, a muted tab) from stalling the turn.
     voice_playback_grace_s: float = 8.0
+    # A settling pause between the audio finishing and the microphone
+    # counting again, for the tail of a speaker still in the air.
+    #
+    # ZERO by default, deliberately. The gate already discards everything
+    # heard while the assistant holds the floor, and the detector is reset as
+    # it is handed back, so there is no evidence this is needed — and every
+    # millisecond here is added to every turn the citizen takes. It exists as
+    # a knob because real-device testing in a room with loud speakers is the
+    # only thing that can show whether it is, and finding out should not
+    # require a code change. 100-200 ms is the range to try.
+    voice_settle_ms: int = 0
 
     # -- long-form dictation (the grievance) -------------------------------- #
     #

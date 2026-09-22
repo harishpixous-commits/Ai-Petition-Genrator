@@ -1654,7 +1654,9 @@ $("ask").onsubmit = async (e) => {
   const text = $("text").value.trim();
   if (!text || !canSend()) return;
   stopPlayback();
-  send({ type: "voice.interrupt" });
+  // Always honoured by the server: somebody reaching for the keyboard while
+  // the assistant is talking is unambiguous, and no speaker can type.
+  send({ type: "voice.interrupt", reason: "typed" });
   workingBubble(X().saving);
   // Asking for a change to a petition that already exists is work on the
   // document, so it is shown where work on the document is always shown.
@@ -1879,6 +1881,7 @@ const voice = {
   // anything: what the server hears is untouched by it.
   floorRms: 0,
   noisyRoom: false,
+  bargeIn: false,       // the server says whether interrupting is allowed
   playAnalyser: null,
   playBins: null,
   meterRaf: null,
@@ -2493,16 +2496,28 @@ async function openMicrophone() {
     // Local barge-in. The server decides turns, but it cannot stop audio that
     // is already in this browser, and a round trip is long enough to be heard
     // as the assistant talking over the citizen.
-    if (voice.state === VOICE.ASSISTANT_SPEAKING) {
+    // Local onset detection, and ONLY where the server says interrupting is
+    // allowed. It is a bare level test with no echo discrimination, and on a
+    // counter PC the loudest thing in the microphone while the assistant is
+    // talking is the assistant — so left unguarded it cut the assistant's
+    // own question off mid-sentence and opened the microphone early, which
+    // is exactly the failure half-duplex exists to prevent.
+    //
+    // The server ignores an unasked-for interrupt as well. Both halves check,
+    // because either one alone leaves the hole open if the other changes.
+    if (voice.bargeIn && (voice.state === VOICE.ASSISTANT_SPEAKING
+                          || voice.state === VOICE.READING_BACK)) {
       let sum = 0;
       for (let i = 0; i < input.length; i++) sum += input[i] * input[i];
       if (Math.sqrt(sum / input.length) > BARGE_RMS) {
         if (++bargeFrames >= 2) {
           bargeFrames = 0;
           stopPlayback();
-          send({ type: "voice.interrupt" });
+          send({ type: "voice.interrupt", reason: "microphone" });
         }
       } else { bargeFrames = 0; }
+    } else {
+      bargeFrames = 0;
     }
 
     if (voice.muted) return;
@@ -2555,6 +2570,11 @@ function openSocket() {
     switch (m.type) {
       case "voice.ready":
         voice.diagnostics = Boolean(m.diagnostics);
+        // Whether the local onset detector below is allowed to run at all.
+        // The server decides: under half-duplex it discards everything it
+        // hears while speaking, and a page interrupting on its own would
+        // cut the assistant off on its own echo.
+        voice.bargeIn = Boolean(m.barge_in);
         voice.thresholds = m.thresholds || null;
         $("voiceDiag").hidden = !voice.diagnostics;
         $("voiceMeter").hidden = !voice.diagnostics;

@@ -21,7 +21,10 @@ Protocol, client to server:
     binary frames                 16-bit little-endian PCM at the advertised rate
     {"type":"voice.start"}        begin hands-free listening
     {"type":"voice.end"}          stop listening; the petition is untouched
-    {"type":"voice.interrupt"}    the citizen spoke over the assistant
+    {"type":"voice.interrupt"}    the citizen spoke over the assistant.
+                                  `reason: "typed"` is always honoured; an
+                                  onset heard by the page is honoured only
+                                  where barge-in is actually enabled
     {"type":"tts.played","id":n} the audio for reply n has finished PLAYING
     {"type":"dictation.finish"}   a long answer is complete
     {"type":"dictation.restart"}  throw away the long answer so far
@@ -502,6 +505,11 @@ async def voice(websocket: WebSocket, session_id: str, language: str = "en") -> 
             # is exactly where the assistant hears itself, transcribes itself,
             # and asks the citizen to confirm a sentence it made up.
             await await_playback(mine, sent_bytes, byte_rate)
+            # Off by default; see `voice_settle_ms`. Placed BEFORE the floor
+            # is handed back, so the pause is spent with the gate still shut
+            # rather than with the microphone open and being ignored.
+            if settings.voice_settle_ms > 0:
+                await asyncio.sleep(settings.voice_settle_ms / 1000)
             release_floor()
             await set_phase(resting())
 
@@ -1396,7 +1404,11 @@ async def voice(websocket: WebSocket, session_id: str, language: str = "en") -> 
             "dictation": asr.status(settings),
             "spoken_replies": tts.status(settings),
             "sample_rate": settings.asr_sample_rate,
-            "barge_in": settings.voice_barge_in,
+            # The EFFECTIVE value, not the configured one. Half-duplex
+            # overrides barge-in, and a page told "barge_in: true" while the
+            # server is discarding everything it hears would cut the
+            # assistant off on its own echo and then listen to nobody.
+            "barge_in": settings.voice_barge_in and not settings.voice_half_duplex,
             "diagnostics": settings.voice_diagnostics,
             "thresholds": {
                 "vad_multiple": settings.voice_vad_threshold,
@@ -1480,10 +1492,32 @@ async def voice(websocket: WebSocket, session_id: str, language: str = "en") -> 
                     await websocket.send_json({"type": "voice.ended", "reason": "requested"})
 
                 elif kind == "voice.interrupt":
-                    # The page heard speech before the server did. Believe it.
+                    # WHY THIS IS NOT BELIEVED UNCONDITIONALLY ANY MORE.
+                    #
+                    # The page runs its own onset detector so that an
+                    # interruption is instant rather than a round trip late.
+                    # It has no echo discrimination: on a counter PC the
+                    # loudest thing in the microphone while the assistant is
+                    # talking IS the assistant. So the assistant's own voice
+                    # cut its own question off mid-sentence and opened the
+                    # microphone early — which is the whole failure that
+                    # half-duplex exists to prevent, arriving through the
+                    # one door that bypassed it.
+                    #
+                    # A TYPED interrupt is different and is always honoured:
+                    # somebody reaching for the keyboard while the assistant
+                    # is talking is unambiguous, and no speaker can produce
+                    # it.
+                    typed = payload.get("reason") == "typed"
+                    allowed = typed or (settings.voice_barge_in
+                                        and not settings.voice_half_duplex)
+                    if not allowed:
+                        log.info("voice.interrupt.ignored",
+                                 extra={"reason": payload.get("reason") or "microphone"})
+                        continue
                     await stop_speaking(interrupted=True)
                     if listening:
-                        await set_phase(Phase.LISTENING)
+                        await set_phase(resting())
 
                 elif kind == "tts.played":
                     # The audio has finished coming out of the speaker. Only

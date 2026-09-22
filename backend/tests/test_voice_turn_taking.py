@@ -24,6 +24,7 @@ from __future__ import annotations
 import contextlib
 import json
 import math
+import pathlib
 import struct
 import uuid
 
@@ -438,3 +439,166 @@ class TestTheStatesTheCitizenIsShown:
             session.settle(Phase.LISTENING)
 
         assert Phase.LONG_LISTENING.value not in session.phases()
+
+
+class TestThePageCannotOpenTheMicrophoneEarly:
+    """The hole that half-duplex did not cover.
+
+    The page runs its own onset detector so an interruption is instant
+    rather than a round trip late. It is a bare level test with NO echo
+    discrimination, and on a counter PC the loudest thing in the microphone
+    while the assistant is talking is the assistant. Unguarded, the
+    assistant's own voice cut its own question off mid-sentence and opened
+    the microphone early — arriving through the one door that bypassed the
+    gate.
+
+    Both halves check now. Either one alone leaves it open if the other
+    changes.
+    """
+
+    def test_a_microphone_interrupt_is_ignored_under_half_duplex(
+            self, dictation_available, transcribes, speaks):
+        workflow = Asking()
+        with talking(workflow) as session:
+            session.drain("tts.start")
+            session.ws.send_json({"type": "voice.interrupt", "reason": "microphone"})
+            session.settle(Phase.LISTENING)
+
+        # Nothing was cut off: the assistant finished and went to listening
+        # of its own accord, and the page was never told it was interrupted.
+        assert "voice.interrupted" not in session.kinds(), session.kinds()
+
+    def test_an_interrupt_with_no_reason_is_ignored_too(
+            self, dictation_available, transcribes, speaks):
+        """An older page sends no reason. It must not be trusted either —
+        that page is exactly the one whose detector has no echo test."""
+        workflow = Asking()
+        with talking(workflow) as session:
+            session.drain("tts.start")
+            session.ws.send_json({"type": "voice.interrupt"})
+            session.settle(Phase.LISTENING)
+
+        assert "voice.interrupted" not in session.kinds()
+
+    def test_a_typed_interrupt_is_always_honoured(
+            self, dictation_available, transcribes, speaks):
+        """Somebody reaching for the keyboard while the assistant is talking
+        is unambiguous, and no speaker can type."""
+        workflow = Asking()
+        with talking(workflow) as session:
+            session.drain("tts.start")
+            session.ws.send_json({"type": "voice.interrupt", "reason": "typed"})
+            session.drain("voice.interrupted")
+
+    def test_it_is_honoured_when_barge_in_is_actually_enabled(
+            self, dictation_available, transcribes, speaks):
+        workflow = Asking()
+        with talking(workflow, voice_half_duplex=False) as session:
+            session.drain("tts.start")
+            session.ws.send_json({"type": "voice.interrupt", "reason": "microphone"})
+            session.drain("voice.interrupted")
+
+    def test_the_page_is_told_the_effective_setting_not_the_configured_one(
+            self, dictation_available, speaks):
+        """A page told "barge_in: true" while the server discards everything
+        it hears would interrupt on its own echo and then listen to nobody."""
+        workflow = Asking()
+        with talking(workflow) as session:
+            ready = session.drain("voice.ready")
+
+        assert ready["barge_in"] is False
+
+    def test_and_told_true_where_it_really_is_on(self, dictation_available, speaks):
+        workflow = Asking()
+        with talking(workflow, voice_half_duplex=False) as session:
+            ready = session.drain("voice.ready")
+
+        assert ready["barge_in"] is True
+
+    def test_the_page_checks_before_running_its_detector(self):
+        """Asserted on the source: what is under test is a condition, and a
+        condition that is missing fails nothing on its own."""
+        js = pathlib.Path("app/static/app.js").read_text(encoding="utf-8")
+        detector = js[js.index("if (voice.bargeIn"):]
+        detector = detector[:detector.index("if (voice.muted) return;")]
+
+        assert "voice.bargeIn &&" in detector
+        assert 'reason: "microphone"' in detector
+
+
+class Walking(Asking):
+    """A workflow that moves through the form the way the real one does.
+
+    Each turn fills the next field and asks the next question, so a test can
+    walk name -> age -> address and watch the same rule hold at each step
+    rather than asserting it once and assuming.
+    """
+
+    ORDER = [
+        ("applicant_name", "Please tell me your name."),
+        ("age", "Please tell me your age."),
+        ("address", "Please give your full address."),
+        ("aadhaar", "Please say your 12-digit Aadhaar number."),
+    ]
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.step = 0
+
+    def _state(self) -> dict:
+        step = min(self.step, len(self.ORDER) - 1)
+        return {"language": "en", "status": "collecting",
+                "fields": {name: "x" for name, _ in self.ORDER[:self.step]},
+                "reply": self.ORDER[step][1]}
+
+    async def invoke(self, session_id: str, payload: dict) -> dict:
+        self.invoked.append(payload["utterance"])
+        self.step += 1
+        return self._state()
+
+
+class TestTheRuleHoldsAtEveryQuestion:
+    """Asserted once per field rather than once per session, because the
+    failure this guards against is a state transition that behaves
+    differently on the second turn than on the first."""
+
+    def test_every_question_is_finished_before_anything_is_heard(
+            self, dictation_available, transcribes, speaks):
+        workflow = Walking()
+        with talking(workflow, voice_read_back=False) as session:
+            for _ in range(3):
+                # The assistant asks.
+                session.drain("tts.start")
+                # Its own voice, coming back through the microphone while it
+                # is still talking.
+                session.speak(room(320))
+                session.speak(speech(1280))
+                session.speak(room(960))
+                # It finishes, and only then does the gate open.
+                session.settle(Phase.LISTENING)
+                before = session.kinds().count("stt.final")
+
+                # Now the citizen actually speaks.
+                session.speak(room(320))
+                session.speak(speech(1280))
+                session.speak(room(960))
+                session.drain("stt.final")
+
+                assert session.kinds().count("stt.final") == before + 1, (
+                    "one real utterance did not produce exactly one turn")
+
+        # Three questions answered, three turns, and not one of them invented
+        # by the assistant hearing itself.
+        assert len(workflow.invoked) == 3, workflow.invoked
+        assert transcribes["calls"] == 3, transcribes["calls"]
+
+    def test_the_gate_does_not_depend_on_which_field_is_being_asked(self):
+        """It is one condition in `handle_audio` and knows nothing about
+        fields. A gate that had to be remembered per field would be one that
+        gets forgotten for the field added next year."""
+        socket = pathlib.Path("app/api/ws.py").read_text(encoding="utf-8")
+        gate = socket[socket.index("if (settings.voice_half_duplex"):]
+        gate = gate[:gate.index("return") + len("return")]
+
+        for coupling in ("field", "status", "spec", "template"):
+            assert coupling not in gate, coupling
