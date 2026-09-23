@@ -2,16 +2,16 @@
    the only editor; every card opens its persisted server session. */
 const NAV = {
   en: {
-    home: "Home", create: "Create Petition", petitions: "My Petitions", view: "View", edit: "Edit",
+    home: "Home", create: "Create Petition", petitions: "All Petitions", view: "View", edit: "Edit",
     search: "Search reference, petitioner or subject", all: "All", language: "Language",
     department: "Department", category: "Category", status: "Status", from: "From date", to: "To date",
     newest: "Newest", oldest: "Oldest", updated: "Recently updated", clear: "Clear filters",
     generated: "Generated", updatedStatus: "Updated", draft: "Draft", failed: "Requires attention",
     cancelled: "Cancelled", generating: "Preparing", current: "Current", version: "Version",
-    history: "Version history", noResults: "No petitions match your search.",
+    history: "Version history", noResults: "No petitions match the search.",
     noResultsText: "Try a different reference, name, date, or filter.",
-    empty: "Your petitions will appear here.", emptyText: "Create a petition and generate its document to save it here.",
-    error: "We couldn’t load your petitions. Check the connection and try again.", retry: "Try again",
+    empty: "Petitions will appear here.", emptyText: "Create a petition and generate its document to save it here.",
+    error: "We couldn’t load the petitions. Check the connection and try again.", retry: "Try again",
     previous: "Previous", next: "Next", page: "Page", of: "of", count: "petitions",
     created: "Created", edited: "Updated", attention: "Verification needs attention", verified: "Verification passed",
     leaveTitle: "Leave these unsaved changes?", leaveText: "Your saved petition is kept. The changes you have not saved will be discarded.",
@@ -35,9 +35,12 @@ const NAV = {
     homeCreateTitle: "Create a petition",
     homeCreateDescription: "A guided conversation, a complete draft, and a document ready for your review.",
     homePetitionsEyebrow: "PICK UP WHERE YOU LEFT OFF",
-    homePetitionsTitle: "My petitions",
-    homePetitionsDescription: "Find, open, and manage your saved petitions, with their documents and versions.",
+    homePetitionsTitle: "All petitions",
+    homePetitionsDescription: "Find, open, and manage the petitions saved on this machine, with their documents and versions.",
     kiosk: "Kiosk",
+    filterHint: "Search and filters apply to the saved petitions.",
+    ready: "Ready", allDepartments: "All departments",
+
     homeGuideEyebrow: "THREE SIMPLE STEPS",
     homeGuideTitle: "A little guidance, all the way.",
     homeStepOneTitle: "Share your concern",
@@ -45,14 +48,14 @@ const NAV = {
     homeStepTwoTitle: "Make it yours",
     homeStepTwoText: "Check your details, review the draft, and make any changes you need.",
     homeStepThreeTitle: "Download & keep",
-    homeStepThreeText: "Save your document and return to My Petitions whenever you need it.",
-    petitionsEyebrow: "YOUR DOCUMENT WORKSPACE", petitionsTitle: "My petitions",
-    petitionsDescription: "Find a petition, review its details, and pick up where you left off.",
+    homeStepThreeText: "Save your document and return to All Petitions whenever you need it.",
+    petitionsEyebrow: "SAVED DOCUMENTS", petitionsTitle: "All petitions",
+    petitionsDescription: "Find a petition, review its details, and pick up where it was left off.",
     petitionsCreateText: "Create petition",
-    petitionsLoadingTitle: "Loading your petitions",
-    petitionsLoadingText: "Getting your saved documents ready.",
-    petitionsEmptyCreate: "Create your first petition",
-    petitionsErrorTitle: "We couldn’t load your petitions",
+    petitionsLoadingTitle: "Loading petitions",
+    petitionsLoadingText: "Getting the saved documents ready.",
+    petitionsEmptyCreate: "Create the first petition",
+    petitionsErrorTitle: "We couldn’t load the petitions",
     filterTitle: "Find a petition", loading: "Loading saved petitions…", sort: "Sort by",
     resultsNote: "Saved documents and drafts",
     selectAll: "Select all", selectAllMatching: "Select all {n}", selectedCount: "{n} selected",
@@ -67,7 +70,7 @@ const NAV = {
     deletePartial: "{n} deleted, {f} could not be.",
   },
   ta: {
-    home: "முகப்பு", create: "மனு உருவாக்கு", petitions: "எனது மனுக்கள்", view: "காண்க", edit: "திருத்து",
+    home: "முகப்பு", create: "மனு உருவாக்கு", petitions: "அனைத்து மனுக்கள்", view: "காண்க", edit: "திருத்து",
     search: "தொடர்பு எண், பெயர் அல்லது பொருள் தேடவும்", all: "அனைத்தும்", language: "மொழி",
     department: "துறை", category: "வகை", status: "நிலை", from: "தொடக்கத் தேதி", to: "முடிவுத் தேதி",
     newest: "புதியவை முதலில்", oldest: "பழையவை முதலில்", updated: "சமீபத்திய திருத்தம்", clear: "வடிகட்டிகளை நீக்கு",
@@ -75,7 +78,7 @@ const NAV = {
     cancelled: "ரத்து", generating: "தயாராகிறது", current: "தற்போதையது", version: "பதிப்பு",
     history: "பதிப்பு வரலாறு", noResults: "உங்கள் தேடலுக்கு மனுக்கள் இல்லை.",
     noResultsText: "வேறு எண், பெயர், தேதி அல்லது வடிகட்டியை முயற்சிக்கவும்.",
-    empty: "உங்கள் மனுக்கள் இங்கே தோன்றும்.", emptyText: "மனுவை உருவாக்கி ஆவணத்தைத் தயாரித்ததும் இங்கே சேமிக்கப்படும்.",
+    empty: "மனுக்கள் இங்கே தோன்றும்.", emptyText: "மனுவை உருவாக்கி ஆவணத்தைத் தயாரித்ததும் இங்கே சேமிக்கப்படும்.",
     error: "மனுக்களைப் பெற இயலவில்லை. இணைப்பைச் சரிபார்த்து மீண்டும் முயற்சிக்கவும்.", retry: "மீண்டும் முயற்சி",
     previous: "முந்தைய", next: "அடுத்த", page: "பக்கம்", of: "/", count: "மனுக்கள்",
     created: "உருவாக்கியது", edited: "திருத்தியது", attention: "சரிபார்ப்பில் கவனம் தேவை", verified: "சரிபார்க்கப்பட்டது",
@@ -100,9 +103,12 @@ const NAV = {
     homeCreateTitle: "மனு உருவாக்கு",
     homeCreateDescription: "வழிகாட்டும் உரையாடல், முழுமையான வரைவு, உங்கள் சரிபார்ப்புக்குத் தயாரான ஆவணம்.",
     homePetitionsEyebrow: "நிறுத்திய இடத்திலிருந்து தொடருங்கள்",
-    homePetitionsTitle: "எனது மனுக்கள்",
-    homePetitionsDescription: "சேமித்த மனுக்களை அவற்றின் ஆவணங்கள் மற்றும் பதிப்புகளுடன் தேடலாம், திறக்கலாம், நிர்வகிக்கலாம்.",
+    homePetitionsTitle: "அனைத்து மனுக்கள்",
+    homePetitionsDescription: "இந்த கணினியில் சேமிக்கப்பட்ட மனுக்களை அவற்றின் ஆவணங்கள் மற்றும் பதிப்புகளுடன் தேடலாம், திறக்கலாம், நிர்வகிக்கலாம்.",
     kiosk: "கியோஸ்க்",
+    filterHint: "தேடலும் வடிகட்டிகளும் சேமித்த மனுக்களுக்கு மட்டும் பொருந்தும்.",
+    ready: "தயார்", allDepartments: "அனைத்து துறைகளும்",
+
     homeGuideEyebrow: "மூன்று எளிய படிகள்",
     homeGuideTitle: "ஒவ்வொரு படியிலும் வழிகாட்டுதல்.",
     homeStepOneTitle: "உங்கள் குறையைச் சொல்லுங்கள்",
@@ -110,13 +116,13 @@ const NAV = {
     homeStepTwoTitle: "உங்களுக்கேற்ப மாற்றுங்கள்",
     homeStepTwoText: "உங்கள் விவரங்களைச் சரிபாருங்கள், வரைவைப் படித்து, தேவையான மாற்றங்களைச் செய்யுங்கள்.",
     homeStepThreeTitle: "பதிவிறக்கிப் பாதுகாக்கவும்",
-    homeStepThreeText: "ஆவணத்தைச் சேமித்து, தேவைப்படும்போது எனது மனுக்கள் பகுதிக்குத் திரும்பலாம்.",
-    petitionsEyebrow: "உங்கள் ஆவணப் பணியிடம்", petitionsTitle: "எனது மனுக்கள்",
+    homeStepThreeText: "ஆவணத்தைச் சேமித்து, தேவைப்படும்போது அனைத்து மனுக்கள் பகுதிக்குத் திரும்பலாம்.",
+    petitionsEyebrow: "சேமித்த ஆவணங்கள்", petitionsTitle: "அனைத்து மனுக்கள்",
     petitionsDescription: "மனுவைத் தேடி, விவரங்களைப் பார்த்து, நிறுத்திய இடத்திலிருந்து தொடரலாம்.",
     petitionsCreateText: "மனு உருவாக்கு",
-    petitionsLoadingTitle: "உங்கள் மனுக்கள் ஏற்றப்படுகின்றன",
+    petitionsLoadingTitle: "மனுக்கள் ஏற்றப்படுகின்றன",
     petitionsLoadingText: "சேமித்த ஆவணங்கள் தயாராகின்றன.",
-    petitionsEmptyCreate: "உங்கள் முதல் மனுவை உருவாக்குங்கள்",
+    petitionsEmptyCreate: "முதல் மனுவை உருவாக்குங்கள்",
     petitionsErrorTitle: "மனுக்களைப் பெற இயலவில்லை",
     filterTitle: "மனுவைத் தேடு", loading: "மனுக்கள் ஏற்றப்படுகின்றன…", sort: "வரிசை",
     resultsNote: "சேமித்த ஆவணங்களும் வரைவுகளும்",
@@ -163,6 +169,11 @@ function navigationLabels() {
   });
   for (const [id, text] of Object.entries({ navHome: n.home, navCreate: n.create,
     navPetitions: n.petitions, navKiosk: n.kiosk, clearFilters: n.clear,
+    petitionSortLabel: n.sort, filterDateFromLabel: n.from,
+    filterDateToLabel: n.to, filterDepartmentLabel: n.department,
+    filterCategoryLabel: n.category, filterStatusLabel: n.status,
+    filterLanguageLabel: n.language, versionTitle: n.history,
+    petitionFilterHint: n.filterHint,
     petitionsRetry: n.retry, petitionsPrevious: n.previous, petitionsNext: n.next })) {
     if ($(id)) $(id).textContent = text;
   }
@@ -174,6 +185,15 @@ function navigationLabels() {
   }
   syncSelection();
   if ($("petitionSort")) for (const option of $("petitionSort").options) option.textContent = n[option.value];
+  // The status filter's options carry the same words the cards do, so a
+  // citizen filtering by "தயாரிக்கப்பட்டது" picks the phrase they can see.
+  if ($("filterStatus")) {
+    for (const option of $("filterStatus").options) {
+      const named = { draft: n.draft, ready: n.ready, generating: n.generating,
+                      failed: n.failed, cancelled: n.cancelled }[option.value];
+      if (named) option.textContent = named;
+    }
+  }
   for (const id of ["filterDepartment", "filterCategory", "filterStatus", "filterLanguage"]) {
     const first = $(id)?.querySelector('option[value=""]');
     if (first) first.textContent = n.all;

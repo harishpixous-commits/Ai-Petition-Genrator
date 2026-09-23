@@ -149,6 +149,27 @@ class TestTheWholeLetterIsOneLanguage:
 
         assert "இடம்: தேனி" in text
 
+    def test_the_signature_is_in_the_same_script_as_the_letter(self):
+        """REPORTED FROM A PRINT PREVIEW. The From block at the top said
+        ஹரிஷ் and the line under இப்படிக்கு, said Harish — on the same
+        sheet of paper. The sign-off was the one place the name was written
+        out raw instead of through `display_value`."""
+        text = build_letter_text(template=the_template(), fields=dict(FIELDS),
+                                 language="ta", composition=None,
+                                 session_id="abc-123")
+        closing = text[text.index("இப்படிக்கு,"):]
+
+        assert "ஹரிஷ்" in closing
+        assert "Harish" not in closing
+
+    def test_and_the_english_one_still_signs_in_english(self):
+        text = build_letter_text(template=the_template(), fields=dict(FIELDS),
+                                 language="en", composition=None,
+                                 session_id="abc-123")
+        closing = text[text.index("Yours faithfully,"):]
+
+        assert "Harish" in closing
+
     def test_the_english_petition_is_unchanged(self):
         text = build_letter_text(template=the_template(), fields=dict(FIELDS),
                                  language="en", composition=None,

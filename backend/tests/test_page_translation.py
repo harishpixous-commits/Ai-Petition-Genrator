@@ -117,7 +117,7 @@ def test_the_table_does_not_carry_copy_the_page_stopped_using():
 @pytest.mark.parametrize("key,expected", [
     ("homeTitleLineOne", "உங்கள் குறைகள்."),
     ("homeCreateTitle", "மனு உருவாக்கு"),
-    ("homePetitionsTitle", "எனது மனுக்கள்"),
+    ("homePetitionsTitle", "அனைத்து மனுக்கள்"),
     ("homeGuideEyebrow", "மூன்று எளிய படிகள்"),
 ])
 def test_the_tamil_actually_says_what_it_should(key, expected):
@@ -173,3 +173,100 @@ def test_dictation_appends_rather_than_replacing():
 
     assert "existing ?" in fn
     assert "box.maxLength" in fn, "the box has a hard cap and setting .value walks past it"
+
+
+# ---------------------------------------------------------------------------
+# The labels painted by id rather than by data-i18n
+# ---------------------------------------------------------------------------
+#
+# The filter panel on the petitions list was built with plain ids and never
+# joined to either mechanism, so "Sort by", "Created from", "Department",
+# "Category", "Status" and "Language" stayed English on a Tamil page — beside
+# their own dropdowns, whose contents were already translated.
+
+_ID_MAP = re.compile(r"Object\.entries\(\{ navHome:.*?\}\)\)", re.S)
+
+
+def id_map() -> dict[str, str]:
+    """The `{ elementId: n.key }` table inside navigationLabels()."""
+    block = _ID_MAP.search(navigation())
+    assert block, "the id paint table has been renamed"
+    return dict(re.findall(r"(\w+):\s*n\.(\w+)", block.group(0)))
+
+
+@pytest.mark.parametrize("element_id", [
+    "petitionSortLabel", "filterDateFromLabel", "filterDateToLabel",
+    "filterDepartmentLabel", "filterCategoryLabel", "filterStatusLabel",
+    "filterLanguageLabel", "petitionFilterHint", "versionTitle",
+])
+def test_every_filter_label_is_painted(element_id):
+    assert element_id in id_map(), element_id
+
+
+def test_the_ids_it_paints_are_really_on_the_page():
+    """The other half of the same bug: a table entry pointing at nothing."""
+    markup = page()
+    for element_id in id_map():
+        assert f'id="{element_id}"' in markup, element_id
+
+
+@pytest.mark.parametrize("language", ["en", "ta"])
+def test_each_painted_label_has_a_string_behind_it(language):
+    words = table(language)
+    for element_id, key in id_map().items():
+        assert words.get(key, "").strip(), f"{element_id} -> {key} ({language})"
+
+
+def test_the_status_filter_translates_its_own_options():
+    """The sort dropdown had this loop; the status one did not, so Draft,
+    Ready, Preparing, Needs attention and Cancelled sat in English inside a
+    Tamil list."""
+    js = navigation()
+    fn = js[js.index("function navigationLabels"):]
+    fn = fn[:fn.index("\nfunction ")]
+
+    assert 'filterStatus' in fn
+    for value in ("draft", "ready", "generating", "failed", "cancelled"):
+        assert f"{value}: n." in fn, value
+
+
+# ---------------------------------------------------------------------------
+# One name for the list, everywhere it is named
+# ---------------------------------------------------------------------------
+#
+# A kiosk and a shared counter machine both show every petition made on them,
+# so "My petitions" named something the citizen in front of it does not own.
+# The nav said one thing, the page heading another, and the home card a third.
+
+ALL_PETITIONS = {"en": "All petitions", "ta": "\u0b85\u0ba9\u0bc8\u0ba4\u0bcd\u0ba4\u0bc1 \u0bae\u0ba9\u0bc1\u0b95\u0bcd\u0b95\u0bb3\u0bcd"}
+
+
+@pytest.mark.parametrize("language", ["en", "ta"])
+def test_the_nav_the_heading_and_the_home_card_agree(language):
+    words = table(language)
+    expected = ALL_PETITIONS[language]
+
+    assert words["petitions"].lower() == expected.lower()
+    assert words["petitionsTitle"] == expected
+    assert words["homePetitionsTitle"] == expected
+
+
+@pytest.mark.parametrize("language", ["en", "ta"])
+def test_nothing_still_calls_them_the_citizens_own(language):
+    """Checked across the whole table, not in the three places that were
+    reported: the loading line, the error line and the empty state each said
+    "your petitions" too."""
+    stale = "my petitions" if language == "en" else "\u0b8e\u0ba9\u0ba4\u0bc1 \u0bae\u0ba9\u0bc1"
+    for key, value in table(language).items():
+        assert stale not in value.lower(), f"{key}: {value}"
+
+
+def test_the_markup_defaults_say_it_too():
+    """These are what a citizen reads for the moment before the table is
+    applied, and all that is left if the script fails."""
+    markup = page()
+
+    assert "My Petitions" not in markup
+    assert "My petitions" not in markup
+    assert "your petitions" not in markup
+    assert "your saved petitions" not in markup

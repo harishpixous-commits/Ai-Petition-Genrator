@@ -469,7 +469,12 @@ def build_letter_text(
     lines.extend([""] * SIGN_GAP)
     name = next((fields[n] for n in SENDER_NAME_FIELDS if fields.get(n)), "")
     if name:
-        lines.append(str(name))
+        # The SAME rendering as the From block at the top of the letter, and
+        # for the same reason. This line was the one place the name was
+        # written out raw, so a Tamil petition carried "ஹரிஷ்" in its
+        # sender block and "Harish" over the signature — the one line an
+        # officer looks at to see who is asking.
+        lines.append(display_value("person_name", name, language))
     lines.append("")
 
     lines.append(f"{label('note', language)}: {DISCLAIMER[language]}")
