@@ -22,6 +22,8 @@ from __future__ import annotations
 import pathlib
 import re
 
+import pytest
+
 CSS = pathlib.Path("app/static/app.css")
 
 
@@ -130,3 +132,85 @@ def test_the_stylesheet_is_still_balanced():
     css = without_comments()
 
     assert css.count("{") == css.count("}")
+
+
+# ---------------------------------------------------------------------------
+# What actually comes out of the printer
+# ---------------------------------------------------------------------------
+
+def print_block() -> str:
+    css = without_comments()
+    start = css.index("@media print")
+    depth, end = 0, start
+    for i in range(start, len(css)):
+        if css[i] == "{":
+            depth += 1
+        elif css[i] == "}":
+            depth -= 1
+            if depth == 0:
+                end = i + 1
+                break
+    return css[start:end]
+
+
+class TestOnlyThePetitionIsPrinted:
+    """A citizen printed their petition and got the browser's date and URL
+    across the top, the page title beside them, and the developer's logo at
+    the foot of the letter. None of that belongs on a document handed across
+    a counter."""
+
+    def test_there_is_one_set_of_print_rules(self):
+        """There were two, and the second re-showed children the first had
+        hidden — which is how the footer survived."""
+        assert without_comments().count("@media print") == 1
+
+    def test_the_browser_draws_no_header_or_footer(self):
+        """The date, the page title, the URL and "1/2" are the browser's, and
+        it draws them inside the page margin. A page with no margin has
+        nowhere to draw them."""
+        block = print_block()
+
+        assert "@page" in block
+        assert re.search(r"@page\{[^}]*margin:0", block.replace(" ", "")), block
+
+    def test_the_margins_move_onto_the_paper(self):
+        """`@page{margin:0}` would otherwise print a petition with its text
+        against the edge of the sheet."""
+        block = print_block()
+        paper = re.search(r"\.paper\{([^}]*)\}", block)
+
+        assert paper, block
+        assert "mm" in paper.group(1), paper.group(1)
+
+    def test_it_is_a4(self):
+        assert "size:A4" in print_block().replace(" ", "")
+
+    def test_nothing_is_shown_unless_it_leads_to_the_letter(self):
+        """Written as a chain, not a list of things to hide. The list rotted:
+        every panel added since — the voice bar, the answer card, the kiosk
+        screens, the site footer with its logo — was a thing somebody had to
+        remember to add, and the footer was the one nobody did."""
+        block = print_block().replace(" ", "").replace("\n", "")
+
+        assert "body>*" in block, "the top level is not hidden by default"
+        assert "#docCard>*" in block
+        assert "body>#mainContent" in block, "and the path back is not re-opened"
+
+    def test_the_developers_logo_is_not_on_the_document(self):
+        """The specific thing reported. It is excluded by the chain rather
+        than by name, so the next thing added to the page is excluded too."""
+        block = print_block().replace(" ", "").replace("\n", "")
+
+        # Not named anywhere — and that is the point.
+        assert "site-footer" not in block
+        # But its parent level is hidden, so it cannot print.
+        assert "body>*" in block
+
+    @pytest.mark.parametrize("panel", [
+        ".voicebar", ".answer-check", ".dictation", ".kiosk-done",
+        ".kiosk-welcome", ".doc-toolbar", ".stepper",
+    ])
+    def test_no_interface_panel_can_reach_the_page(self, panel):
+        """None of these are named in the print rules. All of them sit below
+        a level the chain hides, which is why naming them is unnecessary."""
+        assert panel not in print_block()

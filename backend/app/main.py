@@ -13,15 +13,17 @@ Two things happen at startup and both are deliberate:
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from functools import lru_cache
 from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.requests import Request
 
@@ -36,6 +38,35 @@ from .services.render import pdf_status
 log = logging.getLogger(__name__)
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
+
+# The page's own scripts and stylesheet, stamped with the build they belong
+# to so a browser cannot pair fresh markup with a cached script.
+_STAMPED = ("app.css", "app.js", "navigation.js")
+
+
+@lru_cache(maxsize=1)
+def _build_stamp() -> str:
+    """A short digest of the files the page loads.
+
+    Content, not a timestamp: a redeploy that changes nothing should not
+    make every client download the same bytes again, and a file edited in
+    place without its mtime moving still has to invalidate.
+    """
+    digest = hashlib.sha256()
+    for name in _STAMPED:
+        path = STATIC_DIR / name
+        if path.exists():
+            digest.update(path.read_bytes())
+    return digest.hexdigest()[:12]
+
+
+def stamped_index() -> str:
+    """index.html with `?v=` on the assets it loads."""
+    markup = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    stamp = _build_stamp()
+    for name in _STAMPED:
+        markup = markup.replace(f"/static/{name}", f"/static/{name}?v={stamp}")
+    return markup
 ASSETS_DIR = Path(__file__).resolve().parent / "assets"
 
 
@@ -216,13 +247,20 @@ def create_app() -> FastAPI:
     # one URL, no build step. It is a thin client over the same endpoints a real
     # front end would use — it holds no logic of its own.
     @app.get("/", include_in_schema=False)
-    async def index() -> FileResponse:
+    async def index() -> Response:
         # No caching on the page itself. A browser that holds on to an older
         # copy shows an interface the running service no longer has — which is
         # exactly the kind of thing that goes wrong in front of an audience.
         # The fonts under /assets are versioned by name and cache normally.
-        return FileResponse(
-            STATIC_DIR / "index.html",
+        #
+        # THE SCRIPTS ARE STAMPED with the build they belong to. A fresh page
+        # that loads a cached app.js is the worst of both: the markup has ids
+        # the script does not look for, and the script looks for ids the
+        # markup does not have, so panels render empty and nothing errors
+        # anywhere a citizen can see. The stamp makes that combination
+        # unreachable — new markup can only ever fetch its own script.
+        return HTMLResponse(
+            stamped_index(),
             headers={"Cache-Control": "no-store, must-revalidate"},
         )
 

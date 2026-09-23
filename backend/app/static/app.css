@@ -16,6 +16,16 @@
 }
 *{box-sizing:border-box}
 [hidden]{display:none!important}
+/* A PANEL WITH NOTHING IN IT MUST NOT APPEAR.
+   These are shown by script setting `hidden = false` and filling their text
+   in the same breath. If the two ever come apart — a cached script looking
+   for ids this markup does not have, an early return between the two lines —
+   the result is a coloured box with a tick and two blank buttons sitting in
+   the middle of the conversation, which is what a citizen reported.
+   `:empty` on the heading is the tell, and it costs nothing to check. */
+.kiosk-done:has(> .kd-text > h3:empty),
+.answer-check:has(> .ac-text > .ac-value:empty),
+.voice-error-banner:has(> #voiceErrorText:empty){display:none!important}
 html{min-height:100%;scroll-behavior:smooth;scroll-padding-top:96px}
 body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.6 "Noto Sans App","Noto Sans Tamil","Segoe UI",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
 :lang(ta),[lang="ta"]{font-family:"Noto Sans Tamil","Noto Sans App","Nirmala UI",system-ui,sans-serif}
@@ -855,7 +865,59 @@ body.kiosk [data-route="home"] { display: none !important; }
 }
 @media(max-width:360px){.brand-text h1{max-width:149px;font-size:11px}.header-actions{gap:4px}.brand{gap:7px}.workspace-intro h2{font-size:23px}.save-status{max-width:105px}.send-btn #sendText{display:none}.send-btn{width:37px;padding:8px}.details-toggle span{display:none}.stepper{gap:9px}}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}
-@media print{header.app,.workspace-intro,.stepper,.connection-banner,.left,.right,.doc-toolbar,.banner,.skip-link,.genpanel{display:none!important}main.workspace,main.workspace.done,.middle,#docCard{display:block!important;margin:0;padding:0;max-width:none;height:auto!important;min-height:0!important;max-height:none!important;border:0;box-shadow:none}.paper-wrap{display:block;padding:0;background:white;overflow:visible}.paper{max-width:none;margin:0;padding:0;border:0;box-shadow:none;color:black;font-size:11pt}body{background:white}}
+/* ------------------------------------------------------------------ print
+   ONLY THE PETITION. Nothing of the interface it was made in.
+
+   Written as a chain rather than a list of things to hide. The list was the
+   original approach and it rots: every panel added since — the voice bar,
+   the answer card, the dictation panel, the kiosk screens, the site footer
+   with its logo — was a thing somebody had to remember to add to it, and the
+   footer was the one nobody did. So everything is hidden at each level and
+   only the path down to the paper is put back. A panel added tomorrow is
+   excluded by default, which is the right default for a government document.
+
+   `@page{margin:0}` IS WHAT REMOVES THE BROWSER'S OWN HEADER AND FOOTER —
+   the date, the page title, the URL and "1/2". Chrome draws those inside the
+   page margin, so a page with no margin has nowhere to draw them. The real
+   margins move onto the paper as padding, which is also what makes the
+   result A4 with the margins a petition should have.
+
+   Not universal: Firefox prints headers unless the reader unticks them in
+   its own dialog. Chrome and Edge — which is what a kiosk runs — honour
+   this. */
+@media print{
+  @page{size:A4;margin:0}
+  html,body{background:white;margin:0;padding:0}
+
+  /* Hide at every level, then re-open the one path that leads to the letter. */
+  body>*,
+  #mainContent>*,
+  #generatorPage>*,
+  main.workspace>*,
+  .middle>*,
+  #docCard>*{display:none!important}
+
+  body>#mainContent,
+  #mainContent>#generatorPage,
+  #generatorPage>main.workspace,
+  main.workspace>.middle,
+  .middle>#docCard,
+  #docCard>.paper-wrap{display:block!important}
+
+  main.workspace,main.workspace.done,#generatorPage,#mainContent,
+  .middle,#docCard,.paper-wrap{
+    margin:0;padding:0;max-width:none;width:auto;
+    height:auto!important;min-height:0!important;max-height:none!important;
+    border:0;box-shadow:none;background:white;overflow:visible;
+    position:static;grid-template-columns:none}
+
+  /* The margins of the printed page, now that @page has none. */
+  .paper{
+    display:block!important;
+    max-width:none;margin:0;padding:18mm 16mm;
+    border:0;border-radius:0;box-shadow:none;background:white;
+    color:black;font-size:11pt;line-height:1.85}
+}
 /* Asking for the petition to be written differently. Tucked under the toolbar
    rather than in a dialog: the citizen is reading the document while they
    decide what to change, and a modal would cover the thing they are judging. */
@@ -1202,7 +1264,7 @@ header.app{gap:24px}
   .version-panel>summary{padding:11px 13px;font-size:9px;gap:6px}#versionCurrent{font-size:8px}.version-panel-body{padding:0 13px 11px;max-height:250px}.version-item{align-items:flex-start;gap:8px}.version-info>b{font-size:10px}.version-info>span{font-size:8px}.version-note{font-size:8.5px}.version-actions{max-width:43%;justify-content:flex-end}.version-actions .btn{font-size:8px;padding:5px 7px;min-height:28px}
 }
 @media(max-width:360px){.brand-text h1{font-size:10.5px;max-width:155px}.header-actions #helpBtn{display:none}.home-hero h2{font-size:29px}.home-hero .eyebrow{font-size:7px}.home-capabilities{font-size:8px;gap:9px}.home-action-card{gap:12px;padding:23px 16px}.home-action-card h3{font-size:20px}.home-action-card p{font-size:10px}.action-eyebrow{font-size:6.5px}.home-action-icon{width:31px;height:31px}.page-heading>.btn{font-size:8px;max-width:109px}.petition-search input{font-size:10px}.filter-footer p{max-width:170px}}
-@media print{#homePage,#petitionsPage,.main-nav,.version-panel{display:none!important}#generatorPage,#mainContent{display:block!important}}
+
 
 /* The whole row opens the petition. It looked clickable before it was. */
 .petition-item-main[role="button"]{cursor:pointer;border-radius:var(--r-sm)}
