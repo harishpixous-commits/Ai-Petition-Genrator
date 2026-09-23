@@ -228,6 +228,18 @@ class Settings(BaseSettings):
     #   kavitha rehan soham rupali
     sarvam_tts_model: str = "bulbul:v3"
     sarvam_tts_speaker: str = "ishita"
+    # How fast the assistant speaks. 1.0 is the model's own pace; below it is
+    # slower. Worth having as a setting rather than a constant: a counter
+    # serving elderly citizens may want 0.8, and that is a deployment
+    # decision, not a code change.
+    #
+    # bulbul:v3 accepts 0.5 to 2.0 and answers HTTP 400 outside it — which is
+    # SILENCE, not an error anyone sees. `tts.py` clamps rather than letting
+    # a well-meant 0.3 mute the service.
+    sarvam_tts_pace: float = 1.0
+    # What the model already returns; sent explicitly so a change to its
+    # default cannot alter the audio underneath us without anyone noticing.
+    sarvam_tts_sample_rate: int = 22050
 
     # -- translation ------------------------------------------------------- #
     nllb_worker: str = ""  # path to the Node NLLB worker, optional

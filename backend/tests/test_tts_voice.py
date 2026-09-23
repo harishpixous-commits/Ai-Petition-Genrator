@@ -115,3 +115,50 @@ class TestTheNameIsSentAsTheApiWantsIt:
         from app.services.tts import request_for
 
         assert request_for(language)["target_language_code"] == expected
+
+
+class TestHowFastItSpeaks:
+    """`pace` is a deployment decision — a counter serving elderly citizens
+    may want 0.8 — and it is also a way to mute the service by accident."""
+
+    def test_the_request_carries_a_pace_and_a_sample_rate(self):
+        from app.services.tts import request_for
+
+        sent = request_for("ta")
+        assert sent["pace"] == 1.0
+        assert sent["speech_sample_rate"] == 22050
+
+    @pytest.mark.parametrize("asked,used", [
+        (0.5, 0.5), (0.8, 0.8), (1.0, 1.0), (2.0, 2.0),
+        (0.3, 0.5),      # below what bulbul:v3 accepts
+        (2.5, 2.0),      # above it
+        (0.0, 0.5),
+    ])
+    def test_a_pace_the_model_refuses_is_held_not_sent(self, asked, used):
+        """CLAMPED, not rejected. Outside 0.5-2.0 the API answers HTTP 400,
+        `stream` logs it and yields nothing, and the citizen gets an
+        assistant that has simply stopped talking. Somebody setting 0.3
+        wants slow speech; the slowest the model has serves that, and a
+        silent service serves nobody."""
+        from app.services.tts import clamped_pace
+
+        assert clamped_pace(asked) == used
+
+    @pytest.mark.parametrize("nonsense", ["fast", None, ""])
+    def test_a_pace_that_is_not_a_number_falls_back_to_normal(self, nonsense):
+        from app.services.tts import clamped_pace
+
+        assert clamped_pace(nonsense) == 1.0
+
+    def test_the_range_is_the_models_own(self):
+        """Read from the API's own 400 message: "For the Bulbul V3 and V4
+        models, pace should be between 0.5 and 2.0"."""
+        from app.services.tts import PACE_RANGE
+
+        assert PACE_RANGE == (0.5, 2.0)
+
+    def test_the_sample_rate_is_what_the_model_already_returns(self):
+        """Sent explicitly so a change to the model's default cannot alter
+        the audio underneath us without anyone noticing. Verified against
+        the live API: it returns 22050Hz 16-bit mono."""
+        assert get_settings().sarvam_tts_sample_rate == 22050

@@ -77,7 +77,37 @@ def request_for(language: str, settings: Settings | None = None) -> dict:
         "target_language_code": "ta-IN" if language == "ta" else "en-IN",
         "model": s.sarvam_tts_model,
         "speaker": (s.sarvam_tts_speaker or "").strip().lower(),
+        "pace": clamped_pace(s.sarvam_tts_pace),
+        "speech_sample_rate": int(s.sarvam_tts_sample_rate),
     }
+
+
+# What bulbul:v3 accepts. Outside it the API answers HTTP 400, and a 400 here
+# is silence: `stream` logs it, yields nothing, and the citizen gets an
+# assistant that has stopped talking for a reason only a log knows.
+PACE_RANGE = (0.5, 2.0)
+
+
+def clamped_pace(pace: float) -> float:
+    """The configured pace, held inside what the model will accept.
+
+    CLAMPED, not rejected. Somebody setting 0.3 wants the assistant to speak
+    slowly for a citizen who is struggling to follow it; giving them the
+    slowest speech the model can manage serves that, and refusing the whole
+    request serves nobody. The value is logged when it has to be moved, so
+    the setting can be corrected rather than quietly ignored for ever.
+    """
+    low, high = PACE_RANGE
+    try:
+        wanted = float(pace)
+    except (TypeError, ValueError):
+        wanted = 1.0
+    held = min(max(wanted, low), high)
+    if held != wanted:
+        log.warning("tts.pace.out_of_range",
+                    extra={"asked": wanted, "used": held,
+                           "range": f"{low}-{high}"})
+    return held
 
 
 def _chunks(text: str) -> list[str]:
