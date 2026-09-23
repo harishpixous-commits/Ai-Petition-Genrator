@@ -283,3 +283,130 @@ async def test_spoken_confirmation_after_ready_does_not_regenerate(chat, answers
     assert repeated["status"] == "ready"
     assert repeated["document"] == ready["document"]
     assert llm_spy.count == count
+
+
+# ---------------------------------------------------------------------------
+# Hearing something again
+# ---------------------------------------------------------------------------
+#
+# Two controls added at the citizen's request: a speaker beside each thing
+# the assistant said, and a Read button on the finished petition. Both come
+# through the same endpoint, and both are PRESENTATION — nothing they reach
+# touches the record, the document or the workflow.
+
+async def test_a_past_question_can_be_said_again(api, answers, monkeypatch):
+    state = await _complete(api, answers)
+    spoken = []
+
+    async def capture(text, language):
+        spoken.append(text)
+        return b"audio"
+
+    monkeypatch.setattr("app.api.rest.tts.speak", capture)
+    result = await api.get(f"/api/sessions/{state['session_id']}/speech?turn=0")
+
+    assert result.status_code == 200
+    assert spoken and spoken[0].strip()
+
+
+async def test_only_the_assistants_side_is_addressable(api, answers):
+    """`turn` indexes the ASSISTANT's turns, so no index reaches one of the
+    citizen's. Their own sentences are not something a speaker icon beside a
+    question should be able to play into the room.
+
+    Their ANSWERS are still spoken, because the assistant quotes them back
+    when it asks "is all of this correct?" — that is what a read-back is
+    for, and the test below is the rule that actually matters: identifiers
+    are described, never recited."""
+    state = await _complete(api, answers)
+    sid = state["session_id"]
+    view = (await api.get(f"/api/sessions/{sid}")).json()
+    assistant_turns = len([t for t in view["transcript"] if t["who"] == "assistant"])
+    citizen_turns = len([t for t in view["transcript"] if t["who"] == "citizen"])
+
+    assert citizen_turns, "nothing to be protected from"
+    reachable = 0
+    for turn in range(len(view["transcript"]) + 5):
+        if (await api.get(f"/api/sessions/{sid}/speech?turn={turn}")).status_code == 404:
+            break
+        reachable += 1
+
+    assert reachable == assistant_turns
+
+
+async def _generated(api, answers):
+    """A session with a finished document, which `_complete` stops short of."""
+    state = await _complete(api, answers)
+    ready = await api.post(f"/api/sessions/{state['session_id']}/confirm")
+    assert ready.status_code == 200, ready.text
+    assert ready.json()["status"] == "ready"
+    return ready.json()
+
+
+async def test_the_finished_petition_is_read_in_sections(api, answers, monkeypatch):
+    """A petition runs past what a speech service takes in one request, and
+    a citizen who has heard enough can stop between sections."""
+    state = await _generated(api, answers)
+
+    async def capture(text, language):
+        return b"audio"
+
+    monkeypatch.setattr("app.api.rest.tts.speak", capture)
+    first = await api.get(f"/api/sessions/{state['session_id']}/speech?section=0")
+
+    assert first.status_code == 200
+    total = int(first.headers["x-speech-sections"])
+    assert total >= 1
+
+    past_the_end = await api.get(
+        f"/api/sessions/{state['session_id']}/speech?section={total}")
+    assert past_the_end.status_code == 404
+
+
+async def test_the_document_is_not_recited_with_its_identifiers(api, answers, monkeypatch):
+    """The petition on the screen carries the mobile number. The room does
+    not need to hear it."""
+    state = await _generated(api, answers)
+    spoken = []
+
+    async def capture(text, language):
+        spoken.append(text)
+        return b"audio"
+
+    monkeypatch.setattr("app.api.rest.tts.speak", capture)
+    for section in range(20):
+        result = await api.get(
+            f"/api/sessions/{state['session_id']}/speech?section={section}")
+        if result.status_code == 404:
+            break
+
+    assert spoken
+    assert answers["mobile"] not in "".join(spoken).replace(" ", "")
+
+
+async def test_asking_for_a_turn_and_a_section_at_once_is_refused(api, answers):
+    state = await _complete(api, answers)
+    result = await api.get(
+        f"/api/sessions/{state['session_id']}/speech?turn=0&section=0")
+
+    assert result.status_code == 400
+
+
+async def test_reading_changes_nothing(api, answers, monkeypatch):
+    """Presentation only. The record must be identical afterwards."""
+    state = await _complete(api, answers)
+    sid = state["session_id"]
+
+    async def capture(text, language):
+        return b"audio"
+
+    monkeypatch.setattr("app.api.rest.tts.speak", capture)
+    before = (await api.get(f"/api/sessions/{sid}")).json()
+    await api.get(f"/api/sessions/{sid}/speech?turn=0")
+    await api.get(f"/api/sessions/{sid}/speech?section=0")
+    after = (await api.get(f"/api/sessions/{sid}")).json()
+
+    assert after["status"] == before["status"]
+    assert after["letter_text"] == before["letter_text"]
+    assert after["transcript"] == before["transcript"]
+    assert after["version"] == before["version"]

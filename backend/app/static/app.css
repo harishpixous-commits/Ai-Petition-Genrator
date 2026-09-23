@@ -1376,3 +1376,28 @@ header.app{gap:24px}
 #micInline:disabled{opacity:.45;cursor:not-allowed}
 .dictation-status{margin:7px 2px 0;font-size:11px;color:var(--muted);line-height:1.5}
 .dictation-status:empty{display:none}
+
+/* SAY IT AGAIN. A speaker beside what the assistant said, so a citizen who
+   missed the question — or cannot read it — can hear it as many times as
+   they like without anything else happening. Inline at the end of the text
+   rather than floated in a corner: it belongs to that message, and a
+   floating control over a wrapped Tamil sentence covers the last word of
+   it. */
+.bubble .say-again{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:26px;height:26px;margin:-2px 0 -6px 8px;padding:0;
+  vertical-align:middle;border:1px solid var(--line);border-radius:8px;
+  background:white;color:var(--accent);cursor:pointer;
+  transition:background var(--step),color var(--step),border-color var(--step)}
+.bubble .say-again svg{width:15px;height:15px}
+.bubble .say-again:hover{background:var(--accent-soft,#e7f2f1);border-color:var(--accent)}
+.bubble .say-again:active{transform:translateY(1px)}
+.turn.citizen .bubble .say-again{display:none}
+
+/* Reading the document out. The button says Stop while it runs, so the one
+   control both starts and ends it — the same shape as the microphone. */
+#readBtn.reading{color:var(--bad);border-color:#e6bbb6;background:var(--bad-soft)}
+
+@media (prefers-reduced-motion: reduce){
+  .bubble .say-again{transition:none}
+}

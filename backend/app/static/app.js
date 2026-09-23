@@ -696,7 +696,7 @@ async function mutate(path, body) {
 
 /* ---------------------------------------------------------------- messages */
 
-function bubble(who, text, isError) {
+function bubble(who, text, isError, turn) {
   const row = document.createElement("div");
   row.className = "turn " + who + (isError ? " error" : "");
   if (who !== "citizen") {
@@ -709,6 +709,10 @@ function bubble(who, text, isError) {
   const b = document.createElement("div");
   b.className = "bubble";
   b.textContent = who === "citizen" ? maskCitizenTurn(text) : maskInText(text);
+  // Only what the assistant said. A citizen's own answer read back aloud at
+  // a counter is heard by the queue behind them, and the server refuses it
+  // either way — this is the half of that rule the page is responsible for.
+  if (who === "assistant" && turn !== undefined) b.appendChild(speakerButton(turn));
   row.appendChild(b);
   $("log").appendChild(row);
   // The citizen's own message always brings the view with it — they just sent
@@ -719,8 +723,29 @@ function bubble(who, text, isError) {
   return row;
 }
 
+/* A SPEAKER BESIDE WHAT THE ASSISTANT SAID.
+   Press once and it reads that message; press again and it reads it again.
+   It addresses the turn by its number rather than posting the text back, so
+   the words spoken are the ones the session holds — the page cannot ask the
+   service to say something the conversation never contained. */
+function speakerButton(turn) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "say-again";
+  button.dataset.turn = String(turn);
+  button.title = button.ariaLabel = voiceWords().hear;
+  button.innerHTML = '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true">'
+    + '<path d="M4 9v6h3.5L12 19V5L7.5 9H4Z" stroke="currentColor" stroke-width="1.7" '
+    + 'stroke-linejoin="round"/><path d="M16 9.2a4 4 0 0 1 0 5.6M18.5 6.5a8 8 0 0 1 0 11" '
+    + 'stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>';
+  button.onclick = () => {
+    void speakOnce(`/api/sessions/${encodeURIComponent(sid)}/speech?turn=${turn}`);
+  };
+  return button;
+}
+
 /** An assistant question, with the field it is asking about named above it. */
-function questionBubble(text, field) {
+function questionBubble(text, field, turn) {
   const row = document.createElement("div");
   row.className = "turn assistant";
   const av = document.createElement("div");
@@ -736,6 +761,7 @@ function questionBubble(text, field) {
     b.appendChild(head);
   }
   b.appendChild(document.createTextNode(maskInText(text)));
+  if (turn !== undefined) b.appendChild(speakerButton(turn));
   row.appendChild(av); row.appendChild(b);
   $("log").appendChild(row);
   scrollLog();
@@ -933,6 +959,12 @@ function labels() {
   $("cancel").textContent = t.cancel;
   $("printBtn").textContent = t.print;
   $("copyBtn").textContent = t.copy;
+  for (const say of document.querySelectorAll(".bubble .say-again")) {
+    say.title = say.ariaLabel = voiceWords().hear;
+  }
+  $("readText").textContent = typing.reading ? voiceWords().readStop : voiceWords().readDoc;
+  $("readBtn").title = $("readBtn").ariaLabel =
+    typing.reading ? voiceWords().readStop : voiceWords().readDoc;
   $("reviseText").textContent = t.revise;
   $("editHint").textContent = t.editHint;
   $("editSave").textContent = t.editSave;
@@ -995,12 +1027,14 @@ function render(v) {
   const turns = v.transcript || [];
   if (turns.length < seen) { $("log").replaceChildren(); seen = 0; }
   const pendingField = [...(v.outstanding || []), ...(v.collected || [])].find(f => f.name === v.awaiting);
+  let spokenSoFar = turns.slice(0, seen).filter(t => t.who === "assistant").length;
   turns.slice(seen).forEach((t, i, arr) => {
     const isLast = i === arr.length - 1;
+    const turn = t.who === "assistant" ? spokenSoFar++ : undefined;
     if (t.who === "assistant" && isLast && pendingField && v.status === "collecting") {
-      questionBubble(t.text, pendingField);
+      questionBubble(t.text, pendingField, turn);
     } else {
-      bubble(t.who, t.text);
+      bubble(t.who, t.text, false, turn);
     }
   });
   seen = turns.length;
@@ -1541,6 +1575,8 @@ function drawOutcome(v) {
   setLink($("pdf"), form(doc.pdf_url), t.pdf, t.noPdf);
   setLink($("docx"), form(doc.docx_url), t.docx);
   $("printBtn").disabled = !hasLetter;
+  $("readBtn").disabled = !hasLetter;
+  $("readBtn").classList.toggle("reading", typing.reading);
   $("copyBtn").disabled = !hasLetter;
   $("reviseBtn").disabled = !hasLetter || busy;
   $("translateBtn").disabled = !hasLetter || busy || requestPending || editing;
@@ -2122,7 +2158,7 @@ const voice = { wants: false };
 const typing = {
   phase: 'idle', epoch: 0, stream: null, ctx: null, node: null, socket: null,
   committedText: '', partialText: '', finals: new Set(), rendered: '', rate: 16000,
-  timer: null, message: '', speaking: false, responses: true, speechEpoch: 0,
+  timer: null, message: '', speaking: false, reading: false, responses: true, speechEpoch: 0,
   audio: null, speechAbort: null, speechUrl: null, lastReply: '',
 };
 try { typing.responses = localStorage.getItem('petition.voiceResponses') !== 'off'; } catch {}
@@ -2135,6 +2171,9 @@ function voiceWords() {
     unavailable: 'குரல் தட்டச்சு தற்காலிகமாகக் கிடைக்கவில்லை. உங்கள் பதிலைத் தட்டச்சு செய்யவும்.',
     speaking: 'பதிலை வாசிக்கிறேன்...', on: 'குரல் பதில்கள் ON', off: 'குரல் பதில்கள் OFF',
     audio: 'குரல் பதில் கிடைக்கவில்லை. கேள்வியைப் படித்து தொடர்ந்து பதிலளிக்கலாம்.',
+    hear: 'இதை வாசித்துக் காட்டு', hearStop: 'வாசிப்பதை நிறுத்து',
+    readDoc: 'வாசித்துக் காட்டு', readStop: 'நிறுத்து',
+    reading: 'மனுவை வாசிக்கிறேன்...',
     limit: 'உரை முழுவதும் பாதுகாக்கப்பட்டுள்ளது. அனுப்புவதற்கு முன் 6,000 எழுத்துகளுக்குள் திருத்தவும்.',
   } : {
     start: 'Start voice typing', stop: 'Stop voice typing', stopLabel: 'Stop dictation',
@@ -2144,6 +2183,9 @@ function voiceWords() {
     unavailable: 'Voice typing is temporarily unavailable. Please type your answer.',
     speaking: 'Reading the assistant’s response...', on: 'Voice Responses ON', off: 'Voice Responses OFF',
     audio: 'Spoken response unavailable. You can read the question and continue typing.',
+    hear: 'Read this aloud', hearStop: 'Stop reading',
+    readDoc: 'Read aloud', readStop: 'Stop',
+    reading: 'Reading the petition...',
     limit: 'All text is preserved. Edit to 6,000 characters before sending.',
   };
 }
@@ -2271,11 +2313,84 @@ async function toggleDictation() {
 }
 function stopPlayback() {
   typing.speechEpoch++;
+  typing.reading = false;
   typing.speechAbort?.abort(); typing.speechAbort=null;
   if(typing.audio){typing.audio.pause();typing.audio.removeAttribute('src');typing.audio.load();typing.audio=null;}
   if(typing.speechUrl){URL.revokeObjectURL(typing.speechUrl);typing.speechUrl=null;}
   typing.speaking=false;paintVoice();
 }
+/* ONE PLAYBACK PATH for all three things that speak: the reply that arrives
+   on its own, a question said again from its speaker icon, and the finished
+   petition read section by section. They share `typing.speechEpoch`, so
+   starting any of them silences the others, and they share `typing.speaking`,
+   so the microphone stays disabled for the whole of it — which is the only
+   self-transcription guard this design needs. */
+function playClip(blob, epoch) {
+  return new Promise(resolve => {
+    typing.speechUrl = URL.createObjectURL(blob);
+    const audio = new Audio(typing.speechUrl);
+    typing.audio = audio;
+    const done = ok => { if (epoch === typing.speechEpoch) syncControls(); resolve(ok); };
+    audio.onended = () => done(true);
+    audio.onerror = () => done(false);
+    audio.play().catch(() => done(false));
+  });
+}
+
+/** Fetch one piece of speech and play it to the end. Resolves false when
+ *  anything went wrong or a newer request has taken over. */
+async function speakFrom(url, epoch) {
+  const controller = new AbortController();
+  typing.speechAbort = controller;
+  const timeout = setTimeout(() => controller.abort(), 25000);
+  try {
+    const response = await fetch(url, {signal: controller.signal, cache: 'no-store'});
+    if (!response.ok) throw Error('audio unavailable');
+    const blob = await response.blob();
+    if (epoch !== typing.speechEpoch) return false;
+    clearTimeout(timeout);
+    return await playClip(blob, epoch);
+  } catch {
+    return false;
+  } finally { clearTimeout(timeout); }
+}
+
+/** Say one thing, from wherever. Used by the speaker icons and the reply. */
+async function speakOnce(url) {
+  closeDictation(); stopPlayback();
+  const epoch = typing.speechEpoch;
+  typing.speaking = true; typing.message = ''; paintVoice();
+  const ok = await speakFrom(url, epoch);
+  if (epoch !== typing.speechEpoch) return;
+  stopPlayback();
+  if (!ok) { typing.message = voiceWords().audio; paintVoice(); }
+}
+
+/* THE FINISHED PETITION, read out.
+   Section by section rather than in one request: a petition runs past what
+   a speech service takes at once, and a citizen who has heard enough can
+   stop between sections instead of waiting out the whole document. */
+async function readPetition() {
+  if (typing.reading) { typing.reading = false; stopPlayback(); syncControls(); return; }
+  if (!sid) return;
+  closeDictation(); stopPlayback();
+  const epoch = typing.speechEpoch;
+  typing.reading = true; typing.speaking = true;
+  typing.message = voiceWords().reading; paintVoice(); syncControls();
+  let index = 0;
+  while (typing.reading && epoch === typing.speechEpoch) {
+    const ok = await speakFrom(
+      `/api/sessions/${encodeURIComponent(sid)}/speech?section=${index}`, epoch);
+    if (!ok) break;            // ran off the end of the document, or failed
+    index++;
+  }
+  if (epoch !== typing.speechEpoch) return;
+  typing.reading = false;
+  stopPlayback();
+  if (!index) { typing.message = voiceWords().audio; paintVoice(); }
+  syncControls();
+}
+
 async function speakReply(v, force=false) {
   const key=`${v.session_id}:${v.transcript?.length}:${v.reply}`;
   if(!typing.responses || !v.reply || v.status==='generating' || (!force&&typing.lastReply===key))return;
@@ -2306,6 +2421,7 @@ $('mic').onclick=()=>{
   if(typing.responses && view)void speakReply(view,true);else stopPlayback();
   paintVoice();
 };
+$("readBtn").onclick = () => { void readPetition(); };
 $('micInline').onclick=toggleDictation;
 // Editing, Send and navigation invalidate late results, preserving visible text.
 $('text').addEventListener('input',()=>{if(typing.phase!=='idle')closeDictation();});

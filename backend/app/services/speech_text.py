@@ -295,11 +295,26 @@ def readable_sections(letter_text: str, max_chars: int = 420) -> list[str]:
     if current:
         sections.append(current)
 
+    # LINE BY LINE, AND ONLY THEN JOINED. Joining first and cleaning after
+    # let the empty-label pattern reach backwards over the line before it:
+    # "12 Gandhi Street, Coimbatore" and "Mobile: 9344174752" became one
+    # string, the number was redacted, and "Coimbatore Mobile:" then matched
+    # as a single label and was removed whole. The citizen's town was
+    # dropped from the petition being read to them, and only the town —
+    # which is the hardest kind of missing to notice.
+    #
+    # A label and its value arrive on their own line in this document, so
+    # doing it here costs nothing and cannot cross that boundary.
     out = []
     for block in sections:
-        spoken = _drop_empty_labels(redact_for_speech(" ".join(block)))
-        if spoken.strip():
-            out.append(spoken.strip())
+        kept = []
+        for line in block:
+            spoken = _drop_empty_labels(redact_for_speech(line)).strip()
+            if spoken:
+                kept.append(spoken)
+        joined = " ".join(kept).strip()
+        if joined:
+            out.append(joined)
     return out
 
 

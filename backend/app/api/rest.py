@@ -39,7 +39,7 @@ from ..services import (
 )
 from ..services.officer_store import require_citizen_session
 from ..services.render import pdf_status
-from ..services.speech_text import speech_for
+from ..services.speech_text import readable_sections, redact_for_speech, speech_for
 from ..services.translate import language_of, translate_lines
 from .views import session_view
 
@@ -877,19 +877,73 @@ async def document_docx(session_id: str, request: Request,
 
 
 @router.get("/sessions/{session_id}/speech")
-async def speech(session_id: str, request: Request):
-    """Audio for the assistant's current reply, when TTS is configured."""
+async def speech(
+    session_id: str,
+    request: Request,
+    turn: int | None = None,
+    section: int | None = None,
+):
+    """Audio for something the citizen has asked to hear again.
+
+    Three things, and nothing else:
+
+        no parameter   the assistant's current reply, as before
+        turn=N         assistant turn N, said again on request
+        section=N      one section of the finished petition
+
+    READING IS PRESENTATION. Nothing here touches the record, the document
+    or the workflow, and none of it can be reached for a turn the citizen
+    spoke: `turn` addresses the ASSISTANT's side of the transcript only. A
+    citizen's own answer read back aloud at a counter is heard by the queue
+    behind them, and they did not ask for that by pressing a speaker icon
+    beside a question.
+    """
     from fastapi.responses import Response
+
+    if turn is not None and section is not None:
+        raise HTTPException(400, "Ask for a turn or a section, not both.")
 
     with session_context(session_id):
         state = await _require_state(request, session_id)
         language = state.get("language", "en")
-        spoken_text = speech_for(
-            display_text=state.get("reply", ""), view=session_view(state),
-            template=the_template(), language=language,
-            allow_spoken_identifiers=get_settings().voice_spoken_identifiers,
-        )
+        headers = {}
+
+        if turn is not None:
+            # `turns` on the record; `session_view` is what renames it to
+            # `transcript` for the page. Reading the view's name off the raw
+            # state found nothing, and every speaker icon returned 404.
+            spoken = [entry for entry in (state.get("turns") or [])
+                      if entry.get("who") == "assistant"]
+            if not 0 <= turn < len(spoken):
+                raise HTTPException(404, "That question is not in this conversation.")
+            spoken_text = redact_for_speech(spoken[turn].get("text") or "")
+        elif section is not None:
+            # Sectioned rather than read in one go: a petition runs past
+            # what a speech service will take in a single request, and a
+            # citizen who has heard enough can stop between sections instead
+            # of waiting out the whole document.
+            sections = readable_sections(state.get("letter_text") or "")
+            if not sections:
+                raise HTTPException(404, "There is no document to read yet.")
+            headers["X-Speech-Sections"] = str(len(sections))
+            if not 0 <= section < len(sections):
+                raise HTTPException(404, "That section is past the end of the petition.")
+            # `readable_sections` has already taken the identifiers out —
+            # the document on the screen carries them, the room does not
+            # need to hear them. Redacting again here would say that rule
+            # lives in two places when it lives in one, and
+            # `test_voice.py::TestTheDocumentIsReadWhole` is what holds it.
+            spoken_text = sections[section]
+        else:
+            spoken_text = speech_for(
+                display_text=state.get("reply", ""), view=session_view(state),
+                template=the_template(), language=language,
+                allow_spoken_identifiers=get_settings().voice_spoken_identifiers,
+            )
+
+        if not spoken_text.strip():
+            raise HTTPException(404, "There is nothing to read there.")
         audio = await tts.speak(spoken_text, language)
         if audio is None:
             raise HTTPException(503, "Spoken replies are not configured on this service.")
-        return Response(content=audio, media_type="audio/wav")
+        return Response(content=audio, media_type="audio/wav", headers=headers)

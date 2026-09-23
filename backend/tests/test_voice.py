@@ -533,3 +533,73 @@ class TestCommandsAfterThePetitionExists:
         from app.api.ws import _READ_ALOUD, _STOP_READING
         for pattern in (_READ_ALOUD.pattern, _STOP_READING.pattern):
             assert not any(ord(c) < 9 for c in pattern), repr(pattern)
+
+
+class TestTheDocumentIsReadWhole:
+    """The petition read aloud is the petition, less its identifiers.
+
+    THE BUG THIS EXISTS FOR, and it was invisible by construction. Sections
+    were joined first and cleaned afterwards, so the empty-label pattern
+    could reach backwards across what had been a line break:
+
+        12 Gandhi Street, Coimbatore     (one line)
+        Mobile: 9344174752               (the next)
+
+    joined, then redacted, gave "12 Gandhi Street, Coimbatore Mobile: " —
+    and "Coimbatore Mobile:" matched the label pattern as a whole and was
+    removed with it. The number was withheld as intended; the citizen's TOWN
+    went with it, and a petition read aloud without its town is a petition
+    that sounds complete and is not.
+    """
+
+    LETTER = ("From,\n"
+              "Ravi Kumar\n"
+              "12 Gandhi Street, Coimbatore\n"
+              "Mobile: 9344174752\n"
+              "\n"
+              "To,\n"
+              "The concerned officer\n"
+              "\n"
+              "Subject: Street light not working\n"
+              "\n"
+              "The street light has not worked for three months.\n"
+              "\n"
+              "Thanking you,")
+
+    def _spoken(self):
+        from app.services.speech_text import readable_sections
+
+        return " ".join(readable_sections(self.LETTER))
+
+    def test_the_identifier_is_not_recited(self):
+        assert "9344174752" not in self._spoken()
+
+    def test_and_the_label_left_behind_is_not_read_out_either(self):
+        """"Mobile:" with nothing after it sounds like the service lost the
+        number rather than withheld it."""
+        assert "Mobile:" not in self._spoken()
+
+    def test_but_everything_that_is_not_an_identifier_survives(self):
+        spoken = self._spoken()
+
+        for kept in ("Ravi Kumar", "12 Gandhi Street", "Coimbatore",
+                     "The concerned officer", "Street light not working",
+                     "has not worked for three months", "Thanking you"):
+            assert kept in spoken, kept
+
+    def test_the_town_specifically(self):
+        """Named on its own because it is the one that went missing, and
+        because losing only the town is the hardest kind of missing to
+        notice — every other word of the address is still there."""
+        assert "Coimbatore" in self._spoken()
+
+    def test_a_tamil_petition_keeps_its_place_too(self):
+        from app.services.speech_text import readable_sections
+
+        letter = ("\u0b85\u0ba9\u0bc1\u0baa\u0bcd\u0baa\u0bc1\u0ba8\u0bb0\u0bcd,\n\u0bb9\u0bb0\u0bbf\u0bb7\u0bcd\n"
+                  "82/33 \u0baa\u0bc6\u0bb0\u0bc1\u0bae\u0bbe\u0bb3\u0bcd \u0b95\u0bcb\u0bb5\u0bbf\u0bb2\u0bcd \u0ba4\u0bc6\u0bb0\u0bc1, \u0ba4\u0bc7\u0ba9\u0bbf\n"
+                  "\u0bae\u0bca\u0baa\u0bc8\u0bb2\u0bcd: 9344174752\n")
+        spoken = " ".join(readable_sections(letter))
+
+        assert "\u0ba4\u0bc7\u0ba9\u0bbf" in spoken
+        assert "9344174752" not in spoken

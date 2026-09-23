@@ -381,6 +381,13 @@
         </button>
         <button class="btn primary" id="editSave" type="button" hidden></button>
         <button class="btn" id="editCancel" type="button" hidden></button>
+        <!-- The petition, read out. For a citizen who cannot read the screen
+             the document is otherwise the one part of this service that
+             never speaks. -->
+        <button class="btn" id="readBtn" type="button">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 9v6h3.5L12 19V5L7.5 9H4Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M16 9.2a4 4 0 0 1 0 5.6M18.5 6.5a8 8 0 0 1 0 11" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+          <span id="readText"></span>
+        </button>
         <button class="btn" id="printBtn" type="button"></button>
         <button class="btn" id="copyBtn" type="button"></button>
         <!-- Shown only when there is actually something attached. The default
