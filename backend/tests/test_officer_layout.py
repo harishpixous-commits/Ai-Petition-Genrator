@@ -230,3 +230,38 @@ class TestTheOfficerPagesAreNotOpenToCitizens:
         response = client.get("/officer/login")
 
         assert "no-store" in response.headers.get("cache-control", "")
+
+
+# ---------------------------------------------------------------------------
+# What the dashboard waits for before it draws anything
+# ---------------------------------------------------------------------------
+
+class TestTheDashboardDoesNotWaitTwice:
+    """The page shows neither the petition table nor the acknowledgement
+    count until both have arrived, and it fetched them one after the other —
+    so the slower request's time was spent twice over and the citizen-facing
+    complaint was "loading long time".
+
+    This is a source assertion and cannot measure anything. The measurement
+    that matters was taken in a browser: login to first table row went from
+    2.97s to 0.24s once this and the server-side selection were both fixed.
+    """
+
+    def _dashboard(self):
+        source = pathlib.Path("app/static/officer.js").read_text(encoding="utf-8")
+        start = source.index("async function dashboard")
+        return source[start:source.index("\n  function ", start)]
+
+    def test_both_reads_are_started_together(self):
+        body = self._dashboard()
+
+        assert "Promise.all" in body
+
+    def test_neither_is_awaited_on_its_own_first(self):
+        """`await api("/petitions")` followed by `await api("/ack…")` is the
+        shape that was slow. Either one alone, awaited before the other is
+        started, brings it back."""
+        body = self._dashboard()
+
+        assert 'await api("/petitions")' not in body
+        assert 'await api("/acknowledgements")' not in body

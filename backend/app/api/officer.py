@@ -170,11 +170,31 @@ async def record(request, sid, *, analyse=False):
 
 @router.get("/petitions")
 async def petitions(request: Request, user: OfficerUser):
+    """Every petition this office may review, newest first.
+
+    A PETITION IS A SESSION THAT PRODUCED A DOCUMENT. `_generated` is the
+    catalogue's own index of exactly those, and it is what the citizen's
+    list is built from — so the two agree about what the word means.
+
+    This read `_latest` instead, which is every session ever started. On one
+    machine that was 412 rows of which 12 were petitions: the other 400 were
+    drafts abandoned at the first question, and they arrive with no
+    reference, no petitioner and no subject. An officer opening the portal
+    saw four hundred blank rows and twelve real ones somewhere among them.
+
+    It was also why the page took seconds to appear. Every one of those
+    ids was a full checkpoint load, and four hundred of them were loaded to
+    produce nothing worth showing.
+
+    What is deliberately NOT here: a petition somebody is halfway through
+    typing. It is not finished, the citizen is still holding it, and there
+    is nothing for an office to route.
+    """
     catalog = _catalog(request)
     # Read the existing incremental catalogue without creating petition copies.
     async with catalog._lock:
         await catalog._refresh()
-        ids = list(catalog._latest)
+        ids = list(catalog._generated)
     items = []
     for sid in ids:
         try:

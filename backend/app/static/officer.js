@@ -254,9 +254,15 @@
         },
       ];
     } else {
-      const d = await api("/petitions");
-      records = d.items;
-      acks = (await api("/acknowledgements")).items;
+      // Together, not one after the other. These are two independent
+      // reads and the page shows neither until both land, so fetching
+      // them in sequence spent the slower one's time twice over.
+      const [petitions, acknowledgements] = await Promise.all([
+        api("/petitions"),
+        api("/acknowledgements"),
+      ]);
+      records = petitions.items;
+      acks = acknowledgements.items;
     }
     main.innerHTML = `${banner()}<div class="row"><div><p class="eyebrow">PETITION REVIEW WORKSPACE</p><h2>Officer Portal</h2><p class="muted">Review, understand and route citizen petitions.</p></div><span class="muted">${demo ? "Sample workspace" : "Authorized office records"}</span></div><section class="stats" aria-label="Petition totals">${[
       ["Total Petitions", records.length],

@@ -172,3 +172,69 @@ def test_grounding():
         ).get("department")
         is None
     )
+
+
+# ---------------------------------------------------------------------------
+# A petition, not every session anybody ever started
+# ---------------------------------------------------------------------------
+
+async def test_the_list_holds_petitions_not_abandoned_drafts(api):
+    """REPORTED FROM THE PORTAL. The dashboard showed 412 rows of which 12
+    were petitions. The other 400 were sessions abandoned at the first
+    question — no reference, no petitioner, no subject — so an officer
+    opened the portal onto four hundred blank rows with the real work
+    somewhere among them.
+
+    It was also why the page took seconds to arrive: every one of those ids
+    was a full checkpoint load, and four hundred of them were loaded to
+    produce nothing worth showing.
+
+    A PETITION IS A SESSION THAT PRODUCED A DOCUMENT. That is what the
+    citizen's own list means by the word, and the two now agree.
+    """
+    client, sid, workflow = api
+
+    # Somebody opened the form and walked away.
+    for _ in range(3):
+        draft = str(uuid.uuid4())
+        await workflow._compiled.aupdate_state(
+            workflow.config(draft), {**new_state(draft), "status": "collecting"},
+            as_node="verify")
+
+    await login(client)
+    rows = (await client.get("/api/officer/petitions")).json()["items"]
+
+    assert [r["id"] for r in rows] == [sid]
+
+
+async def test_no_row_arrives_without_the_things_a_row_shows(api):
+    """The table has columns for a reference, a petitioner and a subject.
+    A row with none of them is a row an officer cannot act on."""
+    client, sid, _ = api
+    await login(client)
+    rows = (await client.get("/api/officer/petitions")).json()["items"]
+
+    assert rows
+    for row in rows:
+        assert (row.get("reference") or "").strip(), row
+        assert (row.get("petitioner_name") or "").strip(), row
+
+
+async def test_acknowledgements_come_from_the_same_set(api):
+    """They are derived from the petition list, so a receipt attached to a
+    draft that was never finished is not an office record either."""
+    client, sid, workflow = api
+
+    draft = str(uuid.uuid4())
+    await workflow._compiled.aupdate_state(
+        workflow.config(draft), {**new_state(draft), "status": "collecting"},
+        as_node="verify")
+
+    await login(client)
+    petitions = (await client.get("/api/officer/petitions")).json()["items"]
+    acks = (await client.get("/api/officer/acknowledgements")).json()["items"]
+    known = {p["id"] for p in petitions}
+
+    assert draft not in known
+    for ack in acks:
+        assert ack["petition_id"] in known, ack
