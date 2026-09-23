@@ -315,3 +315,109 @@ class TestDisplayValue:
 def test_text_accepts_a_grievance():
     result = validate_text("The street light outside my house has not worked for three months.")
     assert result.ok and result.value.startswith("The street light")
+
+
+# ---------------------------------------------------------------------------
+# A number said the way people actually say it
+# ---------------------------------------------------------------------------
+
+class TestANumberSaidInTwos:
+    """REPORTED FROM A TAMIL SESSION. The citizen was asked for their mobile
+    number, said it, and the box filled with Tamil words — so the transcript
+    reaching the form was:
+
+        தொண்ணூற்றி மூன்று நாற்பத்தி நாலு பதினேழு நாற்பத்தி ஏழு ஐம்பத்தி இரண்டு
+
+    which is 93 44 17 47 52 — 9344174752, said the way a phone number is
+    printed and the way everybody here reads one out.
+
+    `digits_from_speech` returned "3472".
+
+    THAT IS THE DANGEROUS KIND OF WRONG. Only the single-digit words were in
+    its tables, so every tens word carried no digit of its own and was
+    dropped in silence: மூன்று, நாலு, ஏழு, இரண்டு survived and தொண்ணூற்றி,
+    நாற்பத்தி, பதினேழு, ஐம்பத்தி did not. Not empty, not obviously broken —
+    four digits that look like the start of a number, from somebody who said
+    ten. A petition carrying it gives the office no way to reach the citizen.
+
+    `validate_age` had known for a while: it tries `spoken_cardinal` first
+    and says in a comment that "twenty three" arrives here as "3". The
+    workaround guarded the age field and nothing else.
+    """
+
+    def test_the_number_from_the_report(self):
+        said = ("\u0ba4\u0bca\u0ba3\u0bcd\u0ba3\u0bc2\u0bb1\u0bcd\u0bb1\u0bbf \u0bae\u0bc2\u0ba9\u0bcd\u0bb1\u0bc1 \u0ba8\u0bbe\u0bb1\u0bcd\u0baa\u0ba4\u0bcd\u0ba4\u0bbf \u0ba8\u0bbe\u0bb2\u0bc1 \u0baa\u0ba4\u0bbf\u0ba9\u0bc7\u0bb4\u0bc1 "
+                "\u0ba8\u0bbe\u0bb1\u0bcd\u0baa\u0ba4\u0bcd\u0ba4\u0bbf \u0b8f\u0bb4\u0bc1 \u0b90\u0bae\u0bcd\u0baa\u0ba4\u0bcd\u0ba4\u0bbf \u0b87\u0bb0\u0ba3\u0bcd\u0b9f\u0bc1")
+
+        assert digits_from_speech(said) == "9344174752"
+
+    def test_and_it_reaches_the_field_as_a_mobile_number(self):
+        said = ("\u0ba4\u0bca\u0ba3\u0bcd\u0ba3\u0bc2\u0bb1\u0bcd\u0bb1\u0bbf \u0bae\u0bc2\u0ba9\u0bcd\u0bb1\u0bc1 \u0ba8\u0bbe\u0bb1\u0bcd\u0baa\u0ba4\u0bcd\u0ba4\u0bbf \u0ba8\u0bbe\u0bb2\u0bc1 \u0baa\u0ba4\u0bbf\u0ba9\u0bc7\u0bb4\u0bc1 "
+                "\u0ba8\u0bbe\u0bb1\u0bcd\u0baa\u0ba4\u0bcd\u0ba4\u0bbf \u0b8f\u0bb4\u0bc1 \u0b90\u0bae\u0bcd\u0baa\u0ba4\u0bcd\u0ba4\u0bbf \u0b87\u0bb0\u0ba3\u0bcd\u0b9f\u0bc1")
+        result = validate_mobile(said)
+
+        assert result.ok
+        assert result.value == "9344174752"
+
+    def test_the_habit_of_saying_correct_afterwards_is_not_a_digit(self):
+        """The citizen in the report ended with "\u0b9a\u0bb0\u0bbf \u0b9a\u0bb0\u0bbf" \u2014 a habit left over
+        from the assistant that used to ask them to confirm out loud."""
+        said = ("\u0ba4\u0bca\u0ba3\u0bcd\u0ba3\u0bc2\u0bb1\u0bcd\u0bb1\u0bbf \u0bae\u0bc2\u0ba9\u0bcd\u0bb1\u0bc1 \u0ba8\u0bbe\u0bb1\u0bcd\u0baa\u0ba4\u0bcd\u0ba4\u0bbf \u0ba8\u0bbe\u0bb2\u0bc1 \u0baa\u0ba4\u0bbf\u0ba9\u0bc7\u0bb4\u0bc1 "
+                "\u0ba8\u0bbe\u0bb1\u0bcd\u0baa\u0ba4\u0bcd\u0ba4\u0bbf \u0b8f\u0bb4\u0bc1 \u0b90\u0bae\u0bcd\u0baa\u0ba4\u0bcd\u0ba4\u0bbf \u0b87\u0bb0\u0ba3\u0bcd\u0b9f\u0bc1 \u0b9a\u0bb0\u0bbf \u0b9a\u0bb0\u0bbf")
+
+        assert validate_mobile(said).value == "9344174752"
+
+    @pytest.mark.parametrize("said,expected", [
+        ("ninety three forty four seventeen forty seven fifty two", "9344174752"),
+        ("\u0ba4\u0bca\u0ba3\u0bcd\u0ba3\u0bc2\u0bb1\u0bcd\u0bb1\u0bbf \u0bae\u0bc2\u0ba9\u0bcd\u0bb1\u0bc1", "93"),
+        ("\u0b90\u0bae\u0bcd\u0baa\u0ba4\u0bcd\u0ba4\u0bbf \u0b87\u0bb0\u0ba3\u0bcd\u0b9f\u0bc1", "52"),
+        ("seventeen", "17"),
+        ("\u0baa\u0ba4\u0bbf\u0ba9\u0bc7\u0bb4\u0bc1", "17"),
+        ("ninety", "90"),
+        ("\u0b87\u0bb0\u0bc1\u0baa\u0ba4\u0bc1", "20"),
+    ])
+    def test_both_languages_read_the_same_way(self, said, expected):
+        assert digits_from_speech(said) == expected
+
+    def test_a_teen_is_already_two_digits(self):
+        """"Seventeen" is 17, not 1 and 7 \u2014 and not 7 with the ten lost."""
+        assert digits_from_speech("nineteen seventeen") == "1917"
+
+    def test_a_tens_word_only_takes_a_unit_that_follows_it(self):
+        """"Ninety three" is 93. "Ninety, three" spoken as two separate
+        numbers is the same sound, and 93 is the reading that matches how a
+        number is dictated."""
+        assert digits_from_speech("ninety three") == "93"
+        assert digits_from_speech("three ninety") == "390"
+
+    def test_zero_is_never_swallowed_by_a_tens_word(self):
+        """"Ninety zero" is not how anybody says a number, and folding it
+        into 90 would lose a digit the citizen actually said."""
+        assert digits_from_speech("ninety zero") == "900"
+
+
+class TestTheOldBehaviourIsStillIntact:
+    """Everything that worked before the tens words were understood. This
+    function is read by the mobile, Aadhaar, PAN, ration-card and voter-id
+    fields, and a change here reaches all of them."""
+
+    @pytest.mark.parametrize("said,expected", [
+        ("nine three four four one seven four seven five two", "9344174752"),
+        ("93441 74752", "9344174752"),
+        ("my number is 9344174752", "9344174752"),
+        ("double nine three four", "9934"),
+        ("triple seven one two", "77712"),
+        ("\u0b92\u0ba9\u0bcd\u0bb1\u0bc1 \u0b87\u0bb0\u0ba3\u0bcd\u0b9f\u0bc1 \u0bae\u0bc2\u0ba9\u0bcd\u0bb1\u0bc1", "123"),
+        ("no digits here at all", ""),
+        ("", ""),
+    ])
+    def test_unchanged(self, said, expected):
+        assert digits_from_speech(said) == expected
+
+    def test_an_age_is_still_a_cardinal_not_a_digit_run(self):
+        """`validate_age` reads "twenty three" as the number 23. It reaches
+        `spoken_cardinal` before this function and must keep doing so \u2014
+        digits_from_speech now returns "23" for it too, but an age of
+        "one hundred and five" is a cardinal and not three digits."""
+        assert validate_age("twenty three").value == 23
+        assert validate_age("\u0b87\u0bb0\u0bc1\u0baa\u0ba4\u0bcd\u0ba4\u0bc1 \u0bae\u0bc2\u0ba9\u0bcd\u0bb1\u0bc1").value == 23

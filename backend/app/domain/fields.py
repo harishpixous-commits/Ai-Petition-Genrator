@@ -111,22 +111,55 @@ def _fold_unicode_digits(text: str) -> str:
     return "".join(out)
 
 
+def _unit_digit(token: str) -> str | None:
+    """The token as a single digit 1-9, or None.
+
+    Used to decide whether a tens word is carrying a units word behind it.
+    Zero is excluded on purpose: "ninety zero" is not how anybody says a
+    number, and treating it as 90 would swallow a digit the citizen said.
+    """
+    digit = _EN_DIGIT_WORDS.get(token) or _TA_DIGIT_WORDS.get(token)
+    return digit if digit and digit in "123456789" else None
+
+
 def digits_from_speech(text: str) -> str:
     """Every digit in `text`, in order, whether spoken as words or as figures.
 
     "my aadhaar is four one two double three ..." -> "412330..."
     Returns "" when the utterance carries no digits at all.
+
+    NUMBERS SAID IN TWOS ARE READ AS TWOS. Nobody here recites a mobile
+    number one digit at a time; they say it the way it is printed, in
+    pairs — "ninety three, forty four, seventeen, forty seven, fifty two",
+    or "தொண்ணூற்றி மூன்று நாற்பத்தி நாலு ...".
+
+    THIS IS THE BUG THAT WAS HERE, and it was the dangerous kind. Only the
+    single-digit words were in the tables, so a tens word carried no digit
+    of its own and was dropped in silence. "தொண்ணூற்றி மூன்று
+    நாற்பத்தி நாலு பதினேழு நாற்பத்தி ஏழு ஐம்பத்தி இரண்டு" — 9344174752 —
+    came back as "3472". Not empty, not obviously broken: four digits that
+    look like the beginning of a number, from a citizen who said ten.
+
+    `validate_age` already knew: it tries `spoken_cardinal` first and says
+    in a comment that "twenty three" arrives here as "3". That workaround
+    guarded the age field and nothing else, so mobile numbers kept losing
+    their tens.
+
+    Scale words are still left alone. "Nine hundred" is not how a phone
+    number is said, and a wrong length is refused by the field that asked —
+    which is the right failure, because the citizen is asked again.
     """
     if not text:
         return ""
     folded = _fold_unicode_digits(str(text))
-    tokens = re.split(r"[\s,\-./|]+", folded.lower())
+    tokens = [t for t in re.split(r"[\s,\-./|]+", folded.lower()) if t]
 
     out: list[str] = []
     repeat = 1
-    for token in tokens:
-        if not token:
-            continue
+    index = 0
+    while index < len(tokens):
+        token = tokens[index]
+        index += 1
         word = _EN_DIGIT_WORDS.get(token) or _TA_DIGIT_WORDS.get(token)
         if word == "__DOUBLE__":
             repeat = 2
@@ -138,6 +171,20 @@ def digits_from_speech(text: str) -> str:
             out.append(word * repeat)
             repeat = 1
             continue
+
+        # Not a single digit. It may still be a number word: a teen, which
+        # is already two digits, or a tens word waiting for its unit.
+        value = spoken_cardinal(token)
+        if value is not None and 10 <= value <= 99:
+            if value % 10 == 0 and index < len(tokens):
+                unit = _unit_digit(tokens[index])
+                if unit is not None:
+                    value += int(unit)
+                    index += 1
+            out.append(str(value) * repeat if repeat > 1 else str(value))
+            repeat = 1
+            continue
+
         # A bare run of figures, possibly glued to other characters.
         for run in re.findall(r"\d+", token):
             out.append(run * repeat if repeat > 1 and len(run) == 1 else run)

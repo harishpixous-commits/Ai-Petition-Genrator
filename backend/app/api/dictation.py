@@ -9,10 +9,46 @@ import json
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from ..config import get_settings
+from ..domain.fields import digits_from_speech
 from ..services import asr
 from ..services.officer_store import citizen_scope
 
 router = APIRouter()
+
+# Fields whose answer is a run of digits and nothing else.
+#
+# NOT every identifier. A PAN or an IFSC carries letters, and turning one of
+# those into digits would delete them. These three are numbers all the way
+# through, so a transcript of number WORDS is a transcript of the answer
+# written the long way round.
+_DIGIT_FIELDS = frozenset({"mobile", "aadhaar", "pincode"})
+
+# Below this, leave the words alone. A citizen answering "I don't have a
+# mobile number" must be able to say so and see it — a field that silently
+# swallows every sentence without four digits in it is a field nobody can
+# say no to.
+_ENOUGH_DIGITS = 4
+
+
+def as_dictated(text: str, digit_field: bool) -> str:
+    """The transcript, with a spoken number written as figures.
+
+    REPORTED FROM A TAMIL SESSION. Asked for their mobile number the citizen
+    said it the way it is printed — in pairs — and the box filled with
+    "தொண்ணூற்றி மூன்று நாற்பத்தி நாலு ...". The form understands that now, but
+    the citizen cannot check it: the whole point of dictating into the text
+    box is that they read it back before pressing Send, and nobody can
+    verify their own phone number spelled out in words.
+
+    Done HERE rather than in the page so there is one number parser and not
+    two. Tamil cardinals, English cardinals, digit-by-digit, "double seven",
+    figures already — all of it lives in `digits_from_speech`, and a second
+    copy of it in JavaScript is a second copy to drift.
+    """
+    if not digit_field:
+        return text
+    digits = digits_from_speech(text)
+    return digits if len(digits) >= _ENOUGH_DIGITS else text
 
 
 @router.websocket("/ws/dictation/{session_id}")
@@ -40,10 +76,19 @@ async def dictation(socket: WebSocket, session_id: str):
             await socket.send_json({"type": "error", "code": "unavailable"})
             return
         language = state.get("language", "en")
+        # Which question is outstanding, asked the way the workflow asks it
+        # rather than tracked separately here.
+        from ..api.ws import field_on_the_table
+
+        asking = field_on_the_table(state)
+        digit_field = bool(asking is not None and asking.type in _DIGIT_FIELDS)
         stopping = asyncio.Event()
         send_lock = asyncio.Lock()
 
         async def emit(message):
+            if message.get("type") in ("stt.partial", "stt.final"):
+                message = {**message,
+                           "text": as_dictated(message.get("text") or "", digit_field)}
             async with send_lock:
                 await socket.send_json(message)
 
