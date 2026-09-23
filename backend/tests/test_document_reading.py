@@ -217,18 +217,29 @@ class TestOnlyThePetitionIsPrinted:
 
 
 class TestEveryPageHasAMargin:
-    """REPORTED FROM A TWO-PAGE PRINT PREVIEW. Page two began hard against
-    the top edge of the sheet, the first line of Tamil touching the paper.
+    """REPORTED TWICE, FROM A SHEET OF PAPER BOTH TIMES. A two-page petition
+    printed with a proper margin at the top of page one and none at the top
+    of page two: the first line hard against the edge.
 
-    `padding` cannot do this. It opens at the top of the first page and
-    closes at the bottom of the last, and the pages in between get neither.
+    `padding` cannot do it — it opens at the top of the FIRST page and closes
+    at the bottom of the LAST, and the sheets between get neither.
     `@page{margin}` can, and is the one thing not available here: Chrome
-    draws its own header and footer inside the page margin, so giving the
-    page a real margin gives them the room they were denied on purpose.
+    draws its own header and footer inside the page margin, and those were
+    removed on request.
 
-    A repeating table part is what is left, and it is the right tool rather
-    than a workaround — `table-header-group` exists to be drawn again at the
-    top of every page it spans.
+    THE FIRST FIX DID NOT WORK, AND EVERY TEST IN THIS FILE PASSED ANYWAY.
+    It was written as `.paper::before{display:table-header-group}`, which
+    reads exactly like the real thing and which Chrome silently ignores.
+    Measured afterwards, page two began 0.9mm from the edge of the paper.
+    A second attempt using plain divs with the table display roles was
+    ignored too. Only a REAL `<thead>` in a REAL `<table>` repeats.
+
+    WHICH IS WHY THESE TESTS ARE NOT THE ONES THAT MATTER. Everything below
+    reads CSS text and can only tell you the rules are present. Whether a
+    browser honours them is a different question, and the only thing that
+    answers it is `scripts/print_margin_check.py`, which drives Chrome's own
+    print path and measures the first mark on every sheet. Run that after
+    touching anything here.
     """
 
     def test_the_page_still_has_no_margin_of_its_own(self):
@@ -236,26 +247,59 @@ class TestEveryPageHasAMargin:
         If this ever goes back, the date and the URL come back with it."""
         assert re.search(r"@page\{[^}]*margin:0", print_block().replace(" ", ""))
 
-    def test_the_gutter_repeats_on_every_page(self):
-        block = print_block().replace(" ", "").replace("\n", "")
+    def test_the_gutters_are_real_table_parts(self):
+        """`thead` and `tfoot` elements, not pseudo-elements and not divs
+        wearing the display roles. Chrome repeats the first and ignores the
+        other two."""
+        markup = (pathlib.Path("app/static/index.html")
+                  .read_text(encoding="utf-8"))
 
-        assert "display:table-header-group" in block
-        assert "display:table-footer-group" in block
+        assert '<thead class="page-gutter"' in markup
+        assert '<tfoot class="page-gutter"' in markup
 
-    def test_the_paper_is_a_table_so_the_parts_apply(self):
-        """A header group inside something that is not a table is drawn
-        once, as an ordinary block, and page two is bare again."""
-        block = print_block().replace(" ", "").replace("\n", "")
+    def test_the_letter_is_inside_that_table(self):
+        """A header group only repeats over the rows it heads. The letter
+        has to be in the table or the gutter repeats over nothing."""
+        markup = (pathlib.Path("app/static/index.html")
+                  .read_text(encoding="utf-8"))
+        table = markup[markup.index('<table class="paper-sheet">'):]
+        table = table[:table.index("</table>")]
 
-        assert "display:table!important" in block
+        assert 'id="letter"' in table
+        assert "<tbody>" in table
+
+    def test_no_pseudo_element_gutter_has_come_back(self):
+        """The construction that looked right and did nothing."""
+        css = without_comments()
+
+        assert ".paper::before" not in css
+        assert ".paper::after" not in css
 
     def test_the_gutter_has_a_height(self):
         """An empty repeating part with no height is no margin at all."""
         block = print_block().replace(" ", "").replace("\n", "")
-        gutter = re.search(r"\.paper::before,\.paper::after\{([^}]*)\}", block)
+        gutter = re.search(r"\.paper-sheet>\.page-guttertd\{([^}]*)\}", block)
 
         assert gutter, block
         assert "mm" in gutter.group(1), gutter.group(1)
+
+    def test_the_gutters_are_not_drawn_on_screen(self):
+        """They exist for the printer. Sixteen millimetres of blank table
+        above and below the letter in a browser would be a bug."""
+        css = without_comments()
+
+        assert ".paper-sheet>.page-gutter{display:none}" in css.replace(" ", "")
+
+    def test_the_sheet_still_sits_where_it_did_on_screen(self):
+        """The table became the flex item inside `.paper-wrap`, so the two
+        properties that positioned the paper had to travel with it. Without
+        them the letter sat hard against the left edge of a wide column
+        instead of centred — which is how it was caught."""
+        css = without_comments().replace(" ", "")
+        screen = re.search(r"\.paper-sheet\{([^}]*)\}", css).group(1)
+
+        assert "align-self:flex-start" in screen
+        assert "max-width:710px" in screen
 
     def test_the_side_margins_stay_as_padding(self):
         """A page break is horizontal, so the sides already apply to every

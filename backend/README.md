@@ -162,6 +162,24 @@ It writes a DOCX, a PDF and a PNG per page into `var/samples/`. Open the PNGs an
 read them: vowel signs must sit on the correct consonant and nothing may render
 as a box.
 
+### What the browser prints
+
+The document a citizen prints from the page is laid out by CSS, and no test
+that reads CSS can tell you whether the browser honoured it. With the service
+running:
+
+```bash
+.venv/Scripts/python scripts/print_margin_check.py
+```
+
+It drives Chrome's own print path over a petition long enough to run to three
+sheets and measures how far down the first mark falls on each. This exists
+because a fix that looked correct — a repeating gutter built from
+`::before{display:table-header-group}` — was silently ignored by Chrome, and
+page two printed 0.9mm from the edge of the paper while every test passed.
+Only a real `<thead>` in a real `<table>` repeats. Run this after touching the
+`@media print` block.
+
 ## Endpoints
 
 | Method | Path | Purpose |

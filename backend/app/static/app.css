@@ -303,6 +303,11 @@ details.drawer>summary .count{padding:1px 6px;background:var(--blue-soft);color:
 .translate-option[aria-current="true"] .tick{opacity:1}
 .translate-option[aria-current="true"]{color:var(--blue)}
 .paper-wrap{flex:1;min-height:0;overflow-y:auto;background:#eaf0f0;padding:25px;display:flex;justify-content:center}
+/* Layout-neutral on screen: the table exists for the printer (see
+   index.html) and must not change a single pixel in a browser. */
+.paper-sheet{align-self:flex-start;width:100%;max-width:710px;border-collapse:collapse}
+.paper-sheet>tbody>tr>td{padding:0}
+.paper-sheet>.page-gutter{display:none}
 .paper{align-self:flex-start;width:100%;max-width:710px;padding:48px 46px;border:1px solid #dce3e4;border-radius:2px;background:white;box-shadow:var(--shadow-lg);font-size:12.5px;line-height:1.95;white-space:pre-wrap;overflow-wrap:anywhere;color:#263c48}
 /* The date and the place, where a letter carries them. The body keeps the
    pre-wrap the whole sheet used to have, so nothing else moves. */
@@ -983,28 +988,36 @@ body.kiosk [data-route="home"] { display: none !important; }
      margin is exactly the room it needs. Zero margin is what removed them,
      and it was removed on request.
 
-     So the vertical margin is made out of a repeating table part instead.
-     A `table-header-group` is drawn again at the top of every page it
-     spans, and a `table-footer-group` at the bottom of every one — that is
-     what the parts are for, and it is the one mechanism in CSS that
-     repeats down a printed document. Two empty ones, the height of the
-     margin, give every page the same gutter with nothing printed in it.
+     So the vertical margin is a REPEATING TABLE PART: Chrome redraws a
+     `thead` at the top of every page the table spans, and a `tfoot` at the
+     foot of each. Two empty ones, the height of the margin, give every
+     sheet the same gutter with nothing printed in it.
+
+     IT HAS TO BE A REAL `thead`. This was first written as
+     `.paper::before{display:table-header-group}`, and separately as divs
+     given the table display roles, and Chrome silently ignored both —
+     page two printed 0.1mm from the edge of the paper while every test
+     in the suite passed, because a test that reads CSS cannot tell whether
+     a browser honours it. `scripts/print_margin_check.py` measures the
+     real thing.
 
      The SIDES stay as padding: they apply to every page already, because a
      page break is horizontal. */
+  .paper-sheet{width:100%;max-width:none;border-collapse:collapse;background:white}
+  .paper-sheet>.page-gutter{display:table-header-group}
+  .paper-sheet>tfoot.page-gutter{display:table-footer-group}
+  .paper-sheet>.page-gutter td{height:16mm;border:0;padding:0}
+  .paper-sheet>tbody>tr>td{padding:0;border:0}
+
   .paper{
-    display:table!important;
-    max-width:none;margin:0;padding:0 16mm;width:100%;
+    display:block!important;
+    max-width:none;margin:0;padding:0 16mm;width:auto;
     border:0;border-radius:0;box-shadow:none;background:white;
     color:black;font-size:11pt;line-height:1.85}
 
-  .paper::before,.paper::after{content:"";display:block;height:16mm}
-  .paper::before{display:table-header-group}
-  .paper::after{display:table-footer-group}
-
-  /* The emblem is positioned against the top of the first page and would be
-     repeated into the gutter otherwise. */
-  .paper.has-emblem{padding-top:0;background-position:var(--emblem-x) 6mm}
+  /* The emblem sits against the top of the first sheet. The gutter above it
+     is the table's, so it needs none of its own. */
+  .paper.has-emblem{padding-top:0;background-position:var(--emblem-x) 2mm}
 }
 /* Asking for the petition to be written differently. Tucked under the toolbar
    rather than in a dialog: the citizen is reading the document while they
