@@ -698,4 +698,20 @@ def display_value(field_type: str, value: Any, language: str = "en") -> str:
             return str(value)
     if field_type == "amount":
         return f"Rs. {int(value):,}".replace(",", ",")
+    # A NAME AND AN ADDRESS ARE WRITTEN IN THE PETITION'S SCRIPT.
+    #
+    # A citizen picks Tamil and then types on the Latin keyboard in front of
+    # them, and the letter comes out with Tamil headings over English values.
+    # Rendering them in Tamil is what makes it read as one document.
+    #
+    # DISPLAY ONLY. `value` is what the record holds and is not changed by
+    # this; switching the petition back to English shows their own spelling
+    # again, and their name still matches the card in their pocket.
+    #
+    # Not the grievance. That is the citizen's account in their own words and
+    # is placed verbatim — and an English sentence spelled in Tamil letters
+    # is not a Tamil sentence, it is an unreadable one.
+    if field_type in ("person_name", "address"):
+        from .tamil_script import for_language
+        return for_language(str(value), language)
     return str(value)

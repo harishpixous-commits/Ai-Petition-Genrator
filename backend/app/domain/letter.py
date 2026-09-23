@@ -289,13 +289,18 @@ def _sender_block(
     them — not as a separate table."""
     lines: list[str] = []
 
+    # Through `display_value`, so the name and address on the page are the
+    # same strings the details panel shows and `verification_targets` looks
+    # for. Inserted raw, a Tamil petition printed the citizen's own Latin
+    # spelling while the panel beside it showed Tamil, and verification then
+    # searched the document for a string that was never in it.
     name = next((fields[n] for n in SENDER_NAME_FIELDS if fields.get(n)), "")
     if name:
-        lines.append(f"{BLOCK_INDENT}{name}")
+        lines.append(f"{BLOCK_INDENT}{display_value('person_name', name, language)}")
 
     address = next((fields[n] for n in SENDER_ADDRESS_FIELDS if fields.get(n)), "")
     if address:
-        lines.append(f"{BLOCK_INDENT}{address}")
+        lines.append(f"{BLOCK_INDENT}{display_value('address', address, language)}")
 
     # Everything else the form collected about the petitioner, in template
     # order: age, and a mobile number or email if the form asks for them.
@@ -346,7 +351,10 @@ def build_letter_text(
     lines.append(f"{label('date', language)}: {when.strftime('%d-%m-%Y')}")
     place = derive_place(next((fields[n] for n in SENDER_ADDRESS_FIELDS if fields.get(n)), ""))
     if place:
-        lines.append(f"{label('place', language)}: {place}")
+        # In the petition's own script, like the address it was taken from.
+        # "இடம்: theni" under a Tamil heading is the seam showing.
+        lines.append(f"{label('place', language)}: "
+                     f"{display_value('address', place, language)}")
     lines.append("")
 
     # Each slot falls back on its own: a model that produced a good opening and
