@@ -16,7 +16,7 @@ import logging
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, field_validator
 
@@ -37,13 +37,15 @@ from ..services import (
     llm,
     tts,
 )
+from ..services.officer_store import require_citizen_session
 from ..services.render import pdf_status
 from ..services.speech_text import speech_for
 from ..services.translate import language_of, translate_lines
 from .views import session_view
 
 log = logging.getLogger(__name__)
-router = APIRouter(prefix="/api")
+
+router = APIRouter(prefix="/api", dependencies=[Depends(require_citizen_session)])
 
 
 # --------------------------------------------------------------------------- #
@@ -266,7 +268,7 @@ async def health() -> dict:
 
 
 @router.post("/sessions", status_code=201)
-async def start_session(body: StartRequest, request: Request) -> dict:
+async def start_session(body: StartRequest, request: Request, response: Response) -> dict:
     session_id = str(uuid.uuid4())
     workflow = _workflow(request)
 
@@ -278,6 +280,9 @@ async def start_session(body: StartRequest, request: Request) -> dict:
         # intermediate record with no missing fields and no first question.
         seed["utterance"] = body.text if body.text.strip() else ""
         state = await workflow.invoke(session_id, seed)
+
+        from ..services.officer_store import remember_citizen
+        remember_citizen(request, response, session_id)
 
         log.info("session.started", extra={"language": state.get("language"),
                                            "opening": bool(body.text.strip())})

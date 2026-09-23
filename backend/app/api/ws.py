@@ -335,6 +335,12 @@ class Phase(StrEnum):
 
 @router.websocket("/ws/voice/{session_id}")
 async def voice(websocket: WebSocket, session_id: str, language: str = "en") -> None:
+    from ..services.officer_store import citizen_scope
+
+    allowed = citizen_scope(websocket)
+    if allowed is not None and session_id not in allowed:
+        await websocket.close(code=1008)
+        return
     await websocket.accept()
     settings = get_settings()
     workflow = getattr(websocket.app.state, "workflow", None)

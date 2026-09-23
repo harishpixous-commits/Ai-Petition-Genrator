@@ -16,6 +16,15 @@
 var/
 backend/var/
 
+# Screenshots from the browser checks. Regenerable by definition, and the
+# same rule as var/ applies for the same reason: these are pictures OF
+# petitions. The preview harness uses fictional samples today, and the
+# acceptance script writes to a temporary data directory — but a capture
+# taken one day against a real machine would land here looking exactly like
+# the rest, and nobody would notice it in a diff of binary files.
+artifacts/
+backend/artifacts/
+
 # Virtual environments and caches.
 .venv/
 venv/

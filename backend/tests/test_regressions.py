@@ -454,6 +454,13 @@ class TestThePageIsWiredUp:
         static = self._static()
         loaded = self._loaded_scripts()
 
+        # Officer scripts belong to their own page, not the citizen composer.
+        import re
+
+        for page in static.glob("*.html"):
+            loaded.extend(re.findall(r'<script\s+src="/static/([^"]+)"',
+                                     page.read_text(encoding="utf-8")))
+
         missing = [name for name in loaded if not (static / name).is_file()]
         assert not missing, f"the page loads scripts that do not exist: {missing}"
 

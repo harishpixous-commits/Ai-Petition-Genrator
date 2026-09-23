@@ -229,10 +229,13 @@ class PetitionCatalog:
         date_from: date | None = None, date_to: date | None = None,
         department: str = "", category: str = "", status: str = "", language: str = "",
         sort: str = "newest", page: int = 1, page_size: int = 20,
+        allowed_ids: set[str] | None = None,
     ) -> dict:
         async with self._lock:
             await self._refresh()
             items = self._items()
+        if allowed_ids is not None:
+            items = [item for item in items if item["session_id"] in allowed_ids]
         total_saved = len(items)
         facets = {
             "departments": sorted({item["department"] for item in items if item["department"]}),

@@ -1365,3 +1365,7 @@ header.app{gap:24px}
              user-select:none;white-space:nowrap}
 .doc-package input{width:14px;height:14px;accent-color:var(--navy);cursor:pointer}
 @media (max-width:820px){.doc-package{margin-left:0;width:100%}}
+
+/* Officer entry remains a visible secondary action on every citizen page. */
+.officer-login-link{text-decoration:none;color:var(--ink)}
+@media(max-width:700px){header.app .header-actions{flex-wrap:wrap}.officer-login-link{font-size:11px;padding:7px 9px}}

@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#183b43" />
+    <title>Officer Portal · Citizen Petition Assistant</title>
+    <link rel="icon" href="/assets/emblem/favicon.png" />
+    <link rel="stylesheet" href="/static/app.css" />
+    <link rel="stylesheet" href="/static/officer.css" />
+  </head>
+  <body class="officer">
+    <a class="skip-link" href="#officerMain">Skip to content</a>
+    <header class="app">
+      <a class="brand" href="/#home"
+        ><img
+          src="/assets/emblem/tamil-nadu-web.png"
+          width="42"
+          height="46"
+          alt="Tamil Nadu emblem"
+        />
+        <div class="brand-text">
+          <h1>Citizen Petition Assistant</h1>
+          <p>AI Assisted Petition Preparation</p>
+        </div></a
+      ><span class="portal-label">Officer Portal</span>
+      <div class="header-actions" id="account"></div>
+    </header>
+    <main id="officerMain" tabindex="-1"></main>
+    <div id="notice" role="status" aria-live="polite"></div>
+    <script src="/static/officer.js" defer></script>
+  </body>
+</html>

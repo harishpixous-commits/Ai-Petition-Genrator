@@ -123,6 +123,7 @@ async def remove_sessions(
     """
     settings = settings or get_settings()
     result = Removal()
+    from .officer_store import forget_petition
 
     for raw in session_ids:
         session_id = _valid(raw)
@@ -130,6 +131,7 @@ async def remove_sessions(
             result.unknown.append(str(raw)[:80])
             continue
         if not await _exists(saver, session_id):
+            forget_petition(session_id, settings)
             # Still sweep the disk: a petition whose checkpoints were already
             # gone can leave its rendered document behind, and that document is
             # the copy with the citizen's name and address in it.
@@ -141,6 +143,7 @@ async def remove_sessions(
             continue
         try:
             await saver.adelete_thread(session_id)
+            forget_petition(session_id, settings)
         except Exception:  # noqa: BLE001 - one failure must not abandon the rest
             log.warning("petition.not_deleted")
             result.failed.append(session_id)

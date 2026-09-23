@@ -27,7 +27,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.requests import Request
 
-from .api import catalog, operator, rest, ws
+from .api import catalog, officer, operator, rest, ws
 from .config import get_settings
 from .domain.templates import load_templates
 from .graph.workflow import workflow_lifespan
@@ -199,11 +199,31 @@ def create_app() -> FastAPI:
 
     app.include_router(rest.router)
     app.include_router(catalog.router)
+    app.include_router(officer.router)
     # The operator screen. Gated in `operator.authorise`: token required when
     # one is configured, loopback only when none is. Never the citizen's page.
     app.include_router(operator.router)
     app.include_router(ws.router)
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+    @app.get("/officer/{path:path}", include_in_schema=False)
+    async def officer_page(path: str, request: Request) -> Response:
+        """The officer shell, for every /officer/* address.
+
+        The page itself is one file; which screen it draws is decided in the
+        browser. The gate is here rather than there because a redirect a
+        page performs on itself has already loaded the page.
+        """
+        from fastapi.responses import RedirectResponse
+
+        from .services import officer_store
+
+        signed_in = officer_store.identity(request.cookies.get(officer_store.COOKIE))
+        previewing = request.query_params.get("preview") == "1"
+        if path != "login" and not previewing and not signed_in:
+            return RedirectResponse("/officer/login", status_code=303)
+        return FileResponse(STATIC_DIR / "officer.html",
+                            headers={"Cache-Control": "no-store"})
 
     @app.middleware("http")
     async def response_headers(request: Request, call_next):

@@ -8,6 +8,7 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
+from ..services.officer_store import citizen_scope
 from ..services.petition_catalog import PetitionCatalog
 from ..services.removal import remove_sessions
 
@@ -55,6 +56,7 @@ async def list_petitions(
         q=q, reference=reference, petitioner_name=petitioner_name,
         date_from=date_from, date_to=date_to, department=department, category=category,
         status=status, language=language, sort=sort, page=page, page_size=page_size,
+        allowed_ids=citizen_scope(request),
     )
 
 
@@ -79,6 +81,9 @@ async def delete_petitions(request: Request, body: DeleteRequest) -> dict:
     nothing, and which failed, so the citizen is told what actually happened
     rather than a blanket success.
     """
+    allowed = citizen_scope(request)
+    if allowed is not None and any(sid not in allowed for sid in body.session_ids):
+        raise HTTPException(403, "Only petitions created in this browser can be deleted here.")
     result = await remove_sessions(
         body.session_ids, saver=_saver(request), catalog=_catalog(request))
     if result.failed and not result.deleted:
