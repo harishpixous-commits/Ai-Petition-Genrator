@@ -331,22 +331,26 @@ PHRASES: dict[str, dict[Language, str]] = {
 # so a department translating the document does not have to find this
 # sentence to change one word of it.
 #
-# The eligibility clause was removed deliberately. "It does not decide your
-# eligibility" reads as though eligibility were something this service had
-# considered and declined to rule on — which invites exactly the question it
-# means to deflect. The petition states what the citizen said; whether they
-# qualify for anything is not a matter it touches, and the quieter sentence
-# is the more accurate one.
+# TWO SENTENCES, and the department has removed the third twice.
+#
+# The eligibility clause went first. "It does not decide your eligibility"
+# reads as though eligibility were something this service had considered and
+# declined to rule on — which invites exactly the question it means to
+# deflect.
+#
+# The legal-advice clause followed. Asked for directly: the note should say
+# where the petition came from and what to do before signing it, and stop.
+# The remaining two sentences do that. Nothing else in the document carries
+# a legal-advice disclaimer, which is the department's decision to make and
+# is recorded here so it is not restored by somebody assuming it was lost.
 DISCLAIMER: dict[Language, str] = {
     "en": (
         "This petition was prepared based on the information provided by the "
-        "petitioner. Please verify all details before signing or submitting "
-        "it. This does not constitute legal advice."
+        "petitioner. Please verify all details before signing or submitting it."
     ),
     "ta": (
         "மனுதாரர் வழங்கிய தகவல்களின் அடிப்படையில் இந்த மனு தயாரிக்கப்பட்டுள்ளது. "
-        "கையொப்பமிட்டு சமர்ப்பிப்பதற்கு முன் அனைத்து விவரங்களையும் சரிபார்க்கவும். "
-        "இது சட்ட ஆலோசனையாக கருதப்படாது."
+        "கையொப்பமிட்டு சமர்ப்பிப்பதற்கு முன் அனைத்து விவரங்களையும் சரிபார்க்கவும்."
     ),
 }
 

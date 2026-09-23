@@ -140,9 +140,22 @@ class TestLetterText:
         assert "Place:" not in text, "a wrong town is worse than a missing one"
         assert "Date:" in text
 
-    def test_the_disclaimer_is_present_in_both_languages(self, english_letter, tamil_letter):
-        assert "does not constitute legal advice" in english_letter
-        assert "சட்ட ஆலோசனையாக கருதப்படாது" in tamil_letter
+    def test_the_note_is_present_in_both_languages(self, english_letter, tamil_letter):
+        """Where the petition came from, and what to do before signing it."""
+        assert "based on the information provided by the petitioner" in english_letter
+        assert "Please verify all details before signing" in english_letter
+        assert "மனுதாரர் வழங்கிய தகவல்களின் அடிப்படையில்" in tamil_letter
+        assert "சரிபார்க்கவும்" in tamil_letter
+
+    def test_the_note_says_those_two_things_and_stops(self, english_letter, tamil_letter):
+        """Two sentences. The department has now removed a third twice, and
+        this is what keeps both removals from being undone by somebody
+        assuming the line was lost rather than taken out."""
+        from app.domain.phrasing import DISCLAIMER
+
+        for language in ("en", "ta"):
+            sentences = [s for s in DISCLAIMER[language].split(".") if s.strip()]
+            assert len(sentences) == 2, DISCLAIMER[language]
 
     def test_the_note_never_judges_the_citizens_case(self, english_letter, tamil_letter):
         """The note says what the document IS, and stops there.
@@ -158,6 +171,15 @@ class TestLetterText:
             lowered = letter.lower()
             assert "eligib" not in lowered
             assert "தகுதி" not in letter
+
+    def test_the_note_makes_no_claim_about_legal_advice(self, english_letter,
+                                                        tamil_letter):
+        """Removed on request. The note should say where the petition came
+        from and what to do before signing it, and stop there — so nothing in
+        the document now carries a legal-advice disclaimer, in either
+        language."""
+        assert "legal advice" not in english_letter.lower()
+        assert "சட்ட ஆலோசனை" not in tamil_letter
 
     def test_the_reference_is_stable_and_not_in_the_body(self, english_letter):
         """The format has no reference line, so it lives in the document footer.
