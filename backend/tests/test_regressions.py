@@ -1218,3 +1218,53 @@ class TestWhatAFirstVisitDownloads:
         assert response.status_code == 200
         assert "content-encoding" not in response.headers
         assert b".paper" in response.content
+
+
+class TestWhichBuildIsRunning:
+    """"Is my change live yet?" had no answer.
+
+    Working it out meant hashing the static files on the server and
+    comparing them against every recent commit by hand — and that only
+    settles the JavaScript, because a change to the Python leaves the assets
+    byte-identical. Two rounds of "it is still not fixed" turned out to be a
+    deploy that had not finished.
+    """
+
+    def test_health_reports_the_build(self):
+        import asyncio
+
+        from app.api.rest import health
+
+        assert "build" in asyncio.run(health())
+
+    def test_it_says_unknown_rather_than_nothing_when_unset(self):
+        """A missing field reads as an old server; "unknown" reads as a
+        server that was deployed without the marker, which is a different
+        thing to go and look at."""
+        import asyncio
+
+        from app.api.rest import health
+
+        assert asyncio.run(health())["build"] == "unknown"
+
+    def test_the_deployment_supplies_it(self):
+        import pathlib
+
+        workflow = pathlib.Path("../.github/workflows/deploy.yml").read_text(
+            encoding="utf-8")
+        writer = pathlib.Path("../deploy/scripts/write-env.sh").read_text(
+            encoding="utf-8")
+
+        assert "BUILD_SHA: ${{ github.sha }}" in workflow
+        assert "envs: BUILD_SHA," in workflow, "it must reach the remote step"
+        assert "emit BUILD_SHA" in writer
+
+    def test_it_is_not_treated_as_a_secret(self):
+        """It is the same sha the repository shows publicly, and hiding it
+        would defeat the purpose."""
+        import pathlib
+
+        workflow = pathlib.Path("../.github/workflows/deploy.yml").read_text(
+            encoding="utf-8")
+
+        assert "secrets.BUILD_SHA" not in workflow

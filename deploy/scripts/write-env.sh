@@ -135,6 +135,9 @@ emit_if_set() { have "$1" && printf '%s=%s\n' "$1" "${!1}" >> "$tmp" || true; }
   printf '\n'
 } > "$tmp"
 
+# Which commit this deployment carries. Reported by /api/health so that
+# "is my change live?" can be answered without hashing files on the server.
+emit BUILD_SHA "${BUILD_SHA:-unknown}"
 emit HOST 0.0.0.0
 emit PORT 8000
 emit LOG_LEVEL INFO

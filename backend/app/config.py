@@ -241,6 +241,16 @@ class Settings(BaseSettings):
     # default cannot alter the audio underneath us without anyone noticing.
     sarvam_tts_sample_rate: int = 22050
 
+    # Which build is running, set by the deployment from the commit it
+    # deployed. Empty on a developer machine.
+    #
+    # WHY IT EXISTS. "Is my change live yet?" had no answer. Working it out
+    # meant hashing the static files on the server and comparing them against
+    # every recent commit by hand — and that only settles the JavaScript,
+    # because a change to the Python leaves the assets identical. Two rounds
+    # of "it is still not fixed" were a deploy that had not finished.
+    build_sha: str = ""
+
     # -- kiosk: a self-service terminal in a government office ------------- #
     #
     # None of this changes the petition. A kiosk runs the same workflow, the

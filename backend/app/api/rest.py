@@ -192,6 +192,10 @@ async def health() -> dict:
     pdf = pdf_status(settings)
     return {
         "ok": True,
+        # The commit this container was built from, so "is my change live?"
+        # is a question with an answer. Not a secret: it is the same sha the
+        # repository shows publicly.
+        "build": settings.build_sha or "unknown",
         "language_model": {
             "available": language_status["available"],
             "provider": language_status.get("provider"),
