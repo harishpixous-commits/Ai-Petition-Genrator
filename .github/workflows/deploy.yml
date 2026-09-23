@@ -43,6 +43,97 @@ env:
 
 jobs:
   # =========================================================================
+  # JOB 0 — Preserve the version currently in production
+  # =========================================================================
+  #
+  # `production-backup` is moved HERE, at the start of a deployment, and
+  # nowhere else. That is what makes it mean one thing:
+  #
+  #     THE LAST VERSION THAT WAS DEPLOYED AND FOUND HEALTHY,
+  #     BEFORE THE ONE THIS RUN IS ABOUT TO PUT OUT.
+  #
+  # Moving it after a successful deploy instead would make it point at the
+  # code that is live, which is no use to anybody at the moment they need a
+  # way back. It stays one deployment behind on purpose.
+  #
+  # WHERE "LAST KNOWN GOOD" COMES FROM. The `prod-*` tag written by JOB 3,
+  # which is only written after the health gate passed on the host. A commit
+  # that was pushed and failed its health check never gets a tag, so it can
+  # never become the thing this branch points at.
+  #
+  # This job writes a branch ref and nothing else. It does not touch `main`,
+  # it rewrites no history, and it force-pushes only `production-backup` —
+  # a branch that exists to be moved and is never developed on.
+  preserve-previous:
+    name: Preserve current production as production-backup
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@v4
+        with:
+          # Tags and history: the last good release is found among them.
+          fetch-depth: 0
+
+      - name: Point production-backup at the last healthy release
+        env:
+          # The commit `main` pointed at before this push. Empty for a
+          # workflow_dispatch run, and all zeroes for a new branch.
+          BEFORE: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+
+          git fetch --tags --force --quiet
+
+          # Newest release tag by creation date, not by name: a tag made by
+          # hand out of sequence must not be read as the newest.
+          LAST_GOOD="$(git for-each-ref --sort=-creatordate --count=1 \
+                         --format='%(objectname)' 'refs/tags/prod-*')"
+          SOURCE="the last healthy release tag"
+
+          if [ -z "${LAST_GOOD}" ]; then
+            # No release has been tagged yet. The commit main was at before
+            # this push is the best available answer, and on the very first
+            # run there is legitimately nothing to preserve.
+            if [ -n "${BEFORE:-}" ] && [ "${BEFORE}" != "0000000000000000000000000000000000000000" ]; then
+              LAST_GOOD="${BEFORE}"
+              SOURCE="the commit main was at before this push"
+            fi
+          fi
+
+          if [ -z "${LAST_GOOD}" ]; then
+            echo "Nothing deployed yet — production-backup is not created."
+            echo "It will be set on the next deployment, once this one is tagged."
+            exit 0
+          fi
+
+          if ! git cat-file -e "${LAST_GOOD}^{commit}" 2>/dev/null; then
+            echo "::warning::${LAST_GOOD} is not a commit in this repository."
+            echo "production-backup left where it is."
+            exit 0
+          fi
+
+          echo "Preserving ${LAST_GOOD} (${SOURCE})"
+          git --no-pager log -1 --format='  %h  %ad  %s' --date=iso "${LAST_GOOD}"
+
+          # Forced because the branch is a POINTER, not a line of work: it
+          # moves backwards and forwards as deployments come and go, and a
+          # fast-forward-only push would refuse the ordinary case.
+          git push --force origin "${LAST_GOOD}:refs/heads/production-backup"
+
+          {
+            echo "### Previous production preserved"
+            echo ""
+            echo "\`production-backup\` → \`${LAST_GOOD}\`"
+            echo ""
+            echo "Source: ${SOURCE}."
+            echo ""
+            git --no-pager log -1 --format='%s' "${LAST_GOOD}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # =========================================================================
   # JOB 1 — Build and Analyze
   # =========================================================================
   build-and-analyze:
@@ -67,7 +158,7 @@ jobs:
   # =========================================================================
   deploy:
     name: Deploy to EC2
-    needs: build-and-analyze
+    needs: [preserve-previous, build-and-analyze]
     runs-on: ubuntu-latest
 
     # Production credentials are supplied to this job, so it runs inside a
@@ -667,3 +758,68 @@ jobs:
             echo "   other apps: unchanged (verified)"
             echo "=================================================="
             dc ps
+
+  # =========================================================================
+  # JOB 3 — Tag the release, once it is actually healthy
+  # =========================================================================
+  #
+  # `needs: deploy` is the whole gate. The deploy job fails when the host's
+  # verification loop cannot get an answer out of the application, so a tag
+  # here means the code was on the server AND serving. That is what makes
+  # `prod-*` safe for JOB 0 to read as "last known good", and safe for the
+  # rollback workflow to offer as a target.
+  #
+  # Tags accumulate and are never moved. `production-backup` only ever holds
+  # ONE previous version; these are how a release from a month ago is still
+  # reachable after the branch has moved on twenty times.
+  tag-release:
+    name: Tag healthy release
+    needs: deploy
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create prod tag
+        run: |
+          set -euo pipefail
+
+          git fetch --tags --force --quiet
+          DAY="$(date -u +%Y-%m-%d)"
+
+          # Second, third, … deployment of the same day.
+          N=1
+          while git rev-parse -q --verify "refs/tags/prod-${DAY}-$(printf '%02d' "${N}")" >/dev/null; do
+            N=$((N + 1))
+          done
+          TAG="prod-${DAY}-$(printf '%02d' "${N}")"
+
+          SUBJECT="$(git --no-pager log -1 --format='%s' "${GITHUB_SHA}")"
+
+          # Annotated, so the tag carries who deployed it and when as well
+          # as where it points.
+          git -c user.name="github-actions[bot]" \
+              -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+              tag -a "${TAG}" "${GITHUB_SHA}" -m "$(printf '%s\n\ndeployed: %s\ncommit:   %s\nrun:      %s\n' \
+                "${SUBJECT}" "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" "${GITHUB_SHA}" \
+                "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}")"
+          git push origin "refs/tags/${TAG}"
+
+          {
+            echo "### Release tagged"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Tag | \`${TAG}\` |"
+            echo "| Commit | \`${GITHUB_SHA}\` |"
+            echo "| Message | ${SUBJECT} |"
+            echo ""
+            echo "This tag is what the next deployment will preserve as"
+            echo "\`production-backup\`, and what **Rollback Production** can be"
+            echo "pointed at from now on."
+          } >> "$GITHUB_STEP_SUMMARY"

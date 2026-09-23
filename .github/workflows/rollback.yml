@@ -1,0 +1,316 @@
+name: Rollback Production
+
+# ---------------------------------------------------------------------------
+# PUT A KNOWN-GOOD VERSION BACK ON THE HOST, ON PURPOSE, BY HAND.
+#
+# This is the deliberate counterpart to the automatic rollback already inside
+# the deploy workflow. That one fires the moment a fresh deployment fails its
+# health gate and reverts to the tag the host was running a minute earlier.
+# This one is for the case that machine cannot see: the deployment came up,
+# answered every check, and is wrong.
+#
+# WHAT IT DOES NOT DO, deliberately:
+#
+#   It does not touch `main`. No reset, no force-push, no revert commit
+#   written on your behalf. Git history stays exactly as it is, and stays
+#   readable — the record of what happened is worth more than a tidy line.
+#
+#   It does not build anything. It deploys an image that was already built,
+#   already deployed and already found healthy. Rebuilding would be slower
+#   and would produce a DIFFERENT artefact from the one being rolled back to.
+#
+# So a rollback here leaves `main` ahead of production, and that is correct
+# and visible: the host is serving an older commit until somebody fixes the
+# newer one and deploys forward again.
+# ---------------------------------------------------------------------------
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'Branch, tag or commit SHA to put back (default: the previous production version)'
+        required: true
+        default: 'production-backup'
+        type: string
+      reason:
+        description: 'Why (recorded in the run summary)'
+        required: false
+        type: string
+
+# Never against a deployment, and never against another rollback. Same group
+# as the deploy workflow on purpose: these two must not both be writing to
+# one host and one SQLite file.
+concurrency:
+  group: deploy-ai-petition-generator
+  cancel-in-progress: false
+
+env:
+  IMAGE_NAME: subashawsdevops/ai-petition-generator
+  COMPOSE_PROJECT: ai-petition-generator
+  CONTAINER_NAME: ai-petition-generator
+  VOLUME_NAME: ai_petition_generator_var
+
+jobs:
+  # =========================================================================
+  # JOB 1 — Work out what is being asked for, before anyone approves it
+  # =========================================================================
+  #
+  # Separate from the deployment on purpose. This job takes no production
+  # credentials and changes nothing; it exists so the approval prompt on JOB
+  # 2 is something a person can actually judge. "Approve a rollback" is not a
+  # decision. "Approve going back to 4369524, 'Read a phone number said the
+  # way people say it', deployed 23 Sept" is.
+  resolve:
+    name: Resolve target
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.find.outputs.sha }}
+      subject: ${{ steps.find.outputs.subject }}
+      described: ${{ steps.find.outputs.described }}
+
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Find the commit
+        id: find
+        env:
+          TARGET: ${{ inputs.target }}
+        run: |
+          set -euo pipefail
+
+          git fetch --tags --force --quiet
+          git fetch origin '+refs/heads/*:refs/remotes/origin/*' --quiet
+
+          # A branch name, a tag, or a raw SHA — all three resolve here, and
+          # anything that does not resolve stops the run before a human is
+          # asked to approve something that does not exist.
+          SHA=""
+          for candidate in "refs/remotes/origin/${TARGET}" "refs/tags/${TARGET}" "${TARGET}"; do
+            if SHA="$(git rev-parse -q --verify "${candidate}^{commit}" 2>/dev/null)"; then
+              break
+            fi
+            SHA=""
+          done
+
+          if [ -z "${SHA}" ]; then
+            echo "::error::'${TARGET}' is not a branch, tag or commit in this repository."
+            echo ""
+            echo "Available release tags (newest first):"
+            git for-each-ref --sort=-creatordate --count=15 \
+              --format='  %(refname:short)  %(objectname:short)  %(contents:subject)' 'refs/tags/prod-*'
+            exit 1
+          fi
+
+          SUBJECT="$(git --no-pager log -1 --format='%s' "${SHA}")"
+          DESCRIBED="$(git describe --tags --exact-match "${SHA}" 2>/dev/null || echo "${SHA:0:12}")"
+
+          {
+            echo "sha=${SHA}"
+            echo "subject=${SUBJECT}"
+            echo "described=${DESCRIBED}"
+          } >> "$GITHUB_OUTPUT"
+
+          {
+            echo "## Rollback target"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Asked for | \`${TARGET}\` |"
+            echo "| Resolves to | \`${SHA}\` |"
+            echo "| Known as | \`${DESCRIBED}\` |"
+            echo "| Message | ${SUBJECT} |"
+            echo "| Date | $(git --no-pager log -1 --format='%ad' --date=iso "${SHA}") |"
+            echo ""
+            if [ -n "${{ inputs.reason }}" ]; then
+              echo "**Reason given:** ${{ inputs.reason }}"
+              echo ""
+            fi
+            echo "Nothing has been changed yet. The deploy job below needs the"
+            echo "\`production\` environment's approval before it touches the host."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # =========================================================================
+  # JOB 2 — Put it back
+  # =========================================================================
+  rollback:
+    name: Deploy target to EC2
+    needs: resolve
+    runs-on: ubuntu-latest
+
+    # The same protected environment the deployment uses. If a reviewer is
+    # configured there, this is where the run pauses and waits for a person —
+    # which is the point of splitting `resolve` out above, because by now the
+    # summary already says exactly what they are approving.
+    environment: production
+
+    # The same people who may deploy may roll back. Anyone who can put code
+    # out can put the last version back.
+    if: >-
+      github.actor == 'subashpixous' ||
+      github.actor == 'harishpixous-commits' ||
+      github.actor == 'PrithivRS' ||
+      github.actor == 'loguTyson25'
+
+    steps:
+      - name: Announce
+        run: |
+          echo "Rolling back to ${{ needs.resolve.outputs.described }}"
+          echo "  commit : ${{ needs.resolve.outputs.sha }}"
+          echo "  message: ${{ needs.resolve.outputs.subject }}"
+
+      # -------------------------------------------------------------------
+      # The image is addressed by commit SHA, which is exactly how the deploy
+      # workflow tags what it builds. So the artefact that goes back on is
+      # the one that was tested and running, not a rebuild of its source.
+      #
+      # The host prunes its own old images (it keeps `latest`, the current
+      # tag, the previous tag and three more), so an older target may not be
+      # on the machine any more. It is pulled from the registry instead, and
+      # the run stops clearly if the registry no longer has it either.
+      # -------------------------------------------------------------------
+      - name: Restore on EC2 over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          APP_IMAGE: ${{ env.IMAGE_NAME }}
+          IMAGE_TAG: ${{ needs.resolve.outputs.sha }}
+          APP_DIR: ${{ secrets.EC2_APP_DIR }}
+          COMPOSE_PROJECT: ${{ env.COMPOSE_PROJECT }}
+          CONTAINER_NAME: ${{ env.CONTAINER_NAME }}
+          VOLUME_NAME: ${{ env.VOLUME_NAME }}
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          port: ${{ secrets.EC2_SSH_PORT }}
+          command_timeout: 20m
+          envs: APP_IMAGE,IMAGE_TAG,APP_DIR,COMPOSE_PROJECT,CONTAINER_NAME,VOLUME_NAME
+          script: |
+            set -euo pipefail
+
+            cd "${APP_DIR}"
+            TS="$(date -u +%Y%m%d-%H%M%S)"
+
+            # Every compose call goes through this, so the project scope
+            # cannot be forgotten. THIS EC2 HOSTS THREE APPLICATIONS.
+            dc() {
+              docker compose -p "${COMPOSE_PROJECT}" -f "${APP_DIR}/docker-compose.yml" "$@"
+            }
+
+            APP_PORT="$(grep -E '^APP_PORT=' .env | cut -d= -f2- || echo 8000)"
+            CURRENT="$(grep -E '^IMAGE_TAG=' .env | cut -d= -f2- || true)"
+            echo "==> Currently serving: ${CURRENT:-unknown}"
+            echo "==> Rolling back to  : ${IMAGE_TAG}"
+
+            if [ "${CURRENT}" = "${IMAGE_TAG}" ]; then
+              echo "==> The host is already running that version. Nothing to do."
+              exit 0
+            fi
+
+            echo "==> Pulling ${APP_IMAGE}:${IMAGE_TAG}"
+            if ! docker pull "${APP_IMAGE}:${IMAGE_TAG}"; then
+              echo "::error::No image ${APP_IMAGE}:${IMAGE_TAG} in the registry."
+              echo "That commit was never deployed, or its image has been removed."
+              echo "Pick a tag from the release list in the resolve job's output."
+              exit 1
+            fi
+
+            # The citizens' data, before anything moves. Same shape as the
+            # deploy workflow's backup: a rollback is a deployment too.
+            mkdir -p backups
+            if docker ps -a --format '{{.Names}}' | grep -qx "${CONTAINER_NAME}"; then
+              docker exec "${CONTAINER_NAME}" \
+                sh -c 'sqlite3 /app/var/sessions.sqlite ".backup /tmp/rb.sqlite"' 2>/dev/null \
+                && docker cp "${CONTAINER_NAME}:/tmp/rb.sqlite" "backups/${TS}-rollback.sqlite" \
+                && echo "==> Backup: backups/${TS}-rollback.sqlite" \
+                || echo "==> No database to back up (continuing)"
+            fi
+
+            # What was running, so a rollback of the rollback is one command.
+            if [ -n "${CURRENT}" ]; then
+              printf '%s\n' "${CURRENT}" > .rolled_back_from
+            fi
+
+            printf 'APP_IMAGE=%s\nIMAGE_TAG=%s\nAPP_PORT=%s\n' \
+              "${APP_IMAGE}" "${IMAGE_TAG}" "${APP_PORT}" > .env
+
+            echo "==> Recreating service (project-scoped)"
+            dc up -d --remove-orphans
+            dc ps
+
+            # ---------------------------------------------------------------
+            # THE GATE. Two checks, and both must answer.
+            #
+            #   GET /            the page a citizen loads. Fast, no network
+            #                    I/O, and the same gate the deploy workflow
+            #                    uses — so a pass here means the same thing
+            #                    it means there.
+            #
+            #   GET /api/health  every configured provider, plus a blocking
+            #                    soffice probe. Slow, which is why it is not
+            #                    the deploy gate, but on a rollback it is
+            #                    worth the wait: it says the services the
+            #                    restored version needs are reachable, not
+            #                    just that the process is up.
+            # ---------------------------------------------------------------
+            echo "==> Verifying GET /"
+            OK=0
+            for i in $(seq 1 30); do
+              if curl -fsS "http://127.0.0.1:${APP_PORT}/" >/dev/null 2>&1; then
+                OK=1; echo "    answered after ${i} attempt(s)"; break
+              fi
+              sleep 5
+            done
+
+            if [ "${OK}" -ne 1 ]; then
+              echo "::error::The restored version is not serving."
+              dc logs --tail=200 --no-color || true
+              exit 1
+            fi
+
+            echo "==> Verifying GET /api/health"
+            HEALTHY=0
+            for i in $(seq 1 12); do
+              if curl -fsS --max-time 60 "http://127.0.0.1:${APP_PORT}/api/health" >/tmp/health.json 2>&1; then
+                HEALTHY=1; echo "    answered after ${i} attempt(s)"; break
+              fi
+              sleep 10
+            done
+
+            if [ "${HEALTHY}" -ne 1 ]; then
+              echo "::error::/api/health did not answer. The page loads, but a"
+              echo "service it depends on may not be reachable."
+              dc logs --tail=100 --no-color || true
+              exit 1
+            fi
+
+            echo "--- health ---"
+            head -c 2000 /tmp/health.json || true
+            echo ""
+
+            echo ""
+            echo "=================================================="
+            echo " ROLLBACK SUCCESSFUL"
+            echo "   serving : ${APP_IMAGE}:${IMAGE_TAG}"
+            echo "   was     : ${CURRENT:-unknown}"
+            echo "   volume  : ${VOLUME_NAME} (intact)"
+            echo "=================================================="
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "## Rollback ${{ job.status }}"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Now serving | \`${{ needs.resolve.outputs.described }}\` |"
+            echo "| Commit | \`${{ needs.resolve.outputs.sha }}\` |"
+            echo "| Message | ${{ needs.resolve.outputs.subject }} |"
+            echo ""
+            echo "\`main\` has NOT been changed. The host is serving an older"
+            echo "commit than the branch, which is the intended state until the"
+            echo "problem is fixed and deployed forward."
+          } >> "$GITHUB_STEP_SUMMARY"
