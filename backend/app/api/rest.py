@@ -206,6 +206,19 @@ async def health() -> dict:
         # read correctly and cannot be used — which otherwise presents as
         # "the keys do not work", with nothing anywhere to contradict it.
         "credentials": credential_check.summary(settings),
+        # How a terminal should behave. Sent to every client because the
+        # page has to know BEFORE it claims anything about printing: a
+        # browser cannot tell whether the dialog will appear, so the
+        # deployment says so and the page reports only what it can stand
+        # behind.
+        "kiosk": {
+            "enabled": settings.kiosk_enabled,
+            "print_mode": settings.kiosk_print_mode,
+            "auto_print": settings.kiosk_auto_print,
+            "print_package": settings.kiosk_print_package,
+            "idle_timeout_seconds": settings.kiosk_idle_timeout_seconds,
+            "reset_after_finish": settings.kiosk_reset_after_finish,
+        },
         # What can be done with a file a citizen encloses. `ocr.available` is
         # false on a machine with no engine, and that is a supported state:
         # photographs are attached and reported unreadable rather than guessed.

@@ -59,6 +59,21 @@
 </header>
 
 <div id="mainContent" tabindex="-1">
+
+<!-- Kiosk only: what a citizen walking up to the terminal sees first. It
+     covers the workspace rather than replacing it, so the page behind is the
+     same page — one flow, one implementation. -->
+<section class="kiosk-welcome" id="kioskWelcome" hidden aria-labelledby="kioskWelcomeTitle">
+  <div class="kw-inner">
+    <span class="kw-mark" aria-hidden="true">
+      <img src="/assets/emblem/tamil-nadu-web.png" alt="" width="64" height="70" decoding="async">
+    </span>
+    <h2 id="kioskWelcomeTitle">Welcome</h2>
+    <p id="kioskWelcomeText">This service will help you prepare your citizen petition. Tap below to begin.</p>
+    <button class="btn primary kw-start" id="kioskStart" type="button">Start Petition</button>
+  </div>
+</section>
+
 <section class="home-page app-page" id="homePage" aria-labelledby="homeTitle">
   <div class="home-hero">
     <div class="home-hero-copy">
@@ -273,9 +288,9 @@
         </span>
       </div>
 
-      <!-- Kiosk only. Shown once the petition has gone to the printer, and
-           it clears the screen afterwards: the next person in the queue must
-           not be shown the last citizen's name, address and grievance. -->
+      <!-- Kiosk only. What the citizen is shown once the petition has gone
+           to the printer — and, on a failure, the thing that keeps their
+           petition on screen instead of clearing it away. -->
       <div class="kiosk-done" id="kioskDone" hidden role="status" aria-live="polite">
         <span class="kd-tick" aria-hidden="true">
           <svg viewBox="0 0 24 24" fill="none"><path d="m5 12 4 4L19 6" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -285,8 +300,8 @@
           <p id="kioskDoneText"></p>
         </div>
         <div class="kd-acts">
-          <button class="btn primary" id="kioskNext" type="button"></button>
-          <button class="btn" id="kioskStay" type="button"></button>
+          <button class="btn" id="kioskPrintAgain" type="button"></button>
+          <button class="btn primary" id="kioskFinish" type="button"></button>
         </div>
       </div>
 

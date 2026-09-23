@@ -102,7 +102,7 @@ const NAV = {
     homePetitionsEyebrow: "நிறுத்திய இடத்திலிருந்து தொடருங்கள்",
     homePetitionsTitle: "எனது மனுக்கள்",
     homePetitionsDescription: "சேமித்த மனுக்களை அவற்றின் ஆவணங்கள் மற்றும் பதிப்புகளுடன் தேடலாம், திறக்கலாம், நிர்வகிக்கலாம்.",
-    kiosk: "கியாஸ்க்",
+    kiosk: "கியோஸ்க்",
     homeGuideEyebrow: "மூன்று எளிய படிகள்",
     homeGuideTitle: "ஒவ்வொரு படியிலும் வழிகாட்டுதல்.",
     homeStepOneTitle: "உங்கள் குறையைச் சொல்லுங்கள்",

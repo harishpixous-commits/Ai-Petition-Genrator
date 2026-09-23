@@ -421,15 +421,29 @@ const EXPERIENCE = {
     copiedError: "Copy is unavailable. Select the petition text to copy it, or download the Word document.",
     popupError: "Allow pop-ups for this page to print, or download the document.",
     kiosk: "Kiosk",
-    kioskPrinting: "Printing your petition…",
-    kioskDoneTitle: "Your petition has been printed",
-    kioskDoneText: "Please collect it from the printer. Check every detail before "
-                   + "signing it.",
+    kioskWelcomeTitle: "Welcome",
+    kioskWelcomeText: "This service will help you prepare your citizen petition. "
+                      + "Tap below to begin.",
+    kioskStart: "Start Petition",
+    kioskPrinting: "Sending your petition to the printer…",
+    // NOTHING here says "printed successfully". A browser cannot tell whether
+    // paper came out of a printer, and a screen that claims it did sends a
+    // citizen away from an empty tray.
+    kioskDialogTitle: "The print window is open",
+    kioskDialogText: "Press Print in the window to print your petition, then "
+                     + "collect it from the printer.",
+    kioskSentTitle: "Your petition has been sent to the printer",
+    kioskSentText: "Please collect it from the printer and check every detail "
+                   + "before signing it.",
+    kioskFailedTitle: "Unable to print the petition",
+    kioskFailedText: "Your petition is safe and is still on the screen. Try again, "
+                     + "or ask the staff at the counter for help.",
+    kioskRetryPrint: "Try printing again",
+    kioskPrintAgain: "Print another copy",
+    kioskFinish: "Finish",
     kioskClearing: (n) => `This screen clears in ${n} seconds.`,
-    kioskNext: "Start a new petition",
-    kioskStay: "I need more time",
-    kioskNoPrinter: "The petition is ready but could not be sent to the printer. "
-                    + "Use the Print button, or ask the staff at the counter.",
+    kioskStillThere: "Are you still there? This screen will clear shortly so the "
+                     + "next person cannot see your details.",
     helpTitle: "From your concern to a clear petition",
     helpText: "1. Answer the questions by typing or using voice.\n2. Review your details and select Edit to make corrections.\n3. Confirm to create your document, then download or print it.\n\nYour progress is restored on this browser. Your grievance is kept in your own words. Review the document before signing; this app does not submit it to an office.",
     close: "Got it", forget: "Forget on this browser", forgetText: "The saved link will be removed from this browser. Existing server records and downloaded files are kept.",
@@ -453,16 +467,27 @@ const EXPERIENCE = {
     longHint: "இடம், நடந்தது, நீங்கள் கோரும் நடவடிக்கை ஆகியவற்றைக் குறிப்பிடவும். உங்கள் சொற்கள் மாற்றப்படாது.",
     copiedError: "நகலெடுக்க இயலவில்லை. மனு உரையைத் தேர்ந்தெடுத்து நகலெடுக்கவும் அல்லது Word ஆவணத்தைப் பதிவிறக்கவும்.",
     popupError: "அச்சிட இந்தப் பக்கத்திற்குப் பாப்-அப் அனுமதி அளிக்கவும் அல்லது ஆவணத்தைப் பதிவிறக்கவும்.",
-    kiosk: "கியாஸ்க்",
-    kioskPrinting: "உங்கள் மனு அச்சிடப்படுகிறது…",
-    kioskDoneTitle: "உங்கள் மனு அச்சிடப்பட்டுவிட்டது",
-    kioskDoneText: "அச்சுப்பொறியில் இருந்து பெற்றுக்கொள்ளுங்கள். கையொப்பமிடும் முன் "
+    kiosk: "கியோஸ்க்",
+    kioskWelcomeTitle: "வணக்கம்",
+    kioskWelcomeText: "உங்கள் மனுவை எளிதாக தயாரிக்க இந்த சேவை உதவும். "
+                      + "தொடங்க கீழே உள்ள பொத்தானை அழுத்தவும்.",
+    kioskStart: "மனுவை தொடங்கவும்",
+    kioskPrinting: "உங்கள் மனு அச்சுப்பொறிக்கு அனுப்பப்படுகிறது…",
+    kioskDialogTitle: "அச்சிடும் சாளரம் திறந்துள்ளது",
+    kioskDialogText: "சாளரத்தில் 'Print' அழுத்தி உங்கள் மனுவை அச்சிடுங்கள், பிறகு "
+                     + "அச்சுப்பொறியில் இருந்து பெற்றுக்கொள்ளுங்கள்.",
+    kioskSentTitle: "உங்கள் மனு அச்சுப்பொறிக்கு அனுப்பப்பட்டுள்ளது",
+    kioskSentText: "அச்சுப்பொறியில் இருந்து பெற்றுக்கொண்டு, கையொப்பமிடும் முன் "
                    + "ஒவ்வொரு விவரத்தையும் சரிபார்க்கவும்.",
+    kioskFailedTitle: "மனுவை அச்சிட முடியவில்லை",
+    kioskFailedText: "உங்கள் மனு பாதுகாப்பாக திரையில் உள்ளது. மீண்டும் முயற்சிக்கவும் "
+                     + "அல்லது உதவியாளரை தொடர்பு கொள்ளவும்.",
+    kioskRetryPrint: "மீண்டும் அச்சிட முயற்சிக்கவும்",
+    kioskPrintAgain: "மற்றொரு நகல் அச்சிடு",
+    kioskFinish: "முடிந்தது",
     kioskClearing: (n) => `இந்தத் திரை ${n} வினாடிகளில் அழிக்கப்படும்.`,
-    kioskNext: "புதிய மனு தொடங்கு",
-    kioskStay: "இன்னும் சிறிது நேரம் வேண்டும்",
-    kioskNoPrinter: "மனு தயாராக உள்ளது, ஆனால் அச்சுப்பொறிக்கு அனுப்ப முடியவில்லை. "
-                    + "'அச்சிடு' பொத்தானை பயன்படுத்தவும் அல்லது பணியாளரிடம் கேட்கவும்.",
+    kioskStillThere: "நீங்கள் இருக்கிறீர்களா? அடுத்தவர் உங்கள் விவரங்களைப் பார்க்காதபடி "
+                     + "இந்தத் திரை விரைவில் அழிக்கப்படும்.",
     helpTitle: "உங்கள் குறையிலிருந்து தெளிவான மனு வரை",
     helpText: "1. தட்டச்சு அல்லது குரல் மூலம் கேள்விகளுக்குப் பதிலளிக்கவும்.\n2. விவரங்களைச் சரிபார்த்து தேவையான திருத்தங்களைச் செய்யவும்.\n3. உறுதிசெய்த பிறகு ஆவணத்தைப் பதிவிறக்கவும் அல்லது அச்சிடவும்.\n\nஇந்த உலாவியில் உங்கள் மனுவை மீண்டும் தொடரலாம். உங்கள் குறை மாற்றப்படாது. கையொப்பமிடும் முன் ஆவணத்தைச் சரிபார்க்கவும். இந்தச் செயலி மனுவை அலுவலகத்திற்குச் சமர்ப்பிக்காது.",
     close: "புரிந்தது", forget: "இந்த உலாவியில் மற", forgetText: "இந்த உலாவியிலிருந்து சேமித்த இணைப்பு நீக்கப்படும். சேவையகப் பதிவுகளும் பதிவிறக்கிய கோப்புகளும் இருக்கும்.",
@@ -1827,109 +1852,219 @@ function confirmThen(title, text, keepLabel, goLabel, onGo, onKeep) {
 }
 
 /* ------------------------------------------------------------------ kiosk
-   A counter terminal: the citizen fills the petition in and it comes out of
-   the printer, without anybody being asked to find a Print button.
+   A self-service terminal standing in a government office. The citizen walks
+   up, answers the questions on screen or by voice, and takes the printed
+   petition away with them.
 
-   IT IS THE SAME FLOW, not a copy of it. Kiosk mode is a flag on the page
-   that already exists — the same graph, the same questions, the same
-   document, the same voice. A second implementation would be two things to
-   fix every time one of them changed, and the copy is always the one nobody
-   remembers to change.
+   IT IS THE SAME FLOW, not a copy of it. Kiosk is a flag on the page that
+   already exists: the same graph, the same questions, the same document, the
+   same voice, the same Tamil. A kiosk page of its own would be a second copy
+   of the form, the document panel and the voice layer, drifting from the
+   original from the day it was written — and the copy is always the one
+   nobody remembers to change.
 
-   What the flag actually does is three things:
+   WHAT THE PAGE IS ALLOWED TO CLAIM ABOUT PRINTING is the part worth being
+   careful with. A browser cannot tell whether paper came out of a printer.
+   `window.print()` opens a dialog somebody has to confirm; on a terminal
+   launched with `--kiosk-printing` it goes straight to the default printer
+   and no dialog appears. The page cannot detect which of those happened.
 
-     * prints the petition the moment it is ready, once
-     * clears the screen afterwards, because the next person in the queue
-       must not be shown the last citizen's name, address and grievance
-     * hides the parts of the page that lead away from the task — browsing
-       saved petitions is an operator's job, not a queue's
+   So the DEPLOYMENT says which it is — `KIOSK_PRINT_MODE=dialog` or
+   `silent`, dialog by default — and the wording follows it. In dialog mode
+   the citizen is told the dialog is open. In silent mode they are told the
+   petition was SENT to the printer. Neither says "printed successfully",
+   because neither is something this code can know. */
 
-   SILENT PRINTING is a browser setting, not something a page can ask for.
-   Launch the terminal with:
+const kioskState = {
+  on: false,
+  // From the server, so a terminal is configured rather than guessed at.
+  print_mode: "dialog",
+  auto_print: true,
+  idle_timeout_seconds: 120,
+  reset_after_finish: true,
+  // petition + document version already sent to the printer, so a re-render
+  // — an edit, a reconnect, a duplicate response — cannot print again.
+  printedKey: null,
+  countdown: null,
+  idleTimer: null,
+  askedIfStillThere: false,
+};
 
-       chrome --kiosk --kiosk-printing https://<host>/#kiosk
-
-   `--kiosk-printing` sends `window.print()` straight to the default printer
-   with no dialog. Without it the citizen gets the ordinary print dialog,
-   which still works and is what a developer sees. */
-
-const KIOSK_CLEAR_SECONDS = 45;
-
-let kiosk = false;
-let kioskPrintedFor = null;      // the session whose petition has been printed
-let kioskCountdown = null;
+function kioskConfig() {
+  const from = healthState?.kiosk;
+  if (!from) return;
+  for (const key of ["print_mode", "auto_print", "idle_timeout_seconds",
+                     "reset_after_finish"]) {
+    if (from[key] !== undefined) kioskState[key] = from[key];
+  }
+}
 
 function setKioskMode(on) {
-  kiosk = Boolean(on);
-  document.body.classList.toggle("kiosk", kiosk);
-  if (!kiosk) stopKioskCountdown();
+  kioskState.on = Boolean(on);
+  document.body.classList.toggle("kiosk", kioskState.on);
+  stopKioskCountdown();
+  stopKioskIdle();
   $("kioskDone").hidden = true;
+  $("kioskWelcome").hidden = !kioskState.on;
+  if (kioskState.on) { kioskConfig(); paintKioskWelcome(); }
 }
 
-/** Print as soon as the petition exists, and only once for it. */
-function kioskMaybePrint(v) {
-  if (!kiosk || !v || v.status !== "ready" || !v.letter_text) return;
-  if (kioskPrintedFor === v.session_id) return;
-  kioskPrintedFor = v.session_id;
+/* ------------------------------------------------------------- welcome */
 
+function paintKioskWelcome() {
+  const t = T();
+  $("kioskWelcomeTitle").textContent = t.kioskWelcomeTitle;
+  $("kioskWelcomeText").textContent = t.kioskWelcomeText;
+  $("kioskStart").textContent = t.kioskStart;
+}
+
+$("kioskStart").onclick = async () => {
+  $("kioskWelcome").hidden = true;
+  kioskState.printedKey = null;
+  await start();
+  kioskTouch();
+};
+
+/* --------------------------------------------------------------- print */
+
+/** The petition is ready and verified. Send it, once. */
+function kioskMaybePrint(v) {
+  if (!kioskState.on || !kioskState.auto_print) return;
+  if (!v || v.status !== "ready" || !v.letter_text) return;
+  // NOT merely "generated". A document that failed verification is not one
+  // to put on paper and hand to a government office.
+  if (!v.verification?.ok && !v.verification?.hand_edited
+      && !v.verification?.user_edited) return;
+
+  const key = `${v.session_id}:${v.document?.version ?? 0}`;
+  if (kioskState.printedKey === key) return;
+  kioskState.printedKey = key;
+  kioskPrint();
+}
+
+/** Ask the browser to print, and describe only what actually happened. */
+function kioskPrint() {
+  const t = T();
+  showKioskDone(t.kioskPrinting, "");
   // The CURRENT page, not a popup. `window.open` from a timer rather than a
-  // click is blocked by default, and a kiosk has nobody to click "allow" —
+  // click is blocked by default and a kiosk has nobody to press "allow";
   // the print stylesheet already reduces this page to the letter alone.
-  bubble("system", T().kioskPrinting);
+  let opened = false;
   try {
     window.print();
+    opened = true;
   } catch {
-    bubble("system", T().kioskNoPrinter, true);
-    return;
+    opened = false;
   }
-  showKioskDone();
+  if (!opened) { showKioskFailed(); return; }
+  // `window.print()` returns when the dialog closes, which is not the same
+  // as paper existing. The wording says what is known and no more.
+  showKioskDone(
+    kioskState.print_mode === "silent" ? t.kioskSentTitle : t.kioskDialogTitle,
+    kioskState.print_mode === "silent" ? t.kioskSentText : t.kioskDialogText);
 }
 
-function showKioskDone() {
+function showKioskDone(title, text) {
   const t = T();
-  $("kioskDoneTitle").textContent = t.kioskDoneTitle;
-  $("kioskNext").textContent = t.kioskNext;
-  $("kioskStay").textContent = t.kioskStay;
+  $("kioskDoneTitle").textContent = title;
+  $("kioskDoneText").textContent = text;
+  $("kioskPrintAgain").textContent = t.kioskPrintAgain;
+  $("kioskFinish").textContent = t.kioskFinish;
+  $("kioskDone").classList.remove("failed");
   $("kioskDone").hidden = false;
-  startKioskCountdown();
+  if (text) startKioskCountdown(text);
 }
+
+function showKioskFailed() {
+  const t = T();
+  $("kioskDoneTitle").textContent = t.kioskFailedTitle;
+  $("kioskDoneText").textContent = t.kioskFailedText;
+  $("kioskPrintAgain").textContent = t.kioskRetryPrint;
+  $("kioskFinish").textContent = t.kioskFinish;
+  $("kioskDone").classList.add("failed");
+  $("kioskDone").hidden = false;
+  // NOT cleared on a failure. The petition is still on the screen and still
+  // on the server, and wiping it because a printer is out of paper would
+  // lose the only thing the citizen came for.
+  stopKioskCountdown();
+}
+
+/* An explicit second copy is a different thing from an accidental one. */
+$("kioskPrintAgain").onclick = () => { stopKioskCountdown(); kioskPrint(); };
+$("kioskFinish").onclick = () => { void kioskRestart(); };
+
+/* ----------------------------------------------------------- clearing */
 
 /** Clear the screen for the next citizen, visibly and interruptibly.
  *
  *  Visible, because a screen that wipes itself without warning loses
  *  somebody's work. Interruptible, because the person reading it may be
- *  slow, and "I need more time" is a reasonable thing to need.
+ *  slow, and needing more time is a reasonable thing to need.
  */
-function startKioskCountdown() {
+function startKioskCountdown(baseText) {
   stopKioskCountdown();
+  if (!kioskState.reset_after_finish) return;
   let left = KIOSK_CLEAR_SECONDS;
   const tick = () => {
-    $("kioskDoneText").textContent =
-      `${T().kioskDoneText} ${T().kioskClearing(left)}`;
+    $("kioskDoneText").textContent = `${baseText} ${T().kioskClearing(left)}`;
     if (left <= 0) { stopKioskCountdown(); void kioskRestart(); return; }
     left -= 1;
   };
   tick();
-  kioskCountdown = setInterval(tick, 1000);
+  kioskState.countdown = setInterval(tick, 1000);
 }
 
 function stopKioskCountdown() {
-  if (kioskCountdown) { clearInterval(kioskCountdown); kioskCountdown = null; }
+  if (kioskState.countdown) { clearInterval(kioskState.countdown); kioskState.countdown = null; }
 }
 
+const KIOSK_CLEAR_SECONDS = 45;
+
+/** Everything the last citizen left behind, gone before the next one looks. */
 async function kioskRestart() {
   stopKioskCountdown();
+  stopKioskIdle();
+  stopVoice({ tell: false });
   $("kioskDone").hidden = true;
-  kioskPrintedFor = null;
+  kioskState.printedKey = null;
+  kioskState.askedIfStillThere = false;
   forgetSession();
-  await start();
+  resetInterface();
+  $("log").innerHTML = "";
+  $("text").value = "";
+  view = null;
+  sid = null;
+  $("kioskWelcome").hidden = false;
+  paintKioskWelcome();
 }
 
-$("kioskNext").onclick = () => { void kioskRestart(); };
-$("kioskStay").onclick = () => {
-  stopKioskCountdown();
-  $("kioskDoneText").textContent = T().kioskDoneText;
-};
+/* ------------------------------------------------------- walked away */
+
+/** A terminal nobody is using must not sit there holding somebody's
+ *  address. Asked first, because a citizen thinking about what to write is
+ *  not the same as a citizen who has left. */
+function kioskTouch() {
+  if (!kioskState.on) return;
+  kioskState.askedIfStillThere = false;
+  stopKioskIdle();
+  const seconds = Math.max(30, Number(kioskState.idle_timeout_seconds) || 120);
+  kioskState.idleTimer = setTimeout(() => {
+    kioskState.askedIfStillThere = true;
+    bubble("system", T().kioskStillThere);
+    // Half as long again to answer, then the screen clears.
+    kioskState.idleTimer = setTimeout(() => { void kioskRestart(); },
+                                      (seconds / 2) * 1000);
+  }, seconds * 1000);
+}
+
+function stopKioskIdle() {
+  if (kioskState.idleTimer) { clearTimeout(kioskState.idleTimer); kioskState.idleTimer = null; }
+}
+
+for (const event of ["pointerdown", "keydown"]) {
+  document.addEventListener(event, () => { if (kioskState.on) kioskTouch(); },
+                            { passive: true });
+}
 
 /* -------------------------------------------------------------- document */
 

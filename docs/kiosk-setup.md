@@ -44,20 +44,61 @@ What the two flags do:
 Put the shortcut in the machine's Startup folder so it comes back after a
 power cut.
 
+## Configuration
+
+Set these on the server, not in the browser. All have safe defaults, and the
+service works with none of them set.
+
+| Setting | Default | What it does |
+|---|---|---|
+| `KIOSK_ENABLED` | `true` | Whether the Kiosk link appears at all. |
+| `KIOSK_PRINT_MODE` | `dialog` | `dialog` or `silent`. See below — this one is a claim, not a switch. |
+| `KIOSK_AUTO_PRINT` | `true` | Send the petition to the printer once it is ready and verified. |
+| `KIOSK_PRINT_PACKAGE` | `petition_only` | `petition_only` or `combined`. Combined prints the enclosures too. |
+| `KIOSK_IDLE_TIMEOUT_SECONDS` | `120` | How long to wait for somebody who has stopped answering before asking whether they are still there. |
+| `KIOSK_RESET_AFTER_FINISH` | `true` | Clear the screen after the citizen finishes. |
+
+### `KIOSK_PRINT_MODE` is a statement about the machine
+
+It does not make printing silent. Nothing a web page does can. It tells the
+page **which thing is about to happen**, so that the screen describes it
+accurately:
+
+- `dialog` — the citizen is told the print window is open and to press
+  Print. True on any ordinary browser.
+- `silent` — the citizen is told the petition has been **sent to the
+  printer**. Only set this on a terminal launched with `--kiosk-printing` or
+  an equivalent managed print path, where the dialog genuinely does not
+  appear.
+
+Setting `silent` on a machine that still shows a dialog changes nothing
+except what the screen claims, which is the one thing worth getting right.
+
+Neither mode ever says "printed successfully". A browser cannot tell whether
+paper came out of a printer, and a screen that claims it did sends a citizen
+away from an empty tray.
+
 ## What the citizen sees
 
-The same petition flow as the website — the same questions, the same
-document, the same Tamil and English, the same voice. Kiosk mode changes
-three things:
+A welcome screen, then the same petition flow as the website — the same
+questions, the same document, the same Tamil and English, the same voice.
+Kiosk mode changes four things:
 
-1. The petition prints by itself the moment it is ready.
-2. A green panel then says it has printed, and **clears the screen after 45
-   seconds** so the next person in the queue does not see the last citizen's
-   name, address and grievance. There is an "I need more time" button for
-   somebody still reading.
-3. The links that lead away from the task — browsing saved petitions, the
-   home page — are hidden. The language switch stays, because it is the one
-   control a kiosk must keep.
+1. **Welcome screen.** "வணக்கம் / Welcome", one large button to begin.
+2. **The petition prints by itself** once it is ready *and verified*. A
+   document that failed verification is not put on paper. One document
+   version prints once, however many times the screen updates; a second copy
+   is something the citizen asks for.
+3. **The screen clears afterwards**, with a visible countdown, so the next
+   person in the queue does not see the last citizen's name, address and
+   grievance. It also clears if somebody walks away mid-petition — asked
+   first ("Are you still there?"), because thinking is not leaving.
+4. **The ways off the page are hidden** — browsing saved petitions, the home
+   page. The language switch stays, because it is the one control a kiosk
+   must keep.
+
+If the print fails, the petition stays on the screen with a **Try printing
+again** button. It is never cleared because a printer was out of paper.
 
 ## Checking it works
 

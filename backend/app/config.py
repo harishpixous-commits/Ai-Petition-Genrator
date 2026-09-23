@@ -241,6 +241,41 @@ class Settings(BaseSettings):
     # default cannot alter the audio underneath us without anyone noticing.
     sarvam_tts_sample_rate: int = 22050
 
+    # -- kiosk: a self-service terminal in a government office ------------- #
+    #
+    # None of this changes the petition. A kiosk runs the same workflow, the
+    # same questions, the same document; these settle how the TERMINAL
+    # behaves around it — when it prints, how long it waits for somebody who
+    # has walked away, and what it clears afterwards.
+    kiosk_enabled: bool = True
+    # `dialog` or `silent`.
+    #
+    # DIALOG IS THE DEFAULT AND IS THE HONEST ONE. A browser cannot print to
+    # paper without a person confirming it; `window.print()` opens the print
+    # dialog and somebody presses Print. That works on any machine.
+    #
+    # `silent` is a CLAIM ABOUT THE DEPLOYMENT, not a capability this code
+    # can grant itself. It means "this terminal was launched with
+    # --kiosk-printing, or has an equivalent managed print path, and the
+    # dialog will not appear". Set it only on a machine where that is true;
+    # setting it anywhere else changes nothing except what the screen claims
+    # happened, which is the one thing worth getting right.
+    kiosk_print_mode: str = "dialog"
+    # Whether the petition goes to the printer on its own once it is ready
+    # and verified. False leaves the citizen to press Print.
+    kiosk_auto_print: bool = True
+    # `petition_only` or `combined`. A citizen who attached six photographs
+    # of a broken road should not silently receive thirty pages, so the
+    # letter alone is the default and the package is a deliberate choice.
+    kiosk_print_package: str = "petition_only"
+    # How long a terminal waits for somebody who has stopped answering
+    # before asking whether they are still there, and then clearing.
+    kiosk_idle_timeout_seconds: int = 120
+    # Clear the screen after the citizen finishes. On, and it is the setting
+    # that keeps the next person in the queue from reading the last
+    # person's name, address and grievance.
+    kiosk_reset_after_finish: bool = True
+
     # -- translation ------------------------------------------------------- #
     nllb_worker: str = ""  # path to the Node NLLB worker, optional
     nllb_model_dir: str = ""

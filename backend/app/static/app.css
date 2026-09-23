@@ -575,6 +575,23 @@ body.kiosk [data-route="home"] { display: none !important; }
 /* The language switch STAYS. A Tamil speaker at a Tamil Nadu counter needs
    it more than anyone, and it is the one control a kiosk must keep. */
 
+/* The first thing a citizen walking up to the terminal sees. Covers the
+   workspace rather than replacing it — the page behind is the same page, so
+   there is one flow and one implementation. */
+.kiosk-welcome{position:fixed;inset:0;z-index:60;display:grid;place-items:center;
+  padding:32px;background:var(--surface);animation:fade var(--step)}
+.kiosk-welcome .kw-inner{max-width:640px;text-align:center}
+.kiosk-welcome .kw-mark{display:block;margin:0 auto 22px}
+.kiosk-welcome h2{margin:0 0 14px;font-size:38px;line-height:1.25}
+.kiosk-welcome p{margin:0 auto 30px;max-width:520px;font-size:17px;line-height:1.75;
+  color:var(--muted)}
+/* A target somebody can hit with a thumb, standing up, at a counter. */
+.kiosk-welcome .kw-start{min-height:64px;padding:0 44px;font-size:19px;border-radius:14px}
+@media(max-width:820px){
+  .kiosk-welcome h2{font-size:29px}.kiosk-welcome p{font-size:15px}
+  .kiosk-welcome .kw-start{width:100%;min-height:58px;font-size:17px}
+}
+
 /* Shown once the petition has gone to the printer. Deliberately large and
    in the way: it is the only thing the citizen needs to read at that point,
    and it carries the countdown that clears their details off the screen. */
@@ -596,6 +613,11 @@ body.kiosk [data-route="home"] { display: none !important; }
 .kiosk-done .kd-acts { display: flex; gap: 8px; flex: none; }
 /* Touch targets, because nobody brings a mouse to a counter. */
 .kiosk-done .btn { min-height: 44px; padding: 0 18px; font-size: 13px; }
+/* A print that did not happen is not good news, and must not look like it. */
+.kiosk-done.failed { background: var(--warn-soft); border-color: #f0dfba; }
+.kiosk-done.failed .kd-tick { background: var(--warn); }
+.kiosk-done.failed .kd-tick svg { display: none; }
+.kiosk-done.failed .kd-tick::before { content: "!"; font-weight: 800; }
 @media(max-width:820px){
   .kiosk-done{margin:12px 10px 0}
   .kiosk-done .kd-acts{width:100%}
