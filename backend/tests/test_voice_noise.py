@@ -15,7 +15,6 @@ advisory, and the claim the page is allowed to make about that processing.
 from __future__ import annotations
 
 import pathlib
-import re
 
 from app.services.voice import VadSettings, VoiceActivityDetector
 
@@ -24,51 +23,6 @@ def read(name: str) -> str:
     return pathlib.Path("app/static", name).read_text(encoding="utf-8")
 
 
-class TestTheBrowserProcessingIsAskedFor:
-
-    def test_all_three_constraints_are_requested(self):
-        js = read("app.js")
-        call = js[js.index("async function openMicrophone"):]
-        call = call[:call.index("voice.ctx = new AudioContext")]
-
-        for constraint in ("echoCancellation: true", "noiseSuppression: true",
-                           "autoGainControl: true"):
-            assert constraint in call, constraint
-
-    def test_what_was_granted_is_read_back_from_the_track(self):
-        """Asked for is not the same as got. These are advisory constraints —
-        Firefox applies some, a conference microphone doing its own
-        processing may refuse, and none of that fails `getUserMedia`."""
-        js = read("app.js")
-
-        assert "getSettings()" in js
-        assert "noiseSuppression\" in settings" in js
-
-    def test_the_page_only_claims_it_when_the_track_confirms_it(self):
-        """A reassurance the citizen cannot check is worse than none. The
-        check is for an explicit `true`, so a browser that reports nothing
-        reads as unknown rather than as on."""
-        js = read("app.js")
-        paint = js[js.index("const note = $(\"voiceNote\")"):]
-        paint = paint[:paint.index("// The header button")]
-
-        assert "voice.processing.noise === true" in paint
-
-    def test_the_citizen_is_told_in_both_languages(self):
-        js = read("app.js")
-
-        assert "✓ Noise reduction active" in js
-        assert "பின்னணி சத்தம் குறைக்கப்படுகிறது" in js
-
-    def test_no_technical_detail_reaches_that_line(self):
-        """RMS, thresholds and codecs belong in the developer panel, which is
-        off in production. A citizen at a counter is not debugging audio."""
-        js = read("app.js")
-        block = js[js.index("const note = $(\"voiceNote\")"):]
-        block = block[:block.index("// The header button")]
-
-        for leak in ("rms", "snr", "threshold", "dB", "codec"):
-            assert leak.lower() not in block.lower(), leak
 
 
 class TestTheAdvisory:
@@ -137,37 +91,18 @@ class TestTheDetectorStillAdaptsToTheRoom:
         assert detector.speech_threshold >= VadSettings().floor_rms
 
 
-class TestTheWaveformIgnoresTheRoom:
-    """Display only. A ribbon driven by raw level sits permanently
-    half-height next to a fan, which reads as the microphone hearing someone
-    when it is hearing furniture."""
 
-    def test_it_is_driven_by_what_is_above_the_floor(self):
-        js = read("app.js")
-        drive = js[js.index("function waveDrive"):]
-        drive = drive[:drive.index("function drawWave")]
 
-        assert "voiceAboveTheRoom()" in drive
-        assert re.search(r"voice\.rms\s*/", drive) is None, (
-            "the waveform still reads raw level somewhere")
+class TestManualCapture:
+    def test_processing_constraints_without_vad_rejection(self):
+        source=read("app.js")
+        capture=source[source.index("async function toggleDictation"):source.index("function stopPlayback")]
+        for constraint in ("echoCancellation:true", "noiseSuppression:true", "autoGainControl:true"):
+            assert constraint in capture
+        assert "floorRms" not in capture
+        assert "bargeIn" not in capture
 
-    def test_the_floor_falls_faster_than_it_rises(self):
-        """Rising as fast as it falls would let a long spoken answer teach
-        the meter that speech is background, flattening the ribbon in the
-        middle of a sentence."""
-        js = read("app.js")
-        block = js[js.index("// Track the room"):]
-        block = block[:block.index("if (voice.playAnalyser)")]
-        numbers = [float(n) for n in re.findall(r"0\.\d+", block)]
-
-        assert numbers, block
-        assert max(numbers) > min(numbers) * 10
-
-    def test_it_gates_nothing(self):
-        """The server decides what was said, on audio this never touches."""
-        js = read("app.js")
-        send = js[js.index("voice.node.onaudioprocess"):]
-        send = send[:send.index("voice.socket.send(pcm.buffer)")]
-
-        assert "floorRms" not in send
-        assert "voiceAboveTheRoom" not in send
+    def test_no_noise_reduction_claim_or_waveform(self):
+        html=read("index.html")
+        assert 'id="voiceNote"' not in html
+        assert 'id="voiceWave"' not in html

@@ -484,7 +484,11 @@ class TestThePageIsWiredUp:
             element = match.group(1)
             if element in handled_by_form:
                 continue
-            if f'"{element}"' not in script:
+            # EITHER QUOTE. The check was double-quote only, so a handler
+            # bound with $('micInline') read as no handler at all — it
+            # reported the microphone orphaned while its click handler sat
+            # three lines further down the same file.
+            if f'"{element}"' not in script and f"'{element}'" not in script:
                 orphans.append(element)
 
         assert not orphans, f"buttons with no script reference: {orphans}"
@@ -622,11 +626,20 @@ class TestTheDocumentAppearsWhereTheAnimationPlayed:
         script = self._script()
 
         # (what opens the work, where to look relative to it)
+        #
+        # THERE ARE THREE, AND THERE USED TO BE FOUR. The fourth was a
+        # spoken change, which reached the workflow from the transcript
+        # handler on its own. It does not exist any more and its absence is
+        # the point of the redesign: dictation writes into the text box and
+        # nothing else, so a spoken change IS a typed change by the time it
+        # is sent, and it comes through the `/message` route above.
+        #
+        # `test_manual_dictation.py` holds the other half of that — that no
+        # transcript path can reach a submission at all.
         routes = [
             ("/api/sessions/${sid}/confirm", "before", "the first draft"),
             ("/api/sessions/${sid}/message", "before", "a typed change"),
             ("/api/sessions/${sid}/document/text", "before", "a hand edit"),
-            ('case "stt.final":', "after", "a spoken change"),
         ]
         for anchor, side, what in routes:
             assert anchor in script, f"{what}: {anchor!r} is gone from the page"
@@ -724,14 +737,6 @@ class TestEveryWayOfSayingYesShowsTheWork:
         at = socket.index("result = await workflow.invoke(")
         assert "asyncio.create_task(announce_generation())" in socket[max(0, at - 400):at]
 
-    def test_the_recovery_poll_stays_off_a_voice_turn(self):
-        """It fetches a session snapshot that waits on the lock the turn holds,
-        with a fifteen second timeout — so it could only ever report a
-        connection that was never lost, mid-composition."""
-        script = self._read("app.js")
-        at = script.index("generationPoll = setTimeout(recover")
-        window = script[max(0, at - 700):at]
-        assert "voiceTurn" in window and "VOICE.PROCESSING" in window
 
 
 class TestTheTranslateControl:

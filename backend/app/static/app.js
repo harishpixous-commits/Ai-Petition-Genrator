@@ -1048,21 +1048,12 @@ function render(v) {
   // anybody having to find a button. A no-op everywhere else.
   kioskMaybePrint(v);
   clearTimeout(generationPoll);
-  // The recovery poll is for a generation this page started and then lost
-  // track of. NOT for one running on the voice socket: that socket delivers
-  // the next state itself, and the session snapshot this would fetch is
-  // blocked behind the very lock the turn is holding — so it could only time
-  // out after fifteen seconds and report a connection that was never lost,
-  // in the middle of a composition that is going perfectly well.
-  // GENERATING as well as PROCESSING: composition is the case this guard was
-  // written for, and it is the one the socket now names separately.
-  const voiceTurn = Boolean(voice.socket && voice.socket.readyState === 1
-    && (voice.state === VOICE.PROCESSING || voice.state === VOICE.GENERATING));
-  if (v.status === "generating" && !requestPending && !voiceTurn) {
+  if (v.status === "generating" && !requestPending) {
     generationPoll = setTimeout(recover, 2500);
   }
   syncControls();
   if (typeof drawVersions === "function") drawVersions(v);
+  void speakReply(v);
 }
 
 function drawLifecycle(v) {
@@ -1603,10 +1594,9 @@ function syncControls() {
     (!attaching && status !== "confirming" && !retryable) || unavailable;
   // Same predicate the handler uses, so the button never offers something the
   // handler will silently refuse.
-  $("send").disabled = !canSend() || !$("text").value.trim();
+  $("send").disabled = !canSend() || !$("text").value.trim() || $("text").value.length > 6000;
   $("text").disabled = !canSend();
-  $("micInline").disabled = !voice.wants && (stopped || unavailable || editingLetter);
-  $("mic").disabled = !voice.wants && (stopped || unavailable || editingLetter);
+
   $("restart").disabled = generating;
   $("cancel").disabled = stopped || unavailable;
   $("cancel").hidden = stopped || status === "ready";
@@ -1626,6 +1616,7 @@ function syncControls() {
     .forEach(el => { el.disabled = unavailable; });
   // Edit mode swaps the toolbar: the Edit button becomes Save and Cancel.
   $("reviseBtn").hidden = editingLetter;
+  paintVoice();
   $("editSave").hidden = !editingLetter;
   $("editCancel").hidden = !editingLetter;
   $("editSave").disabled = busy || requestPending || editConflict || connectionLost;
@@ -1681,7 +1672,7 @@ function resetInterface() {
   $("detailsToggle").setAttribute("aria-expanded", "false");
   stopGenerating(false);
   stopVoice({ tell: false });
-  $("voiceError").hidden = true;
+  typing.message = "";
   labels();
 }
 
@@ -1735,11 +1726,9 @@ function canSend() {
 $("ask").onsubmit = async (e) => {
   e.preventDefault();
   const text = $("text").value.trim();
-  if (!text || !canSend()) return;
+  if (!text || !canSend() || text.length > 6000) return;
+  closeDictation();
   stopPlayback();
-  // Always honoured by the server: somebody reaching for the keyboard while
-  // the assistant is talking is unambiguous, and no speaker can type.
-  send({ type: "voice.interrupt", reason: "typed" });
   workingBubble(X().saving);
   // Asking for a change to a petition that already exists is work on the
   // document, so it is shown where work on the document is always shown.
@@ -2127,1115 +2116,201 @@ $("copyBtn").onclick = async () => {
   } catch { bubble("system", X().copiedError, true); }
 };
 
-/* ==========================================================================
-   Live voice.
-
-   One socket carries the whole conversation. The citizen presses Start Voice
-   once and then talks; the server decides when they have finished and hands
-   the transcript to the same workflow a typed answer goes to. Nothing about
-   the petition is decided here — this file captures audio, plays audio, and
-   draws what is happening.
-
-   The state is ONE value, mirrored from the server. It was tempting to keep
-   `isListening`, `isSpeaking` and `isProcessing` alongside each other, and
-   that is exactly how a page ends up showing a microphone that is listening
-   to a citizen the server stopped hearing two seconds ago.
-   ========================================================================== */
-
-const VOICE = {
-  IDLE: "idle", CONNECTING: "connecting", LISTENING: "listening",
-  USER_SPEAKING: "user_speaking", TRANSCRIBING: "transcribing",
-  READING_BACK: "reading_back", WAITING_CONFIRMATION: "waiting_confirmation",
-  LONG_LISTENING: "long_listening",
-  LONG_PAUSED: "long_paused",
-  LONG_EDITING: "long_editing",
-  LONG_CONFIRMED: "long_confirmed",
-  PROCESSING: "processing", GENERATING: "generating",
-  ASSISTANT_SPEAKING: "assistant_speaking",
-  RECONNECTING: "reconnecting", ERROR: "error", ENDED: "ended",
+/* Manual dictation and spoken responses are independent. Neither transcript
+   events nor audio playback can call the petition workflow. */
+const voice = { wants: false };
+const typing = {
+  phase: 'idle', epoch: 0, stream: null, ctx: null, node: null, socket: null,
+  committedText: '', partialText: '', finals: new Set(), rendered: '', rate: 16000,
+  timer: null, message: '', speaking: false, responses: true, speechEpoch: 0,
+  audio: null, speechAbort: null, speechUrl: null, lastReply: '',
 };
-
-const voice = {
-  state: VOICE.IDLE,
-  socket: null,
-  ctx: null,            // capture AudioContext
-  stream: null,
-  node: null,
-  analyser: null,
-  playCtx: null,        // playback AudioContext, separate so stopping is total
-  playing: [],          // sources currently scheduled
-  queue: Promise.resolve(),
-  playToken: 0,         // bumped to invalidate audio decoded before an interrupt
-  playedId: 0,          // the reply whose playback the server is waiting on
-  droppedMidDictation: false,   // the connection failed during a long answer
-  muted: false,
-  wants: false,         // the citizen asked for voice and has not ended it
-  attempts: 0,
-  raf: null,
-  partial: "",
-  rms: 0,
-  playRms: 0,
-  // What the browser's own audio processing actually settled on, read back
-  // from the track rather than assumed from what was requested.
-  processing: {},
-  // A slow estimate of the room, kept for the WAVEFORM ONLY. It never gates
-  // anything: what the server hears is untouched by it.
-  floorRms: 0,
-  noisyRoom: false,
-  bargeIn: false,       // the server says whether interrupting is allowed
-  // "conversation" — the assistant asks, reads back and waits for a spoken
-  // answer. "dictation" — the microphone alone: what is said is written
-  // into the text box and nothing is spoken back.
-  mode: "conversation",
-  playAnalyser: null,
-  playBins: null,
-  meterRaf: null,
-  // Where speech starts being counted, in the same units the meter shows.
-  // A starting estimate; the service does the authoritative detection.
-  speechLine: 0.045,
-  diagnostics: false,
-  thresholds: null,
-  lastDiscard: null,
-};
-
-function voiceState(next, extra) {
-  if (voice.state === next && !extra) return;
-  voice.state = next;
-  paintVoice(extra || {});
-}
-
-function paintVoice(extra) {
-  const t = T();
-  const s = voice.state;
-  const live = ![VOICE.IDLE, VOICE.ENDED, VOICE.ERROR].includes(s);
-
-  // The panel is up whenever the citizen has asked for voice and has not
-  // ended it. Tying it to the phase instead made it flicker away every time
-  // the state passed through idle between turns.
-  $("voiceBar").hidden = !(voice.wants || s === VOICE.CONNECTING);
-  $("voiceStatus").textContent = t.voiceState[s] || "";
-
-  // A second, quieter line under the state. It says only two things, and
-  // only while the microphone is actually open: that the room is being
-  // handled, or that it is too loud to handle. No levels, no thresholds, no
-  // codec — a citizen at a counter is not debugging an audio pipeline.
-  const note = $("voiceNote");
-  const openMic = [VOICE.LISTENING, VOICE.LONG_LISTENING, VOICE.USER_SPEAKING,
-                   VOICE.WAITING_CONFIRMATION].includes(s);
-  if (openMic && voice.noisyRoom) {
-    note.textContent = t.noiseHigh;
-    note.className = "vf-note warn";
-  } else if (openMic && voice.processing.noise === true) {
-    // Only when the track REPORTED it on. A claim the citizen cannot check
-    // is worse than no claim.
-    note.textContent = t.noiseOn;
-    note.className = "vf-note";
-  } else {
-    note.textContent = "";
-    note.className = "vf-note";
-  }
-
-  if (extra.transcript !== undefined) {
-    $("voiceTranscript").textContent = extra.transcript;
-    $("voiceTranscript").classList.toggle("live", Boolean(extra.live));
-  }
-
-  // The header button says the same thing, so the state is legible with the
-  // panel scrolled out of view.
-  const btn = $("mic");
-  btn.className = "hbtn" + (s === VOICE.IDLE || s === VOICE.ENDED ? "" : " voice-" + s);
-  $("micText").textContent = live || s === VOICE.CONNECTING ? t.voiceStop : t.voiceStart;
-  btn.setAttribute("aria-label", $("micText").textContent);
-  // WAITING_CONFIRMATION is in both lists below because the microphone is
-  // genuinely open then: the citizen can just say "yes". An indicator that
-  // goes dark there tells them to press something, which is the opposite of
-  // what the assistant has just asked for.
-  const micOpen = s === VOICE.LISTENING || s === VOICE.USER_SPEAKING
-    || s === VOICE.WAITING_CONFIRMATION || s === VOICE.LONG_LISTENING;
-  $("micInline").classList.toggle("listening", micOpen);
-
-  const mute = $("voiceMute");
-  mute.classList.toggle("muted", voice.muted);
-  mute.classList.toggle("live", !voice.muted && micOpen);
-  mute.setAttribute("aria-pressed", String(voice.muted));
-  mute.setAttribute("aria-label", voice.muted ? t.unmute : t.mute);
-  mute.title = voice.muted ? t.unmute : t.mute;
-  $("voiceEnd").textContent = t.voiceEnd;
-
-  // Relabel the outstanding answer if the citizen changed language while it
-  // was up. The VALUE is left alone: it is what they said, not a label.
-  if (!$("answerCheck").hidden) {
-    $("answerHeading").textContent = t.answerHeading;
-    $("answerAsk").textContent = t.answerAsk;
-    $("answerConfirm").textContent = t.answerConfirm;
-    $("answerRetry").textContent = t.answerRetryBtn;
-  }
-}
-
-/* ------------------------------------------------- confirming one answer */
-/* The server reads each captured answer back and waits to be told it is
-   right. This is the visible half of that: the same question the assistant
-   just asked out loud, with the two replies as buttons.
-
-   The buttons do NOT decide anything locally. They send `answer.confirm` and
-   `answer.retry` and the server runs exactly the code it runs when it hears
-   "yes" or "no" — so the spoken and tapped paths cannot drift apart, and the
-   value that reaches the petition came from one place either way. */
-
-/* ------------------------------------------------- a grievance at length */
-/* The citizen is telling a story, and the panel is the receipt: every
-   sentence they finish appears in it. That matters more than the timer or
-   the count — a complaint you cannot see is a complaint you cannot check,
-   and this is the field where the whole petition lives. */
-
-function showDictation(m) {
-  const t = T();
-  const panel = $("dictation");
-  if (!m || (!m.capturing && !m.text)) {
-    panel.hidden = true;
-    dictationPaused = false;
-    stopDictationClock();
-    return;
-  }
-  dictationPaused = m.paused === true;
-  // THREE STATES, not two. "Recording", "paused" and "captured" are
-  // different things to a citizen mid-complaint, and showing "captured"
-  // over a pause tells them it has been taken when it has not.
-  const held = dictationPaused;
-  const live = m.capturing && !held;
-  $("dictationTitle").textContent =
-    live ? t.dictationTitle : held ? t.dictationHeld : t.dictationPaused;
-  $("dictationSub").textContent =
-    live ? t.dictationSub : held ? t.dictationSubHeld : t.dictationSubDone;
-  $("dictationCount").textContent = m.segments ? t.dictationCount(m.segments) : "";
-  $("dictationText").textContent = m.text || "";
-  $("dictationText").dataset.empty = t.dictationEmpty;
-  $("dictationFinish").textContent = t.dictationFinish;
-  $("dictationPause").textContent = held ? t.dictationResume : t.dictationPause;
-  $("dictationRestart").textContent = t.dictationRestart;
-  $("dictationFinish").disabled = !m.segments;
-  $("dictationPause").hidden = !m.capturing && !held;
-
-  // Claimed only when the track REPORTED it on. Firefox applies some of
-  // these constraints, Safari applies them differently, and a conference
-  // microphone may do its own processing and refuse — none of which fails
-  // `getUserMedia`. A tick the citizen cannot check is worse than no tick.
-  const noise = $("dictationNoise");
-  noise.textContent = t.noiseOn.replace(/^\u2713\s*/, "");
-  noise.hidden = voice.processing.noise !== true;
-
-  // The bars follow the real input level. Flat while paused, because the
-  // microphone really is closed then.
-  panel.dataset.live = live ? "on" : "off";
-  panel.hidden = false;
-  // The transcript grows downwards; a citizen watching it wants the words
-  // they just said, not the ones they opened with.
-  $("dictationText").scrollTop = $("dictationText").scrollHeight;
-  if (live) startDictationClock(); else stopDictationClock();
-}
-
-/** Twelve bars, scaled by the measured microphone level.
- *
- * NOT an animation on a timer. This panel is the one thing a citizen uses
- * to decide whether they are being heard, so bars that keep dancing at a
- * muted, unplugged or denied microphone are the most misleading pixels on
- * the page. No level, no movement. */
-function paintDictationBars() {
-  const panel = $("dictation");
-  if (panel.hidden || panel.dataset.live !== "on") return;
-  const bars = panel.querySelectorAll(".dc-wave i");
-  const level = Math.min(1, (voice.rms || 0) / 0.22);
-  for (let i = 0; i < bars.length; i++) {
-    // A fixed shape across the row so the middle reads as louder than the
-    // ends, multiplied by the real level. The jitter is small and seeded
-    // per-bar, so it looks like sound rather than a progress bar.
-    const shape = 0.45 + 0.55 * Math.sin((i + 1) / (bars.length + 1) * Math.PI);
-    const jitter = 0.75 + 0.25 * Math.sin(Date.now() / 90 + i * 1.7);
-    const pct = Math.max(8, Math.round(level * shape * jitter * 100));
-    bars[i].style.height = pct + "%";
-  }
-}
-
-let dictationPaused = false;
-
-/** The complaint is settled. Shown briefly, then the next question is
- *  asked on its own — the card is an acknowledgement, not a step. */
-let grievanceDoneTimer = null;
-
-function showGrievanceDone(confirmed) {
-  const panel = $("grievanceDone");
-  if (!confirmed) { panel.hidden = true; return; }
-  const t = T();
-  $("grievanceDoneTitle").textContent = t.grievanceDoneTitle;
-  $("grievanceDoneText").textContent = t.grievanceDoneText;
-  panel.hidden = false;
-  if (grievanceDoneTimer) clearTimeout(grievanceDoneTimer);
-  grievanceDoneTimer = setTimeout(() => { panel.hidden = true; }, 6000);
-}
-
-let dictationStartedAt = 0;
-let dictationTimer = null;
-
-function startDictationClock() {
-  if (dictationTimer) return;
-  dictationStartedAt = dictationStartedAt || Date.now();
-  const tick = () => {
-    const secs = Math.floor((Date.now() - dictationStartedAt) / 1000);
-    const mm = String(Math.floor(secs / 60)).padStart(2, "0");
-    const ss = String(secs % 60).padStart(2, "0");
-    $("dictationTime").textContent = `${mm}:${ss}`;
+try { typing.responses = localStorage.getItem('petition.voiceResponses') !== 'off'; } catch {}
+function voiceWords() {
+  return lang === 'ta' ? {
+    start: 'குரல் தட்டச்சைத் தொடங்கு', stop: 'குரல் தட்டச்சை நிறுத்து',
+    stopLabel: 'குரல் பதிவை நிறுத்து', listening: 'கேட்கிறேன்...', connecting: 'ஒலிவாங்கியைத் தயாரிக்கிறேன்...',
+    finishing: 'குரல் உரையை முடிக்கிறேன்...', review: 'உரையைச் சரிபார்த்து, திருத்தி, அனுப்பு என்பதை அழுத்தவும்.',
+    permission: 'குரல் தட்டச்சிற்கு ஒலிவாங்கி அனுமதி தேவை. நீங்கள் தொடர்ந்து தட்டச்சு செய்யலாம்.',
+    unavailable: 'குரல் தட்டச்சு தற்காலிகமாகக் கிடைக்கவில்லை. உங்கள் பதிலைத் தட்டச்சு செய்யவும்.',
+    speaking: 'பதிலை வாசிக்கிறேன்...', on: 'குரல் பதில்கள் ON', off: 'குரல் பதில்கள் OFF',
+    audio: 'குரல் பதில் கிடைக்கவில்லை. கேள்வியைப் படித்து தொடர்ந்து பதிலளிக்கலாம்.',
+    limit: 'உரை முழுவதும் பாதுகாக்கப்பட்டுள்ளது. அனுப்புவதற்கு முன் 6,000 எழுத்துகளுக்குள் திருத்தவும்.',
+  } : {
+    start: 'Start voice typing', stop: 'Stop voice typing', stopLabel: 'Stop dictation',
+    listening: 'Listening...', connecting: 'Preparing microphone...', finishing: 'Finishing dictation...',
+    review: 'Review or edit your words, then press Send.',
+    permission: 'Microphone access is required for voice typing. You can continue typing.',
+    unavailable: 'Voice typing is temporarily unavailable. Please type your answer.',
+    speaking: 'Reading the assistant’s response...', on: 'Voice Responses ON', off: 'Voice Responses OFF',
+    audio: 'Spoken response unavailable. You can read the question and continue typing.',
+    limit: 'All text is preserved. Edit to 6,000 characters before sending.',
   };
-  tick();
-  dictationTimer = setInterval(tick, 1000);
 }
-
-function stopDictationClock() {
-  if (dictationTimer) { clearInterval(dictationTimer); dictationTimer = null; }
-  if ($("dictation").hidden) { dictationStartedAt = 0; $("dictationTime").textContent = "00:00"; }
+function paintVoice() {
+  const words = voiceWords();
+  const active = typing.phase === 'recording';
+  const pending = typing.phase === 'connecting' || typing.phase === 'finishing';
+  const mic = $('micInline');
+  mic.classList.toggle('dictating', active);
+  mic.setAttribute('aria-pressed', String(active));
+  mic.setAttribute('aria-label', active ? words.stopLabel : words.start);
+  mic.title = active ? words.stop : words.start;
+  mic.disabled = typing.speaking || pending || (!active && !canSend());
+  $('mic').disabled = false;
+  $('mic').setAttribute('aria-pressed', String(typing.responses));
+  $('mic').title = typing.responses ? words.on : words.off;
+  $('micText').textContent = typing.responses ? words.on : words.off;
+  $('dictationStatus').textContent = typing.message || (typing.speaking ? words.speaking : active ? words.listening : pending ? (typing.phase === 'finishing' ? words.finishing : words.connecting) : '');
+  if (active) $('text').placeholder = words.listening;
 }
-
-$("dictationFinish").onclick = () => {
-  $("dictationFinish").disabled = true;
-  send({ type: "dictation.finish" });
-};
-
-$("dictationRestart").onclick = () => {
-  send({ type: "dictation.restart" });
-};
-
-$("dictationPause").onclick = () => {
-  // One button, both directions. The server is the authority on which state
-  // it is in; this only asks, and the panel repaints when it answers.
-  send({ type: dictationPaused ? "dictation.resume" : "dictation.pause" });
-};
-
-function showAnswer(answer, { lengthy = false, grievance = false } = {}) {
-  const t = T();
-  const panel = $("answerCheck");
-  if (!answer) { panel.hidden = true; return; }
-  // A grievance is named as one, and the three things that can be done with
-  // it are spelled out. "Your answer / Is that correct?" over two minutes of
-  // somebody's complaint understates what is being asked of them.
-  $("answerHeading").textContent =
-    grievance ? t.answerGrievanceHeading : t.answerHeading;
-  $("answerValue").textContent = answer;
-  $("answerAsk").textContent = grievance ? t.answerGrievanceAsk : t.answerAsk;
-  $("answerEdit").textContent = t.answerEdit;
-  $("answerEdit").hidden = !grievance;
-  $("answerEdit").disabled = false;
-  $("answerConfirm").textContent = t.answerConfirm;
-  $("answerRetry").textContent = t.answerRetryBtn;
-  $("answerConfirm").disabled = false;
-  $("answerRetry").disabled = false;
-  // Offered only when the assistant summarised instead of reciting. It told
-  // the citizen to read the screen; this is for the one who cannot.
-  $("answerReadOut").textContent = t.answerReadOut;
-  $("answerReadOut").hidden = !lengthy;
-  panel.hidden = false;
+function joinDictation(a, b) {
+  if (!a) return b;
+  if (!b) return a;
+  return a + (/\s$/.test(a) || /^[,.;:!?\s]/.test(b) ? '' : ' ') + b;
 }
-
-$("answerReadOut").onclick = () => { send({ type: "answer.read" }); };
-
-$("answerEdit").onclick = () => {
-  // The same workflow action as saying "change that": the server asks which
-  // part, and the answer to that question arrives by voice like any other.
-  $("answerEdit").disabled = true;
-  send({ type: "answer.edit" });
-};
-
-$("answerConfirm").onclick = () => {
-  // Disabled immediately, not on the reply. A second press would send a
-  // second confirm, and the server would have already cleared the pending
-  // answer — so the second one does nothing except look broken.
-  $("answerConfirm").disabled = true;
-  $("answerRetry").disabled = true;
-  $("voiceStatus").textContent = T().answerSaved;
-  send({ type: "answer.confirm" });
-};
-
-$("answerRetry").onclick = () => {
-  $("answerConfirm").disabled = true;
-  $("answerRetry").disabled = true;
-  $("voiceStatus").textContent = T().answerRetrying;
-  send({ type: "answer.retry" });
-};
-
-/* ----------------------------------------------------------------- errors */
-
-function voiceFail(message, { recoverable = true } = {}) {
-  $("voiceErrorText").textContent = message;
-  $("voiceRetry").hidden = !recoverable;
-  $("voiceRetry").textContent = T().voiceRetry;
-  $("voiceDismiss").textContent = T().voiceContinueText;
-  $("voiceError").hidden = false;
-  voiceState(VOICE.ERROR);
+function releaseTypingAudio() {
+  if (typing.node) { typing.node.onaudioprocess = null; try { typing.node.disconnect(); } catch {} typing.node = null; }
+  if (typing.stream) { typing.stream.getTracks().forEach(track => track.stop()); typing.stream = null; }
+  if (typing.ctx) { void typing.ctx.close().catch(() => {}); typing.ctx = null; }
 }
-
-$("voiceRetry").onclick = () => { $("voiceError").hidden = true; startVoice(); };
-$("voiceDismiss").onclick = () => {
-  $("voiceError").hidden = true;
-  stopVoice({ tell: false });
-  $("text").focus();
-};
-
-/* -------------------------------------------------------------- playback
-   A queue of clips on their own AudioContext. Barge-in has to be total and
-   instant: stopping every scheduled source AND invalidating anything still
-   being decoded, because a clip that finishes decoding after the interrupt
-   would otherwise start playing over the citizen. */
-
-async function playClip(bytes, token) {
-  if (token !== voice.playToken) return;
-  if (!voice.playCtx) {
-    voice.playCtx = new AudioContext();
-    // Tapped on the way to the speaker, so the ribbon moves with the words the
-    // citizen is actually hearing rather than to a timer of our own.
-    voice.playAnalyser = voice.playCtx.createAnalyser();
-    voice.playAnalyser.fftSize = 512;
-    voice.playBins = new Uint8Array(voice.playAnalyser.frequencyBinCount);
-    voice.playAnalyser.connect(voice.playCtx.destination);
-  }
-  if (voice.playCtx.state === "suspended") await voice.playCtx.resume();
-  let buffer;
-  try { buffer = await voice.playCtx.decodeAudioData(bytes); }
-  catch { return; }
-  if (token !== voice.playToken) return;          // interrupted while decoding
-  await new Promise((done) => {
-    const src = voice.playCtx.createBufferSource();
-    src.buffer = buffer;
-    src.connect(voice.playAnalyser);
-    src.onended = () => {
-      voice.playing = voice.playing.filter(s => s !== src);
-      done();
-    };
-    voice.playing.push(src);
-    src.start();
-  });
+function closeDictation(message = '') {
+  typing.epoch++;
+  clearTimeout(typing.timer);
+  releaseTypingAudio();
+  const socket = typing.socket; typing.socket = null;
+  if (socket) { socket.onclose = null; try { socket.close(); } catch {} }
+  typing.phase = 'idle'; voice.wants = false;
+  typing.committedText = $('text').value; typing.partialText = '';
+  typing.message = message;
+  syncControls();
 }
-
-function enqueueClip(bytes) {
-  const token = voice.playToken;
-  voice.queue = voice.queue.then(() => playClip(bytes, token)).catch(() => {});
+function stopVoice() { closeDictation(); stopPlayback(); }
+function stopDictation() {
+  if (typing.phase !== 'recording') return;
+  releaseTypingAudio(); // The physical microphone stops immediately, before final STT.
+  typing.phase = 'finishing'; voice.wants = false; typing.message = '';
+  paintVoice();
+  if (typing.socket?.readyState === 1) typing.socket.send(JSON.stringify({type:'dictation.stop'}));
+  else { closeDictation(voiceWords().unavailable); return; }
+  typing.timer = setTimeout(() => closeDictation(voiceWords().unavailable), 35000);
 }
-
-function stopPlayback() {
-  voice.playToken++;                    // anything mid-decode is now void
-  for (const src of voice.playing) { try { src.stop(); } catch {} }
-  voice.playing = [];
-  voice.queue = Promise.resolve();
-  // Stopped audio has still stopped. Telling the server so releases the
-  // microphone now rather than at the end of a grace period it is waiting
-  // out for a clip that will never play.
-  if (voice.playedId) { send({ type: "tts.played", id: voice.playedId }); }
-  voice.playedId = 0;
+function acceptTranscript(message) {
+  const id = String(message.segment);
+  if (typing.finals.has(id)) return;
+  // A keyboard edit wins even if an STT event was already queued.
+  if ($('text').value !== typing.rendered) { closeDictation(); return; }
+  const said = String(message.text || '').trim();
+  if (message.type === 'stt.final') {
+    typing.finals.add(id);
+    // Preserve the last visible partial if a provider's final result is empty.
+    typing.committedText = joinDictation(typing.committedText, said || typing.partialText);
+    typing.partialText = '';
+  } else typing.partialText = said;
+  typing.rendered = joinDictation(typing.committedText, typing.partialText);
+  $('text').value = typing.rendered;
+  autoGrow(); syncControls();
+  $('text').scrollTop = $('text').scrollHeight;
+  if (typing.rendered.length > 6000) closeDictation(voiceWords().limit);
 }
-
-/* ------------------------------------------------------------------ capture */
-
-const TARGET_RATE = 16000;   // what the service expects on the wire
-
-/** Rate-convert one buffer, averaging rather than dropping samples.
- *
- *  Averaging across each source window is a crude low-pass, which is what
- *  keeps 48 kHz speech from aliasing into a metallic 16 kHz that the speech
- *  service mis-hears. Plain decimation is one line shorter and audibly worse.
- */
 function resampleTo(input, inRate, outRate) {
-  if (!inRate || inRate === outRate) return input;
-  const ratio = inRate / outRate;
-  const out = new Float32Array(Math.floor(input.length / ratio));
-  for (let i = 0; i < out.length; i++) {
-    const start = Math.floor(i * ratio);
-    const end = Math.min(Math.floor((i + 1) * ratio), input.length);
-    let sum = 0, n = 0;
-    for (let j = start; j < end; j++) { sum += input[j]; n++; }
-    out[i] = n ? sum / n : input[start] || 0;
+  if (inRate === outRate) return input;
+  const ratio = inRate / outRate, out = new Float32Array(Math.floor(input.length / ratio));
+  for (let i=0;i<out.length;i++) {
+    const start=Math.floor(i*ratio), end=Math.min(Math.floor((i+1)*ratio),input.length);
+    let sum=0; for(let j=start;j<end;j++) sum+=input[j];
+    out[i]=end>start ? sum/(end-start) : input[start]||0;
   }
   return out;
 }
-
-const BARGE_RMS = 0.055;    // local speech onset, for instant interruption
-let bargeFrames = 0;
-
-/* ---------------------------------------------------------- the voice field
-   Five translucent bands, drawn every frame, their height driven by whatever
-   audio is live at that moment: the microphone while the citizen speaks, the
-   reply while the assistant speaks, and a slow idle motion in between.
-
-   Additive blending is what makes the overlaps glow rather than muddy —
-   `lighter` adds the colours where the bands cross, which is why cyan over
-   pink gives white in the middle and why the whole thing needs a dark ground.
-
-   No library and no image. A recorded animation would move while the service
-   was doing nothing, which on a voice interface is a lie about whether it is
-   listening. */
-
-const WAVE_BANDS = [
-  // `centre` shifts where each lobe is fattest. Without it every band peaks in
-  // the middle, they all add up in the same place, and the additive blend
-  // turns the whole centre white — which is what the first attempt looked
-  // like. Spreading the peaks is what lets the cyan, the pink and the purple
-  // each be seen while still overlapping into lighter colours where they
-  // cross.
-  { colour: "56, 232, 225", freq: 1.05, speed: 0.95, phase: 0.0, weight: 1.00, centre: 0.50, alpha: 0.50 },
-  { colour: "60, 150, 255", freq: 1.45, speed: -0.72, phase: 1.1, weight: 0.90, centre: 0.38, alpha: 0.46 },
-  { colour: "150, 105, 255", freq: 1.95, speed: 1.22, phase: 2.3, weight: 0.78, centre: 0.62, alpha: 0.44 },
-  { colour: "255, 80, 160", freq: 2.55, speed: -1.05, phase: 3.7, weight: 0.64, centre: 0.30, alpha: 0.42 },
-  { colour: "120, 255, 210", freq: 3.10, speed: 1.55, phase: 5.2, weight: 0.52, centre: 0.70, alpha: 0.40 },
-];
-const wave = {
-  canvas: null, ctx: null, raf: null,
-  t: 0, level: 0, target: 0, dpr: 1,
-};
-
-/** Tapered to a point at both ends, fattest at `centre`. */
-function waveEnvelope(x, centre) {
-  // Distance from this band's own peak, normalised so the taper still reaches
-  // zero at both ends of the ribbon whichever side the peak sits on.
-  const span = centre <= 0.5 ? Math.max(centre, 1 - centre) : Math.max(centre, 1 - centre);
-  const d = Math.min(1, Math.abs(x - centre) / span);
-  return Math.pow(Math.cos(d * Math.PI / 2), 2.4);
-}
-
-function resizeWave() {
-  const canvas = wave.canvas;
-  if (!canvas) return;
-  const rect = canvas.getBoundingClientRect();
-  if (!rect.width) return;
-  wave.dpr = Math.min(window.devicePixelRatio || 1, 2);
-  canvas.width = Math.round(rect.width * wave.dpr);
-  canvas.height = Math.round(rect.height * wave.dpr);
-}
-
-/** How much of what the microphone hears is louder than the room.
- *
- *  Zero when the level is at or below the tracked floor, which is what a fan,
- *  an air conditioner or a room hum sits at. DISPLAY ONLY — the server's
- *  detector works on the untouched audio, and nothing here can stop a quiet
- *  citizen being heard.
- */
-function voiceAboveTheRoom() {
-  return Math.max(0, voice.rms - voice.floorRms * 1.6);
-}
-
-/** How tall the bands should be right now, and how fast they move. */
-function waveDrive() {
-  const s = voice.state;
-  if (s === VOICE.USER_SPEAKING) {
-    // The citizen's own voice, ABOVE the room rather than including it.
-    //
-    // A fan holds a steady level, and a ribbon driven by raw RMS sits
-    // permanently half-height in an office — which reads as the microphone
-    // hearing someone when it is hearing furniture. Subtracting the tracked
-    // floor makes the motion belong to the speech.
-    //
-    // Display only. The server's detector sees the untouched audio and makes
-    // every decision about what was actually said.
-    return { amp: Math.min(1, voiceAboveTheRoom() / 0.16), speed: 1.6 };
-  }
-  if (s === VOICE.ASSISTANT_SPEAKING || s === VOICE.READING_BACK) {
-    // The reply, off the playback analyser, so the ribbon moves with the
-    // words the citizen is hearing rather than to a timer. A read-back is
-    // the assistant speaking and moves with its voice like any other reply.
-    return { amp: Math.min(1, voice.playRms / 0.30), speed: 1.25 };
-  }
-  if (s === VOICE.PROCESSING || s === VOICE.TRANSCRIBING || s === VOICE.GENERATING) {
-    // Nothing is being heard. A steady, unhurried pulse says the service is
-    // working without pretending to hear anything.
-    return { amp: 0.34 + 0.12 * Math.sin(wave.t * 2.2), speed: 0.85 };
-  }
-  if (s === VOICE.ERROR) return { amp: 0.06, speed: 0.12 };
-  if (s === VOICE.LISTENING || s === VOICE.LONG_LISTENING
-      || s === VOICE.WAITING_CONFIRMATION) {
-    // Waiting. A patient idle motion, lifted only by sound that is actually
-    // above the room — so a fan moves it barely and a voice moves it plainly.
-    const base = 0.16 + 0.05 * Math.sin(wave.t * 1.1);
-    return { amp: Math.min(1, base + voiceAboveTheRoom() * 2.2), speed: 0.7 };
-  }
-  // Connecting, idle: a small, patient motion. Never flat — a flat line
-  // reads as a dead microphone.
-  return { amp: 0.16 + 0.05 * Math.sin(wave.t * 1.1), speed: 0.55 };
-}
-
-function drawWave() {
-  wave.raf = requestAnimationFrame(drawWave);
-  const ctx = wave.ctx, canvas = wave.canvas;
-  if (!ctx || !canvas || !canvas.width) return;
-
-  const drive = waveDrive();
-  // Ease towards the target so a sudden syllable swells the ribbon instead of
-  // snapping it, and a pause lets it fall away rather than cutting out.
-  wave.target = drive.amp;
-  wave.level += (wave.target - wave.level) * (wave.target > wave.level ? 0.35 : 0.08);
-  wave.t += 0.016 * drive.speed;
-
-  const w = canvas.width, h = canvas.height, mid = h / 2;
-  ctx.clearRect(0, 0, w, h);
-  ctx.globalCompositeOperation = "lighter";
-
-  const steps = 96;
-  const reach = h * 0.42 * (0.22 + 0.78 * wave.level);
-
-  for (const band of WAVE_BANDS) {
-    ctx.beginPath();
-    for (let i = 0; i <= steps; i++) {
-      const x = i / steps;
-      const y = mid - Math.sin(x * Math.PI * 2 * band.freq + wave.t * band.speed + band.phase)
-                      * reach * band.weight * waveEnvelope(x, band.centre);
-      i ? ctx.lineTo(x * w, y) : ctx.moveTo(x * w, y);
-    }
-    // Back along the mirrored curve, so each band is a closed lens rather than
-    // a line — which is what gives the overlaps their colour.
-    for (let i = steps; i >= 0; i--) {
-      const x = i / steps;
-      const y = mid + Math.sin(x * Math.PI * 2 * band.freq + wave.t * band.speed + band.phase)
-                      * reach * band.weight * waveEnvelope(x, band.centre);
-      ctx.lineTo(x * w, y);
-    }
-    ctx.closePath();
-    const fill = ctx.createLinearGradient(0, 0, w, 0);
-    fill.addColorStop(0.00, `rgba(${band.colour}, 0)`);
-    fill.addColorStop(Math.max(0.05, band.centre - 0.30), `rgba(${band.colour}, ${band.alpha * 0.6})`);
-    fill.addColorStop(band.centre, `rgba(${band.colour}, ${band.alpha})`);
-    fill.addColorStop(Math.min(0.95, band.centre + 0.30), `rgba(${band.colour}, ${band.alpha * 0.6})`);
-    fill.addColorStop(1.00, `rgba(${band.colour}, 0)`);
-    ctx.fillStyle = fill;
-    ctx.fill();
-  }
-
-  // A bright hairline through the middle, which is what stops the ribbon
-  // looking like a smudge when everything is quiet.
-  ctx.globalCompositeOperation = "source-over";
-  const line = ctx.createLinearGradient(0, 0, w, 0);
-  line.addColorStop(0, "rgba(180, 225, 255, 0)");
-  line.addColorStop(0.5, `rgba(210, 240, 255, ${0.35 + 0.4 * wave.level})`);
-  line.addColorStop(1, "rgba(180, 225, 255, 0)");
-  ctx.strokeStyle = line;
-  ctx.lineWidth = Math.max(1, wave.dpr);
-  ctx.beginPath();
-  ctx.moveTo(0, mid);
-  ctx.lineTo(w, mid);
-  ctx.stroke();
-}
-
-function startWave() {
-  wave.canvas = $("voiceWave");
-  wave.ctx = wave.canvas.getContext("2d");
-  resizeWave();
-  if (!wave.raf) drawWave();
-}
-
-function stopWave() {
-  if (wave.raf) cancelAnimationFrame(wave.raf);
-  wave.raf = null;
-  wave.level = 0;
-  if (wave.ctx && wave.canvas) wave.ctx.clearRect(0, 0, wave.canvas.width, wave.canvas.height);
-}
-
-window.addEventListener("resize", resizeWave);
-
-
-/** Read the microphone level every frame; the field and the diagnostics use it. */
-function startMeter() {
-  const bins = new Uint8Array(voice.analyser.frequencyBinCount);
-  const read = () => {
-    voice.meterRaf = requestAnimationFrame(read);
-    voice.analyser.getByteTimeDomainData(bins);
-    let sum = 0;
-    for (let i = 0; i < bins.length; i++) {
-      const v = bins[i] / 128 - 1;
-      sum += v * v;
-    }
-    voice.rms = Math.sqrt(sum / bins.length);
-
-    // Track the room: fall to a new quiet quickly, rise towards a louder one
-    // slowly. The asymmetry is the point — rising as fast as it falls would
-    // let a long spoken answer teach the meter that speech is background,
-    // and the ribbon would flatten in the middle of a sentence.
-    const pull = voice.rms < voice.floorRms ? 0.08 : 0.0015;
-    voice.floorRms = voice.floorRms
-      ? voice.floorRms + pull * (voice.rms - voice.floorRms)
-      : voice.rms;
-
-    if (voice.playAnalyser) {
-      voice.playAnalyser.getByteTimeDomainData(voice.playBins);
-      let p = 0;
-      for (let i = 0; i < voice.playBins.length; i++) {
-        const v = voice.playBins[i] / 128 - 1;
-        p += v * v;
-      }
-      voice.playRms = Math.sqrt(p / voice.playBins.length);
-    } else {
-      voice.playRms = 0;
-    }
-
-    paintDictationBars();
-
-    const meter = $("voiceMeter");
-    if (!meter.hidden) {
-      const pct = Math.min(100, Math.round((voice.rms / 0.25) * 100));
-      meter.firstElementChild.style.width = pct + "%";
-      meter.classList.toggle("over", voice.rms > voice.speechLine);
-      meter.lastElementChild.style.left =
-        Math.min(99, (voice.speechLine / 0.25) * 100) + "%";
-    }
-    if (voice.diagnostics) paintDiagnostics(voice.rms);
-  };
-  read();
-  startWave();
-}
-
-
-
-/* Developer diagnostics. Enabled by the service, never by the page, and it
-   carries measurements only — no transcript, no field value, nothing that
-   could put a citizen's Aadhaar into a screenshot of a debug panel. */
-function paintDiagnostics(rms) {
-  const now = performance.now();
-  if (now - (voice.diagPaintedAt || 0) < 120) return;   // 8 Hz is plenty
-  voice.diagPaintedAt = now;
-  const t = voice.thresholds || {};
-  const d = voice.lastDiscard;
-  $("voiceDiag").innerHTML =
-    `<span>mic rms <b>${rms.toFixed(3)}</b></span>` +
-    `<span>speech at <b>${voice.speechLine.toFixed(3)}</b></span>` +
-    `<span>state <b>${voice.state}</b></span>` +
-    `<span>lang <b>${lang === "ta" ? "ta-IN" : "en-IN"}</b></span>` +
-    `<span>onset <b>${t.onset_ms ?? "-"}ms</b></span>` +
-    `<span>silence <b>${t.silence_ms ?? "-"}ms</b></span>` +
-    (d ? `<span class="bad">discarded <b>${esc(d.reason)}</b></span>` +
-         `<span class="bad">voiced <b>${d.voiced_ms}ms</b></span>` +
-         `<span class="bad">mod <b>${d.modulation}</b></span>` +
-         `<span class="bad">snr <b>${d.peak_snr}</b></span>`
-       : "");
-}
-
-/** Stop reading the microphone and drawing the field, and clear both. */
-function stopMeter() {
-  if (voice.meterRaf) cancelAnimationFrame(voice.meterRaf);
-  voice.meterRaf = null;
-  voice.rms = 0;
-  voice.playRms = 0;
-  voice.floorRms = 0;
-  stopWave();
-  const meter = $("voiceMeter");
-  if (meter && meter.firstElementChild) {
-    meter.firstElementChild.style.width = "0%";
-    meter.classList.remove("over");
-  }
-}
-
-/** Microphone problems, said in words a citizen can act on. */
-function micMessage(err) {
-  const t = T();
-  const name = (err && err.name) || "";
-  if (name === "NotAllowedError" || name === "SecurityError") return t.micDenied;
-  if (name === "NotFoundError" || name === "OverconstrainedError") return t.micMissing;
-  if (name === "NotReadableError") return t.micBusy;
-  if (!navigator.mediaDevices || !window.AudioContext) return t.micUnsupported;
-  return t.micDenied;
-}
-
-async function openMicrophone() {
-  voice.stream = await navigator.mediaDevices.getUserMedia({
-    audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true,
-             autoGainControl: true },
-  });
-
-  // ASKED FOR is not the same as GOT. These three are advisory constraints:
-  // Firefox applies some, Safari applies them differently, a USB conference
-  // microphone may do its own processing and refuse, and none of that fails
-  // `getUserMedia`. Read back what the track actually settled on, so the
-  // panel can say "noise reduction active" only when it IS active — a claim
-  // the citizen cannot check is worse than no claim.
-  voice.processing = {};
+async function toggleDictation() {
+  if (typing.phase === 'recording') { stopDictation(); return; }
+  if (typing.phase !== 'idle' || typing.speaking || !canSend()) return;
+  const epoch = ++typing.epoch;
+  const session = sid;
+  typing.phase='connecting'; typing.message=''; voice.wants=true;
+  typing.committedText=$('text').value; typing.partialText=''; typing.rendered=$('text').value; typing.finals.clear();
+  paintVoice();
   try {
-    const settings = voice.stream.getAudioTracks()[0].getSettings();
-    voice.processing = {
-      echo: settings.echoCancellation === true,
-      noise: settings.noiseSuppression === true,
-      gain: settings.autoGainControl === true,
-      // Some browsers report nothing at all rather than false. That is
-      // "unknown", not "off", and it is why `paintVoice` checks for an
-      // explicit true rather than trusting a missing key.
-      reported: "noiseSuppression" in settings,
+    if (!navigator.mediaDevices?.getUserMedia) throw Error('unavailable');
+    const stream = await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true,channelCount:1}});
+    if(epoch!==typing.epoch || session!==sid) {stream.getTracks().forEach(t=>t.stop());return;}
+    typing.stream=stream;
+    const ctx = new AudioContext(); typing.ctx=ctx;
+    await ctx.resume();
+    if(epoch!==typing.epoch) return;
+    const socket=new WebSocket(`${location.protocol==='https:'?'wss':'ws'}://${location.host}/ws/dictation/${encodeURIComponent(sid)}`);
+    typing.socket=socket;
+    typing.timer=setTimeout(()=>{if(epoch===typing.epoch)closeDictation(voiceWords().unavailable);},20000);
+    socket.onmessage=event=>{
+      if(epoch!==typing.epoch) return;
+      let message;try{message=JSON.parse(event.data);}catch{return;}
+      if(message.type==='dictation.ready') {
+        if(typing.phase!=='connecting')return;
+        clearTimeout(typing.timer);typing.rate=message.sample_rate||16000;
+        const source=ctx.createMediaStreamSource(stream), node=ctx.createScriptProcessor(4096,1,1), mute=ctx.createGain();
+        typing.node=node;mute.gain.value=0;source.connect(node);node.connect(mute);mute.connect(ctx.destination);
+        node.onaudioprocess=e=>{
+          if(epoch!==typing.epoch || typing.phase!=='recording' || socket.readyState!==1)return;
+          if(socket.bufferedAmount>1024*1024){closeDictation(voiceWords().unavailable);return;}
+          const samples=resampleTo(e.inputBuffer.getChannelData(0),ctx.sampleRate,typing.rate), pcm=new Int16Array(samples.length);
+          for(let i=0;i<samples.length;i++)pcm[i]=Math.max(-1,Math.min(1,samples[i]))*32767;
+          socket.send(pcm.buffer);
+        };
+        typing.phase='recording';paintVoice();
+      } else if(message.type==='stt.partial'||message.type==='stt.final')acceptTranscript(message);
+      else if(message.type==='dictation.stopped')closeDictation(voiceWords().review);
+      else if(message.type==='error')closeDictation(voiceWords().unavailable);
     };
-  } catch { /* getSettings is not universal; unknown is a fine answer */ }
-  voice.ctx = new AudioContext({ sampleRate: 16000 });
-  if (voice.ctx.state === "suspended") await voice.ctx.resume();
-
-  const source = voice.ctx.createMediaStreamSource(voice.stream);
-  voice.analyser = voice.ctx.createAnalyser();
-  voice.analyser.fftSize = 512;
-  source.connect(voice.analyser);
-
-  // What the browser ACTUALLY gave us, which is often not what was asked for.
-  // `new AudioContext({sampleRate: 16000})` is a hint, and plenty of devices
-  // ignore it and hand back 48 kHz. Sending those samples as though they were
-  // 16 kHz stretches the audio to three times its length, and the speech
-  // service faithfully transcribes the stretch: "My name is Harish" came back
-  // as "My My My Me Me Me Mess Mess Hara Hara". Resample here rather than
-  // trusting the hint.
-  voice.inputRate = voice.ctx.sampleRate;
-
-  voice.node = voice.ctx.createScriptProcessor(2048, 1, 1);
-  voice.node.onaudioprocess = (e) => {
-    if (!voice.socket || voice.socket.readyState !== 1) return;
-    const input = e.inputBuffer.getChannelData(0);
-
-    // Local barge-in. The server decides turns, but it cannot stop audio that
-    // is already in this browser, and a round trip is long enough to be heard
-    // as the assistant talking over the citizen.
-    // Local onset detection, and ONLY where the server says interrupting is
-    // allowed. It is a bare level test with no echo discrimination, and on a
-    // counter PC the loudest thing in the microphone while the assistant is
-    // talking is the assistant — so left unguarded it cut the assistant's
-    // own question off mid-sentence and opened the microphone early, which
-    // is exactly the failure half-duplex exists to prevent.
-    //
-    // The server ignores an unasked-for interrupt as well. Both halves check,
-    // because either one alone leaves the hole open if the other changes.
-    if (voice.bargeIn && (voice.state === VOICE.ASSISTANT_SPEAKING
-                          || voice.state === VOICE.READING_BACK)) {
-      let sum = 0;
-      for (let i = 0; i < input.length; i++) sum += input[i] * input[i];
-      if (Math.sqrt(sum / input.length) > BARGE_RMS) {
-        if (++bargeFrames >= 2) {
-          bargeFrames = 0;
-          stopPlayback();
-          send({ type: "voice.interrupt", reason: "microphone" });
-        }
-      } else { bargeFrames = 0; }
-    } else {
-      bargeFrames = 0;
-    }
-
-    if (voice.muted) return;
-    const frames = resampleTo(input, voice.inputRate, TARGET_RATE);
-    const pcm = new Int16Array(frames.length);
-    for (let i = 0; i < frames.length; i++)
-      pcm[i] = Math.max(-1, Math.min(1, frames[i])) * 0x7fff;
-    voice.socket.send(pcm.buffer);
-  };
-  // Through a silent gain node: a ScriptProcessor needs a path to the
-  // destination to run at all, and the obvious wiring plays the citizen's own
-  // microphone back at them.
-  const mute = voice.ctx.createGain();
-  mute.gain.value = 0;
-  source.connect(voice.node);
-  voice.node.connect(mute);
-  mute.connect(voice.ctx.destination);
-  startMeter();
-}
-
-function releaseAudio() {
-  stopMeter();
-  if (voice.node) { try { voice.node.disconnect(); } catch {} voice.node = null; }
-  if (voice.ctx) { try { voice.ctx.close(); } catch {} voice.ctx = null; }
-  if (voice.stream) { voice.stream.getTracks().forEach(t => t.stop()); voice.stream = null; }
-  voice.analyser = null;
-}
-
-/* ------------------------------------------------------------------ socket */
-
-function send(payload) {
-  if (voice.socket && voice.socket.readyState === 1) {
-    voice.socket.send(JSON.stringify(payload));
+    socket.onclose=()=>{if(epoch===typing.epoch)closeDictation(voiceWords().unavailable);};
+    socket.onerror=()=>{if(epoch===typing.epoch)closeDictation(voiceWords().unavailable);};
+    stream.getTracks().forEach(track=>track.onended=()=>{if(epoch===typing.epoch && typing.phase==='recording')stopDictation();});
+  } catch(error) {
+    if(epoch===typing.epoch)closeDictation(error.name==='NotAllowedError'||error.name==='SecurityError'?voiceWords().permission:voiceWords().unavailable);
   }
 }
-
-function openSocket() {
-  const scheme = location.protocol === "https:" ? "wss" : "ws";
-  const sock = new WebSocket(`${scheme}://${location.host}/ws/voice/${sid}`);
-  sock.binaryType = "arraybuffer";
-  let expectAudio = false;
-
-  sock.onmessage = (ev) => {
-    if (voice.socket !== sock || !voice.wants) return;
-    if (typeof ev.data !== "string") {
-      if (expectAudio) { expectAudio = false; enqueueClip(ev.data); }
-      return;
-    }
-    const m = JSON.parse(ev.data);
-    switch (m.type) {
-      case "voice.ready":
-        voice.diagnostics = Boolean(m.diagnostics);
-        // Whether the local onset detector below is allowed to run at all.
-        // The server decides: under half-duplex it discards everything it
-        // hears while speaking, and a page interrupting on its own would
-        // cut the assistant off on its own echo.
-        voice.bargeIn = Boolean(m.barge_in);
-        voice.thresholds = m.thresholds || null;
-        $("voiceDiag").hidden = !voice.diagnostics;
-        $("voiceMeter").hidden = !voice.diagnostics;
-        if (!m.enabled) {
-          voiceFail(T().voiceUnavailable, { recoverable: false });
-          stopVoice({ tell: false });
-          return;
-        }
-        voice.attempts = 0;
-        // Declared, not assumed. The server waits for our `tts.played` only
-        // because we said we send it; a page that cannot is timed by the
-        // length of the audio instead of stalling every turn.
-        send({ type: "voice.start", reports_playback: true, mode: voice.mode });
-        break;
-
-      case "voice.state":
-        if (m.state === VOICE.USER_SPEAKING) voiceState(m.state, { transcript: "", live: true });
-        else if (m.state === VOICE.ASSISTANT_SPEAKING)
-          voiceState(m.state, { transcript: m.text || "", live: false });
-        else voiceState(m.state);
-        break;
-
-      case "stt.final":
-        // Dictation: the words go in the box and stop there. The citizen
-        // reads them, edits them if the microphone misheard, and presses
-        // send when they are ready — which is the whole point of asking for
-        // the microphone beside the text box rather than the one in the
-        // header.
-        if (voice.mode === "dictation") {
-          writeIntoTheBox(m.text);
-          break;
-        }
-        // Only a settled transcript becomes a conversation turn, and the
-        // server's `state` message is what actually writes it — this is the
-        // panel showing what was heard, not a second copy of the message.
-        voiceState(VOICE.PROCESSING, { transcript: m.text, live: false });
-        // Same as typing it: the transcript is settled and the server is now
-        // running the turn. The `state` message that follows closes the panel.
-        if (view?.status === "ready") beginDocumentWork("revise");
-        break;
-
-      case "state":
-        render(m.state);
-        break;
-
-      case "tts.start":
-        voiceState(VOICE.ASSISTANT_SPEAKING, { transcript: m.text || "", live: false });
-        break;
-
-      case "tts.audio":
-        expectAudio = true;
-        break;
-
-      case "tts.end":
-        // The server has sent the last clip; it has NOT finished playing.
-        // Chaining onto the playback queue reports the real moment the
-        // speaker goes quiet, which is when the server opens the microphone.
-        // Without it the assistant hears its own last sentence and
-        // transcribes it as the citizen's answer.
-        {
-          const token = voice.playToken;
-          const id = m.id;
-          voice.queue = voice.queue.then(() => {
-            // A newer token means an interruption already stopped this
-            // audio, and `stopPlayback` has reported it.
-            if (token === voice.playToken) send({ type: "tts.played", id });
-          });
-          voice.playedId = id;
-        }
-        break;
-
-      case "voice.answer":
-        // The server is the only thing that knows whether an answer is
-        // outstanding. The page never guesses — it draws what it is told,
-        // including being told there is nothing, which is what closes the
-        // panel after a confirm, a retry or a dropped connection.
-        showAnswer(m.awaiting ? (m.answer || "") : null,
-                   { lengthy: Boolean(m.lengthy), grievance: Boolean(m.grievance) });
-        break;
-
-      case "voice.noise":
-        // Advisory. Nothing was rejected for it, and nothing about the
-        // microphone changes — the citizen is simply told the one thing
-        // that helps.
-        voice.noisyRoom = Boolean(m.high);
-        paintVoice({});
-        break;
-
-      case "voice.grievance":
-        showGrievanceDone(m.confirmed === true);
-        break;
-
-      case "voice.dictation":
-        // Reassurance, once, when the panel returns after a drop. A citizen
-        // who watched the connection fail mid-sentence has no way of
-        // knowing their words survived unless they are told.
-        if (voice.droppedMidDictation && m.capturing && m.segments) {
-          voice.droppedMidDictation = false;
-          bubble("system", T().dictationSafe);
-        }
-        // How much of a long answer has been captured. The server is the
-        // only thing that knows; the page draws what it is told, including
-        // being told there is nothing left, which is what closes the panel
-        // after a confirm or a start-over.
-        showDictation(m);
-        break;
-
-      case "voice.interrupted":
-        stopPlayback();
-        break;
-
-      case "voice.discarded":
-        // Something was heard and judged not to be an answer. The citizen is
-        // told nothing — the assistant simply keeps listening, which is what
-        // it looks like when a fan runs past a microphone.
-        voice.lastDiscard = m;
-        break;
-
-      case "voice.ended":
-        stopVoice({ tell: false });
-        if (m.reason === "idle") bubble("system", T().voiceIdleEnded);
-        break;
-
-      case "error":
-        stopGenerating(false);
-        if (m.recoverable === false) {
-          voiceFail(m.message || T().voiceUnavailable, { recoverable: false });
-          stopVoice({ tell: false });
-        } else {
-          bubble("system", m.message, true);
-        }
-        break;
-    }
-  };
-
-  sock.onclose = () => {
-    if (voice.socket !== sock) return;
-    stopPlayback();
-    if (!voice.wants) { voiceState(VOICE.IDLE); return; }
-    // Bounded reconnect against the SAME petition session. The petition is on
-    // the server and untouched by any of this; only the audio path is lost.
-    if (voice.attempts < 3) {
-      voice.attempts++;
-      // Remember that a narration was in flight, so the page can say so
-      // once it is back rather than leaving the citizen to guess.
-      if (!$("dictation").hidden) voice.droppedMidDictation = true;
-      voiceState(VOICE.RECONNECTING);
-      setTimeout(() => { if (voice.wants) voice.socket = openSocket(); },
-                 400 * voice.attempts);
-    } else {
-      releaseAudio();
-      voice.wants = false;
-      voiceFail(T().voiceLost);
-    }
-  };
-
-  sock.onerror = () => { /* onclose does the work */ };
-  return sock;
+function stopPlayback() {
+  typing.speechEpoch++;
+  typing.speechAbort?.abort(); typing.speechAbort=null;
+  if(typing.audio){typing.audio.pause();typing.audio.removeAttribute('src');typing.audio.load();typing.audio=null;}
+  if(typing.speechUrl){URL.revokeObjectURL(typing.speechUrl);typing.speechUrl=null;}
+  typing.speaking=false;paintVoice();
 }
-
-/* --------------------------------------------------------------- lifecycle */
-
-async function startVoice(mode = "conversation") {
-  if (!sid || voice.wants || busy || requestPending || connectionLost || editingLetter || !SENDABLE_STATUSES.includes(view?.status)) return;
-  if (healthState && !healthState.dictation?.ok) {
-    voiceFail(T().voiceUnavailable, { recoverable: false });
-    return;
-  }
-  if (!navigator.mediaDevices || !window.AudioContext) {
-    voiceFail(T().micUnsupported, { recoverable: false });
-    return;
-  }
-  voice.wants = true;
-  voice.mode = mode;
-  voice.muted = false;
-  voice.attempts = 0;
-  $("voiceError").hidden = true;
-  voiceState(VOICE.CONNECTING);
-  const voiceSession = sid;
+async function speakReply(v, force=false) {
+  const key=`${v.session_id}:${v.transcript?.length}:${v.reply}`;
+  if(!typing.responses || !v.reply || v.status==='generating' || (!force&&typing.lastReply===key))return;
+  typing.lastReply=key;
+  closeDictation();stopPlayback();
+  const epoch=typing.speechEpoch;
+  typing.speaking=true;typing.message='';paintVoice();
+  const controller=new AbortController();typing.speechAbort=controller;
+  let timeout=setTimeout(()=>controller.abort(),25000);
   try {
-    await openMicrophone();
-  } catch (err) {
-    voice.wants = false;
-    releaseAudio();
-    voiceFail(micMessage(err), { recoverable: err && err.name === "NotAllowedError" });
-    return;
-  }
-  if (!voice.wants || sid !== voiceSession) { releaseAudio(); return; }
-  voice.socket = openSocket();
+    const response=await fetch(`/api/sessions/${encodeURIComponent(v.session_id)}/speech`,{signal:controller.signal,cache:'no-store'});
+    if(!response.ok)throw Error('audio unavailable');
+    const blob=await response.blob();
+    if(epoch!==typing.speechEpoch)return;
+    clearTimeout(timeout);
+    typing.speechUrl=URL.createObjectURL(blob);
+    const audio=new Audio(typing.speechUrl);typing.audio=audio;
+    const finished=()=>{if(epoch===typing.speechEpoch){stopPlayback();syncControls();}};
+    audio.onended=finished;audio.onerror=()=>{if(epoch===typing.speechEpoch){finished();typing.message=voiceWords().audio;paintVoice();}};
+    await audio.play();
+  } catch(error) {
+    if(epoch===typing.speechEpoch){stopPlayback();typing.message=voiceWords().audio;paintVoice();}
+  } finally {clearTimeout(timeout);}
 }
-
-function stopVoice({ tell = true } = {}) {
-  const wanted = voice.wants;
-  voice.wants = false;
-  stopPlayback();
-  releaseAudio();
-  if (voice.socket) {
-    if (tell && voice.socket.readyState === 1) send({ type: "voice.end" });
-    try { voice.socket.close(); } catch {}
-    voice.socket = null;
-  }
-  if (voice.playCtx) { try { voice.playCtx.close(); } catch {} voice.playCtx = null; }
-  voice.partial = "";
-  // The candidate answer goes with the session. It was never on the
-  // petition — the server only sends it to the workflow once it has been
-  // agreed with — and leaving its buttons on screen with no socket behind
-  // them offers the citizen an action that cannot happen.
-  showAnswer(null);
-  showDictation(null);
-  voiceState(wanted ? VOICE.ENDED : VOICE.IDLE, { transcript: "", live: false });
-  $("voiceBar").hidden = true;
-}
-
-function toggleVoice() {
-  if (voice.wants) stopVoice(); else startVoice("conversation");
-}
-
-/** Press to talk, press again to stop. The assistant stays silent. */
-function toggleDictation() {
-  if (voice.wants) { stopVoice(); return; }
-  startVoice("dictation");
-}
-
-/** Put dictated words where the citizen can see and change them.
- *
- *  Appended rather than replacing, so a second press adds a sentence to
- *  what is already there instead of wiping it. The cursor is left at the
- *  end and the box keeps focus, because the next thing they do is either
- *  keep talking or press send.
- */
-function writeIntoTheBox(text) {
-  const said = String(text || "").trim();
-  if (!said) return;
-  const box = $("text");
-  const existing = box.value.trim();
-  const joined = existing ? `${existing} ${said}` : said;
-  // The box has a hard cap, and setting `.value` in script walks straight
-  // past it — the characters would be accepted here and refused on send.
-  // Stop at the limit and say so, rather than losing the end of a sentence
-  // somewhere between the microphone and the server.
-  const cap = box.maxLength > 0 ? box.maxLength : joined.length;
-  if (joined.length > cap) {
-    bubble("system", T().dictationFull);
-    box.value = existing;
-    return;
-  }
-  box.value = joined;
-  // The counter and the send button read from an input event, so a value
-  // set in script has to announce itself.
-  box.dispatchEvent(new Event("input", { bubbles: true }));
-  box.focus();
-  box.setSelectionRange(box.value.length, box.value.length);
-  voiceState(VOICE.LISTENING, { transcript: said, live: false });
-}
-
-// Switching between the package and the letter alone only changes where the
-// two download links point; nothing is fetched until one is tapped.
-$("withEnclosures").onchange = () => { if (view) drawOutcome(view); };
-
-$("mic").onclick = toggleVoice;
-// The microphone BESIDE THE TEXT BOX dictates into it. The one in the
-// header runs the hands-free conversation. They were the same button, and
-// a citizen who wanted to say one sentence instead of typing it got the
-// whole form read aloud to them.
-$("micInline").onclick = toggleDictation;
-$("voiceEnd").onclick = () => stopVoice();
-$("voiceMute").onclick = () => {
-  voice.muted = !voice.muted;
-  paintVoice({});
+$('mic').onclick=()=>{
+  typing.responses=!typing.responses;
+  try{localStorage.setItem('petition.voiceResponses',typing.responses?'on':'off');}catch{}
+  if(typing.responses && view)void speakReply(view,true);else stopPlayback();
+  paintVoice();
 };
-
+$('micInline').onclick=toggleDictation;
+// Editing, Send and navigation invalidate late results, preserving visible text.
+$('text').addEventListener('input',()=>{if(typing.phase!=='idle')closeDictation();});
+window.addEventListener('pagehide',stopVoice);
+$('withEnclosures').onchange=()=>{if(view)drawOutcome(view);};
 
 /* ------------------------------------------------------------ system panel
    User-facing statuses only. Which model answered, which PDF engine ran and

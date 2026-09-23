@@ -43,6 +43,7 @@ class Transcript:
     text: str
     final: bool
     turn: int = 0
+    segment_id: str | None = None
 
 
 # What each provider is available for, in the order `auto` prefers them.
@@ -183,7 +184,8 @@ class _Deepgram(_Adapter):
         if not text.strip():
             return None
         return Transcript(text=text, final=bool(message.get("is_final")),
-                          turn=int(message.get("start") or 0))
+                          turn=int(message.get("start") or 0),
+                          segment_id=str(message.get("start", 0)))
 
     async def stop(self) -> None:
         await self.socket.send(json.dumps({"type": "CloseStream"}))

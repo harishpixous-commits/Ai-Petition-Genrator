@@ -207,122 +207,6 @@
         <button class="details-toggle" id="detailsToggle" type="button" aria-controls="detailsPanel" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M9 5h11M9 12h11M9 19h11M4 5h.1M4 12h.1M4 19h.1" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span id="detailsToggleText">Details</span></button>
       </div>
 
-      <div class="voicebar" id="voiceBar" hidden>
-        <button class="mic-round" id="voiceMute" type="button" aria-pressed="false">
-          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <rect x="9" y="2.5" width="6" height="11" rx="3" fill="currentColor"/>
-            <path d="M5.5 11a6.5 6.5 0 0 0 13 0" stroke="currentColor" stroke-width="2"
-                  stroke-linecap="round"/>
-            <path d="M12 17.5V21M8.5 21h7" stroke="currentColor" stroke-width="2"
-                  stroke-linecap="round"/>
-            <path class="slash" d="M4 3.2 20 20.8" stroke="currentColor" stroke-width="2.2"
-                  stroke-linecap="round"/>
-          </svg>
-        </button>
-
-        <div class="voice-field">
-          <canvas id="voiceWave" aria-hidden="true"></canvas>
-          <div class="vf-status">
-            <span id="voiceStatus"></span>
-            <span class="vf-note" id="voiceNote"></span>
-            <span class="vf-heard" id="voiceTranscript"></span>
-          </div>
-        </div>
-
-        <div class="vb-actions">
-          <button class="btn danger" id="voiceEnd" type="button"></button>
-        </div>
-      </div>
-
-      <div class="vb-under">
-        <div class="vb-meter" id="voiceMeter" aria-hidden="true" hidden><i></i><u></u></div>
-        <div class="vb-diag" id="voiceDiag" hidden></div>
-      </div>
-
-      <!-- A grievance being told at length. Shown while it is being
-           captured, so the citizen can watch their own words arrive and see
-           that nothing has been dropped — which is the only way to trust a
-           machine with a complaint you cannot see. -->
-      <div class="dictation" id="dictation" hidden role="group" aria-live="polite">
-        <!-- The bars move with the real input level, from the same analyser
-             the waveform above uses. A decorative animation that keeps
-             dancing at a dead microphone is the single most misleading thing
-             this panel could show, so it is driven by measurement or it is
-             still. -->
-        <div class="dc-wave" id="dictationWave" aria-hidden="true">
-          <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
-        </div>
-        <div class="dc-head">
-          <span class="dc-dot" aria-hidden="true"></span>
-          <span class="dc-title" id="dictationTitle"></span>
-          <span class="dc-time" id="dictationTime">00:00</span>
-        </div>
-        <p class="dc-sub" id="dictationSub"></p>
-        <p class="dc-text" id="dictationText"></p>
-        <div class="dc-marks">
-          <!-- Shown only when the browser CONFIRMS the track is doing it.
-               A tick the citizen cannot check is worse than no tick. -->
-          <span class="dc-mark" id="dictationNoise" hidden></span>
-          <span class="dc-count" id="dictationCount"></span>
-        </div>
-        <div class="dc-acts">
-          <button class="btn primary" id="dictationFinish" type="button"></button>
-          <button class="btn" id="dictationPause" type="button"></button>
-          <button class="btn" id="dictationRestart" type="button"></button>
-        </div>
-      </div>
-
-      <!-- Shown for a moment once a grievance is agreed to, and then the
-           next question is asked on its own. It exists because a complaint
-           takes minutes to give and may have been edited twice: the citizen
-           should SEE it accepted rather than infer it from the conversation
-           moving on. -->
-      <div class="grievance-done" id="grievanceDone" hidden role="status"
-           aria-live="polite">
-        <span class="gd-tick" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none"><path d="m5 12 4 4L19 6" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        </span>
-        <div class="gd-text">
-          <strong id="grievanceDoneTitle"></strong>
-          <span id="grievanceDoneText"></span>
-        </div>
-      </div>
-
-      <!-- What was heard, before it is used. The buttons do exactly what
-           saying "yes" and "no" do — same socket, same server call — so a
-           citizen whose voice is not being picked up cleanly can finish the
-           answer by tapping without starting over. `aria-live` because the
-           assistant is asking a question the screen reader user must hear
-           about; `assertive` because they are being asked to decide. -->
-      <div class="answer-check" id="answerCheck" hidden role="group"
-           aria-live="assertive" aria-atomic="true">
-        <div class="ac-text">
-          <span class="ac-label" id="answerHeading"></span>
-          <strong class="ac-value" id="answerValue"></strong>
-          <span class="ac-ask" id="answerAsk"></span>
-        </div>
-        <div class="ac-acts">
-          <button class="btn primary" id="answerConfirm" type="button"></button>
-          <button class="btn" id="answerRetry" type="button"></button>
-          <!-- Only for an answer too long to have been read out. The
-               assistant said "review the text on screen"; a citizen who
-               cannot read it needs this. -->
-          <button class="btn" id="answerReadOut" type="button" hidden></button>
-          <!-- Only for a grievance. It asks the same question the voice path
-               asks for "change that", and lands in the same state. -->
-          <button class="btn" id="answerEdit" type="button" hidden></button>
-        </div>
-      </div>
-
-      <div class="voice-error-banner" id="voiceError" hidden role="alert">
-        <span class="ic" aria-hidden="true">!</span>
-        <span id="voiceErrorText"></span>
-        <span class="acts">
-          <button class="btn" id="voiceRetry" type="button"></button>
-          <button class="btn" id="voiceDismiss" type="button"></button>
-        </span>
-      </div>
-
       <!-- Kiosk only. What the citizen is shown once the petition has gone
            to the printer — and, on a failure, the thing that keeps their
            petition on screen instead of clearing it away. -->
@@ -360,7 +244,7 @@
 
         <form class="composer-row" id="ask" autocomplete="off">
           <label class="sr-only" for="text" id="ui-inputLabel">Your response</label>
-          <textarea id="text" rows="1" placeholder="Type your response…" maxlength="10000" aria-describedby="inputHint"></textarea>
+          <textarea id="text" rows="1" placeholder="Type your response…" maxlength="10000" aria-describedby="inputHint dictationStatus"></textarea>
           <button class="icon-btn" id="micInline" type="button" title="Dictate" aria-label="Dictate"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3" stroke="currentColor" stroke-width="1.7"/><path d="M6 11a6 6 0 0 0 12 0M12 17v4m-3 0h6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></button>
           <!-- Attach. Beside the microphone because it is the same kind of
                thing: another way of putting something into the petition, and
@@ -378,6 +262,7 @@
             <span id="sendText">Send</span><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
         </form>
+        <p id="dictationStatus" class="dictation-status" role="status" aria-live="polite"></p>
         <div class="composer-hint"><span id="inputHint">Enter to send · Shift + Enter for a new line</span><span id="inputCount">0 / 10,000</span></div>
         <!-- The attachment step. Two actions, because the question has two
              answers and a citizen at a service centre should not have to

@@ -517,15 +517,6 @@ class TestThePageCannotOpenTheMicrophoneEarly:
 
         assert ready["barge_in"] is True
 
-    def test_the_page_checks_before_running_its_detector(self):
-        """Asserted on the source: what is under test is a condition, and a
-        condition that is missing fails nothing on its own."""
-        js = pathlib.Path("app/static/app.js").read_text(encoding="utf-8")
-        detector = js[js.index("if (voice.bargeIn"):]
-        detector = detector[:detector.index("if (voice.muted) return;")]
-
-        assert "voice.bargeIn &&" in detector
-        assert 'reason: "microphone"' in detector
 
 
 class Walking(Asking):

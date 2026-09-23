@@ -66,34 +66,6 @@ def labels() -> list[dict[str, str]]:
         at = source.index(found, at) + len(found)
 
 
-class TestTheTwoHalvesAgree:
-    def test_more_than_one_language_is_being_checked(self):
-        """If the parser silently found one table, every test below that
-        compares languages would pass by having nothing to compare."""
-        assert len(labels()) >= 2, "the Tamil status strings were not found"
-
-    def test_every_state_the_server_can_send_the_page_knows(self):
-        missing = {p.value for p in Phase} - page_states()
-
-        assert not missing, f"the server can report states the page cannot show: {missing}"
-
-    def test_every_state_the_page_knows_it_can_say(self):
-        """Including the three the server never sends. `connecting`,
-        `reconnecting` and `ended` are the page's own, and a citizen watching a
-        reconnection needs the word for it as much as any other."""
-        for table in labels():
-            missing = page_states() - set(table)
-            assert not missing, f"states with no status text: {missing}"
-
-    def test_none_of_the_status_texts_are_empty(self):
-        for table in labels():
-            blank = [k for k, v in table.items() if not v.strip()]
-            assert not blank, f"states with a blank status line: {blank}"
-
-    def test_the_languages_cover_the_same_states(self):
-        first, *rest = labels()
-        for other in rest:
-            assert set(first) == set(other)
 
 
 class TestTheLongWaitIsNamedApartFromTheShortOne:
@@ -133,90 +105,8 @@ class TestTheLongWaitIsNamedApartFromTheShortOne:
             assert table["generating"] != table["processing"], table["generating"]
 
 
-class TestNothingElseTookTheOldStateForGranted:
-    """Two guards tested for PROCESSING by name, and composition used to be
-    PROCESSING. Both would have gone quiet rather than wrong."""
-
-    def test_the_recovery_poll_stays_off_a_composition(self):
-        """It fetches a snapshot that waits on the lock the turn is holding,
-        with a fifteen second timeout — so during a composition that is going
-        perfectly well it can only report a connection that was never lost."""
-        script = read("app.js")
-        at = script.index("generationPoll = setTimeout(recover")
-        window = script[max(0, at - 900):at]
-
-        assert "voiceTurn" in window
-        for state in ("VOICE.PROCESSING", "VOICE.GENERATING"):
-            assert state in window, f"the poll no longer spares a {state} turn"
-
-    def test_the_waveform_does_not_pretend_to_hear(self):
-        """Nothing is being said or heard while the petition is written. The
-        ribbon takes the working pulse; falling through to the default would
-        give it the listening motion, which reads as a live microphone."""
-        script = read("app.js")
-        at = script.index("s === VOICE.TRANSCRIBING")
-        line = script[script.rindex("if (", 0, at):script.index("{", at)]
-
-        assert "VOICE.GENERATING" in line, line.strip()
 
 
-class TestTheButtonRuleMatchesTheStateItNames:
-    """The header button's class is `voice-` plus the state value verbatim, so
-    a rule named for a state that does not exist is dead CSS — and dead CSS is
-    invisible: the button just stays grey. `.voice-speaking` was that, for as
-    long as the state has been called `assistant_speaking`."""
-
-    def test_every_state_rule_names_a_real_state(self):
-        rules = set(re.findall(r"\.hbtn\.voice-([a-z_]+)", read("app.css")))
-        assert rules, "the button state rules have gone"
-
-        unreachable = rules - page_states()
-        assert not unreachable, f"CSS for states that cannot occur: {unreachable}"
-
-    @staticmethod
-    def _declarations(css: str, state: str) -> str:
-        """What the button is styled as in one state.
-
-        Looks the rule up by the SELECTOR it contains rather than by an exact
-        string, because states that should look the same are grouped — a
-        read-back is the assistant speaking and shares its colour. Pinning
-        the spelling instead made grouping two states fail a test about
-        whether two OTHER states differ.
-        """
-        # Comments first. A `/* ... */` above a rule is part of the text
-        # between the previous `}` and this `{`, so without this the selector
-        # never matches and every rule reads as absent — which looks exactly
-        # like the missing-CSS bug these tests exist to catch.
-        css = re.sub(r"/\*.*?\*/", " ", css, flags=re.S)
-        for selectors, body in re.findall(r"([^{}]+)\{([^{}]*)\}", css):
-            names = [part.strip() for part in selectors.split(",")]
-            if f".hbtn.voice-{state}" in names:
-                return body.strip()
-        return ""
-
-    def test_the_two_busy_states_are_told_apart(self):
-        css = read("app.css")
-        speaking = self._declarations(css, "assistant_speaking")
-        generating = self._declarations(css, "generating")
-        assert speaking, "no rule for the assistant speaking"
-        assert generating, "no rule for writing the petition"
-        assert speaking != generating, (
-            "the two waits look identical, which is the bug the states exist to fix")
-
-    def test_a_read_back_looks_like_the_assistant_speaking(self):
-        """Because it is. A separate colour for it would say something
-        changed about the session when only the question did."""
-        css = read("app.css")
-        assert (self._declarations(css, "reading_back")
-                == self._declarations(css, "assistant_speaking") != "")
-
-    def test_waiting_for_agreement_still_looks_like_an_open_microphone(self):
-        """The citizen can answer by speaking. A neutral button there reads
-        as voice having stopped, and they press Start Voice again — which is
-        the one thing this whole loop is meant to stop them having to do."""
-        css = read("app.css")
-        assert (self._declarations(css, "waiting_confirmation")
-                == self._declarations(css, "listening") != "")
 
 
 class TestAFailedUtteranceIsNotAFailedSession:

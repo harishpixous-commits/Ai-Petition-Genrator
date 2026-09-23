@@ -1,0 +1,176 @@
+"""Manual speech typing. This endpoint can emit text only, never workflow turns."""
+
+from __future__ import annotations
+
+import asyncio
+import contextlib
+import json
+
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+
+from ..config import get_settings
+from ..services import asr
+from ..services.officer_store import citizen_scope
+
+router = APIRouter()
+
+
+@router.websocket("/ws/dictation/{session_id}")
+async def dictation(socket: WebSocket, session_id: str):
+    allowed = citizen_scope(socket)
+    if allowed is not None and session_id not in allowed:
+        await socket.close(code=1008)
+        return
+    origin = socket.headers.get("origin")
+    if origin and origin.split("://", 1)[-1].rstrip("/") != socket.headers.get("host"):
+        await socket.close(code=1008)
+        return
+    await socket.accept()
+    adapter = None
+    tasks = []
+    try:
+        workflow = getattr(socket.app.state, "workflow", None)
+        state = await workflow.snapshot(session_id) if workflow else None
+        if not state:
+            await socket.send_json({"type": "error", "code": "unavailable"})
+            return
+        settings = get_settings()
+        provider = asr.choose_provider(settings)
+        if not provider:
+            await socket.send_json({"type": "error", "code": "unavailable"})
+            return
+        language = state.get("language", "en")
+        stopping = asyncio.Event()
+        send_lock = asyncio.Lock()
+
+        async def emit(message):
+            async with send_lock:
+                await socket.send_json(message)
+
+        if provider in asr.BATCH_PROVIDERS:
+            # Growing windows give live partials even on batch-only providers.
+            # Every byte is retained until committed; silence never submits a turn.
+            pending = bytearray()
+            changed = asyncio.Event()
+            frame_bytes = settings.asr_sample_rate * 2
+            segment = 0
+
+            async def batch_results():
+                nonlocal segment
+                last_size = 0
+                while True:
+                    if not stopping.is_set():
+                        await changed.wait()
+                        changed.clear()
+                    size = len(pending)
+                    final = stopping.is_set() or size >= frame_bytes * 12
+                    if size < frame_bytes // 5 and stopping.is_set():
+                        return
+                    if size == 0:
+                        if stopping.is_set():
+                            return
+                        continue
+                    if not final and size - last_size < frame_bytes * 2:
+                        continue
+                    # Freeze a bounded segment. Later audio waits for the next one.
+                    count = min(size, frame_bytes * 12)
+                    pcm = bytes(pending[:count])
+                    text = await asr.transcribe(
+                        asr._wav(pcm, settings.asr_sample_rate), language, settings
+                    )
+                    await emit(
+                        {
+                            "type": "stt.final" if final else "stt.partial",
+                            "segment": str(segment),
+                            "text": text,
+                        }
+                    )
+                    last_size = count
+                    if final:
+                        del pending[:count]
+                        segment += 1
+                        last_size = 0
+                    if stopping.is_set() and not pending:
+                        return
+                    if len(pending) >= frame_bytes * 2:
+                        changed.set()
+
+            reader = asyncio.create_task(batch_results())
+            tasks.append(reader)
+
+            async def audio(data):
+                if len(pending) + len(data) > frame_bytes * 120:
+                    raise RuntimeError("Speech service cannot keep up")
+                pending.extend(data)
+                changed.set()
+
+            async def finish():
+                stopping.set()
+                changed.set()
+                await asyncio.wait_for(reader, 30)
+        else:
+            adapter = await asyncio.wait_for(asr.open_stream(language, settings), 15)
+
+            async def stream_results():
+                async for transcript in adapter:
+                    await emit(
+                        {
+                            "type": "stt.final" if transcript.final else "stt.partial",
+                            "segment": str(
+                                transcript.segment_id
+                                if transcript.segment_id is not None
+                                else transcript.turn
+                            ),
+                            "text": transcript.text,
+                        }
+                    )
+
+            reader = asyncio.create_task(stream_results())
+            tasks.append(reader)
+
+            async def audio(data):
+                await adapter.send_audio(data)
+
+            async def finish():
+                await adapter.stop()
+                await asyncio.wait_for(reader, 15)
+
+        await emit({"type": "dictation.ready", "sample_rate": settings.asr_sample_rate})
+        while True:
+            incoming = asyncio.create_task(socket.receive())
+            tasks.append(incoming)
+            done, _ = await asyncio.wait([incoming, reader], return_when=asyncio.FIRST_COMPLETED)
+            if reader in done:
+                # A provider disappearing must not leave a red, dead microphone.
+                reader.result()
+                raise RuntimeError("Speech provider disconnected")
+            message = incoming.result()
+            tasks.remove(incoming)
+            if message["type"] == "websocket.disconnect":
+                break
+            if message.get("bytes") is not None:
+                data = message["bytes"]
+                if len(data) > 131072 or len(data) % 2:
+                    raise RuntimeError("Invalid audio frame")
+                await audio(data)
+            elif message.get("text"):
+                command = json.loads(message["text"])
+                if command.get("type") == "dictation.stop":
+                    await finish()
+                    await emit({"type": "dictation.stopped"})
+                    break
+                # No message/confirm/submit commands are accepted here.
+    except (WebSocketDisconnect, asyncio.CancelledError):
+        pass
+    except Exception:
+        with contextlib.suppress(Exception):
+            await socket.send_json({"type": "error", "code": "unavailable"})
+    finally:
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+        if adapter:
+            await adapter.close()
+        with contextlib.suppress(Exception):
+            await socket.close()

@@ -134,45 +134,12 @@ def app_js() -> str:
     return (STATIC / "app.js").read_text(encoding="utf-8")
 
 
-def test_the_two_microphones_do_different_things():
-    """The one in the header runs the hands-free conversation; the one
-    beside the text box dictates into it. They were the same handler, and a
-    citizen who wanted to say one sentence instead of typing it got the
-    whole form read aloud."""
-    js = app_js()
-
-    assert re.search(r'\$\("mic"\)\.onclick\s*=\s*toggleVoice', js)
-    assert re.search(r'\$\("micInline"\)\.onclick\s*=\s*toggleDictation', js)
 
 
-def test_dictation_asks_the_server_for_dictation():
-    js = app_js()
-
-    assert 'startVoice("dictation")' in js
-    assert "mode: voice.mode" in js
 
 
-def test_a_dictated_transcript_goes_to_the_box_not_to_a_turn():
-    js = app_js()
-    handler = js[js.index('case "stt.final":'):]
-    handler = handler[:handler.index('case "state":')]
-
-    assert 'voice.mode === "dictation"' in handler
-    assert "writeIntoTheBox" in handler
-    # And it stops there: the conversation path must not also run.
-    assert handler.index("writeIntoTheBox") < handler.index("VOICE.PROCESSING")
 
 
-def test_dictation_appends_rather_than_replacing():
-    """A second press adds a sentence to what is already there. Replacing
-    would wipe a half-typed answer the moment somebody reached for the
-    microphone to finish it."""
-    js = app_js()
-    fn = js[js.index("function writeIntoTheBox"):]
-    fn = fn[:fn.index("\n}") + 2]
-
-    assert "existing ?" in fn
-    assert "box.maxLength" in fn, "the box has a hard cap and setting .value walks past it"
 
 
 # ---------------------------------------------------------------------------
@@ -270,3 +237,44 @@ def test_the_markup_defaults_say_it_too():
     assert "My petitions" not in markup
     assert "your petitions" not in markup
     assert "your saved petitions" not in markup
+
+
+def test_dictation_ui_is_bilingual_and_has_one_microphone():
+    """Every word the dictation controls can say, in both languages.
+
+    The Tamil here was lost to an encoding once already — the assertions
+    read "????? ???????? ON", which no source file will ever contain, so
+    the check passed nothing and failed loudly. Written as escapes now,
+    which survive any editor.
+    """
+    source = app_js()
+
+    # The two things the microphone beside the box can say.
+    assert "Start voice typing" in source
+    assert "குரல் தட்டச்சைத் தொடங்கு" in source
+    # ...and while it is running.
+    assert "Listening..." in source
+    assert "கேட்கிறேன்..." in source
+    # The header button now toggles SPOKEN RESPONSES, not a listening
+    # session. Two microphones that both started recording was the
+    # confusion this replaced.
+    assert "Voice Responses ON" in source
+    assert "குரல் பதில்கள் ON" in source
+
+    # One socket, and it is the dictation one. The continuous listening
+    # socket is gone, and a page that still opened it would be running the
+    # behaviour this replaced alongside the replacement.
+    assert "/ws/dictation/" in source
+    assert "/ws/voice/" not in source
+
+
+def test_the_citizen_is_told_what_to_do_when_voice_will_not_start():
+    """Both failures name the way forward, because there always is one:
+    the text box was never taken away."""
+    source = app_js()
+
+    for message in ("Microphone access is required for voice typing. "
+                    "You can continue typing.",
+                    "Voice typing is temporarily unavailable. "
+                    "Please type your answer."):
+        assert message in source, message

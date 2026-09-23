@@ -27,7 +27,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.requests import Request
 
-from .api import catalog, officer, operator, rest, ws
+from .api import catalog, dictation, officer, operator, rest, ws
 from .config import get_settings
 from .domain.templates import load_templates
 from .graph.workflow import workflow_lifespan
@@ -204,6 +204,7 @@ def create_app() -> FastAPI:
     # one is configured, loopback only when none is. Never the citizen's page.
     app.include_router(operator.router)
     app.include_router(ws.router)
+    app.include_router(dictation.router)
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
     @app.get("/officer/{path:path}", include_in_schema=False)

@@ -1369,3 +1369,10 @@ header.app{gap:24px}
 /* Officer entry remains a visible secondary action on every citizen page. */
 .officer-login-link{text-decoration:none;color:var(--ink)}
 @media(max-width:700px){header.app .header-actions{flex-wrap:wrap}.officer-login-link{font-size:11px;padding:7px 9px}}
+
+/* Manual voice typing lives entirely beside the existing composer. */
+#micInline{color:var(--blue)}
+#micInline.dictating{color:var(--bad);background:var(--bad-soft);border-color:#e6bbb6;box-shadow:0 0 0 3px rgb(182 64 58 / 9%)}
+#micInline:disabled{opacity:.45;cursor:not-allowed}
+.dictation-status{margin:7px 2px 0;font-size:11px;color:var(--muted);line-height:1.5}
+.dictation-status:empty{display:none}
