@@ -1,0 +1,128 @@
+name: Create Officer Account
+
+# ---------------------------------------------------------------------------
+# PROVISION A REVIEW ACCOUNT ON THE LIVE SERVER.
+#
+# The officer database lives in the Docker volume on EC2, not in this
+# repository and not on anybody's laptop. An account made locally does not
+# travel, which is why a password that works against 127.0.0.1 is rejected by
+# the deployed site.
+#
+# THE PASSWORD NEVER APPEARS ANYWHERE THIS WORKFLOW CAN PRINT IT. It is read
+# from the `OFFICER_PASSWORD` secret on the `production` environment and
+# handed to the container through an environment variable, so it is not in
+# the inputs, not in the run log, not in the shell history on the host, and
+# not in `ps`. GitHub masks it if it is ever echoed by accident.
+#
+# Re-running for an existing username RESETS that account's password and
+# revokes its sessions. That is the supported way to change one.
+#
+# ONE THING TO KNOW BEFORE THE FIRST RUN. While no officer account exists,
+# every browser can see every saved petition. The moment one exists, sessions
+# are scoped to the browser cookie that created them: a citizen sees only
+# their own petitions and everything else is reachable through the officer
+# portal alone. That is the intended production behaviour, and the first run
+# of this workflow is what turns it on.
+# ---------------------------------------------------------------------------
+
+on:
+  workflow_dispatch:
+    inputs:
+      username:
+        description: 'Username to sign in with (lowercase, no spaces)'
+        required: true
+        type: string
+      name:
+        description: 'Name shown in the portal, e.g. "Harish"'
+        required: true
+        type: string
+
+# Never while a deployment or a rollback is touching the same host.
+concurrency:
+  group: deploy-ai-petition-generator
+  cancel-in-progress: false
+
+env:
+  CONTAINER_NAME: ai-petition-generator
+
+jobs:
+  provision:
+    name: Provision on EC2
+    runs-on: ubuntu-latest
+
+    # The same protected environment the deployment uses, so the secret is
+    # scoped to it and a reviewer can be required. Creating an account that
+    # can read every citizen's petition is worth an approval.
+    environment: production
+
+    if: >-
+      github.actor == 'subashpixous' ||
+      github.actor == 'harishpixous-commits' ||
+      github.actor == 'PrithivRS' ||
+      github.actor == 'loguTyson25'
+
+    steps:
+      - name: Check the password secret is set
+        env:
+          OFFICER_PASSWORD: ${{ secrets.OFFICER_PASSWORD }}
+        run: |
+          if [ -z "${OFFICER_PASSWORD}" ]; then
+            echo "::error::Set OFFICER_PASSWORD first."
+            echo "Settings > Environments > production > Add environment secret."
+            echo "At least 12 characters. It is never printed by this workflow."
+            exit 1
+          fi
+          if [ "${#OFFICER_PASSWORD}" -lt 12 ]; then
+            echo "::error::OFFICER_PASSWORD is shorter than 12 characters."
+            exit 1
+          fi
+          echo "Secret present (${#OFFICER_PASSWORD} characters)."
+
+      - name: Create or reset the account
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          CONTAINER_NAME: ${{ env.CONTAINER_NAME }}
+          OFFICER_USER: ${{ inputs.username }}
+          OFFICER_NAME: ${{ inputs.name }}
+          OFFICER_PASSWORD: ${{ secrets.OFFICER_PASSWORD }}
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          port: ${{ secrets.EC2_SSH_PORT }}
+          command_timeout: 5m
+          envs: CONTAINER_NAME,OFFICER_USER,OFFICER_NAME,OFFICER_PASSWORD
+          script: |
+            set -euo pipefail
+
+            if ! docker ps --format '{{.Names}}' | grep -qx "${CONTAINER_NAME}"; then
+              echo "::error::${CONTAINER_NAME} is not running. Deploy first."
+              exit 1
+            fi
+
+            # The password goes in as an environment variable and is read
+            # inside the script. It is never an argument, so it cannot show
+            # up in `ps`, in the shell's history, or in this log.
+            docker exec -e OFFICER_PASSWORD "${CONTAINER_NAME}" \
+              python scripts/create_officer.py "${OFFICER_USER}" --name "${OFFICER_NAME}"
+
+            echo ""
+            echo "Done. Sign in at /officer/login on the live site."
+
+      - name: Summary
+        if: success()
+        run: |
+          {
+            echo "## Officer account ready"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Username | \`${{ inputs.username }}\` |"
+            echo "| Name | ${{ inputs.name }} |"
+            echo "| Password | the \`OFFICER_PASSWORD\` secret (not shown here) |"
+            echo ""
+            echo "Sign in at **/officer/login** on the live site."
+            echo ""
+            echo "To change the password later: update the secret, then run"
+            echo "this workflow again with the same username."
+          } >> "$GITHUB_STEP_SUMMARY"

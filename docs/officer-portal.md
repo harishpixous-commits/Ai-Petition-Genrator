@@ -21,6 +21,22 @@ python -m scripts.create_officer reviewer --name "Review Officer"
 
 The command prompts twice for a password of at least 12 characters. It stores a salted scrypt hash, never the password. Re-running for the same username resets its password and revokes its sessions. There are no default credentials. All provisioned accounts have office-wide review access to this deployment; department-specific account scopes are not implemented.
 
+Set `OFFICER_PASSWORD` in the environment to skip the prompt. That is for automation only — it is how the workflow below passes a GitHub secret to the container without the value reaching a command line, a log or a shell history.
+
+### On the deployed server
+
+The account lives wherever the database lives, which on a server is the Docker volume. **An account created on a laptop does not work against the deployed site**, and the reverse. Provisioning there is a separate act:
+
+GitHub → Actions → **Create Officer Account** → Run workflow, giving a username and a display name. The password comes from the `OFFICER_PASSWORD` secret on the `production` environment, so it is never typed into the form and never printed. Set it first under Settings → Environments → production → Add environment secret.
+
+With shell access to the host, the same thing directly:
+
+```bash
+docker exec -e OFFICER_PASSWORD='…' -it ai-petition-generator   python scripts/create_officer.py reviewer --name "Review Officer"
+```
+
+**The first account changes citizen behaviour.** While none exists, every browser can see every saved petition. From the first account onward, sessions are scoped to the browser cookie that created them: a citizen sees only their own petitions and the rest are reachable through this portal alone. Nothing is deleted. That is the intended production posture, and creating the first account is the switch that turns it on.
+
 Serve through the existing HTTPS reverse proxy in production. Sessions use HttpOnly, SameSite=Strict cookies, Secure on HTTPS, eight-hour absolute expiry, server-side revocation, and a persistent limit of ten failed login attempts per IP per 15 minutes. Writes check the request origin. The existing infrastructure operator token remains separate and does not grant petition-review access.
 
 ## Records and privacy
