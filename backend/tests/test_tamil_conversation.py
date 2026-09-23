@@ -58,14 +58,21 @@ class TestTheRoomNeverHearsAnIdentifier:
     """A screen is read by the person standing at it. A speaker is heard by
     the queue behind them."""
 
+    def test_the_form_asks_for_no_aadhaar_to_read_out(self):
+        """It did, and the read-back masked it to its last four digits. The
+        field is gone, which is the stronger version of the same protection:
+        nothing collected is nothing to say."""
+        assert "aadhaar" not in {f.type for f in the_template().fields}
+        assert "aadhaar" not in {f.name for f in the_template().fields}
+
     @pytest.mark.parametrize("language", LANGUAGES)
-    def test_an_aadhaar_is_never_read_out(self, language):
-        full = "234567890124"
-        said = read_back(spec_for("aadhaar"), full, language)
+    def test_a_mobile_number_is_never_read_out_in_full(self, language):
+        full = "9344174521"
+        said = read_back(spec_for("mobile"), full, language)
 
         assert full not in said
-        assert "2345" not in said and "6789" not in said
-        assert "0124" in said, "the citizen cannot tell which card it was"
+        assert "93441" not in said
+        assert "4521" in said, "the citizen cannot tell which number it was"
 
     @pytest.mark.parametrize("language", LANGUAGES)
     def test_an_identifier_is_described_rather_than_spelled_out(self, language):
@@ -78,10 +85,9 @@ class TestTheRoomNeverHearsAnIdentifier:
         Deleting the identifier branch leaves the value safe and the sentence
         unspeakable, which is why the digit assertions above cannot catch it.
         """
-        for field in ("aadhaar", "mobile"):
-            said = read_back(spec_for(field), "234567890124", language)
-            assert "X" not in said, (field, said)
-            assert "*" not in said, (field, said)
+        said = read_back(spec_for("mobile"), "9344174521", language)
+        assert "X" not in said, said
+        assert "*" not in said, said
 
     @pytest.mark.parametrize("language", LANGUAGES)
     def test_a_mobile_number_is_read_back_by_its_last_four(self, language):
@@ -90,14 +96,14 @@ class TestTheRoomNeverHearsAnIdentifier:
         assert "4521" in said
         assert "93441" not in said
 
-    def test_the_citizen_is_not_asked_to_say_an_aadhaar_aloud(self):
+    def test_the_rule_about_saying_one_aloud_is_still_there(self):
+        """The form does not ask for an Aadhaar, but the rule that one is
+        typed rather than announced to a queue is not the form's to delete —
+        an attachment flow or a later field could still need it."""
         assert should_type_instead("aadhaar", False) is True
+        assert should_type_instead("bank_account", False) is True
         for language in LANGUAGES:
-            asked = spec_for("aadhaar").prompt_for(language)
-            spoken = phrase("type_it", language,
-                            label=spec_for("aadhaar").speech_label_for(language))
-            # Both the screen and the voice send them to the keyboard.
-            assert ("type" in asked.lower() or "உள்ளிட" in asked)
+            spoken = phrase("type_it", language, label="x")
             assert ("type" in spoken.lower() or "உள்ளிட" in spoken)
 
     def test_but_a_mobile_number_may_be_spoken(self):

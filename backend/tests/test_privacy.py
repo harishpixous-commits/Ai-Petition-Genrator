@@ -86,16 +86,15 @@ class TestModelBoundary:
         """The end-to-end assertion: run a full petition with a reachable model
         and inspect everything that crossed the boundary."""
         c = chat()
-        # Deliberately give a bad value first, so the failure paths are covered
-        # too — an error path that echoes the value back is still a leak.
+        # The form does not ask for an Aadhaar any more, so the number arrives
+        # the way it always really did: inside the sentence where the citizen
+        # explains what happened to them.
         await c.open()
         await c.say(answers["applicant_name"])
         await c.say(answers["age"])
         await c.say(answers["mobile"])
         await c.say(answers["address"])
-        await c.say("2345 6789 0125")          # wrong checksum
-        await c.say(answers["aadhaar"])
-        await c.say(answers["grievance"])
+        await c.say(f"My ration card was refused. My Aadhaar is {VALID_AADHAAR}.")
         await c.say("yes")
 
         sent = llm_spy.payloads
@@ -207,26 +206,32 @@ class TestLogs:
 
 
 class TestDocument:
-    async def test_the_aadhaar_reaches_the_document_deterministically(
-        self, chat, answers
-    ):
-        """Containment is not suppression. The number belongs on the petition,
-        placed by code, in the grouping the citizen confirmed."""
+    async def test_a_grievance_reaches_the_document_verbatim(self, chat, answers):
+        """Containment is not suppression, and the grievance is the citizen's
+        own words. An Aadhaar they chose to put in their complaint stays in
+        it: editing that sentence would be editing their complaint.
+
+        What must not happen — and is asserted next door — is the same number
+        crossing a provider boundary.
+        """
+        said = f"My ration card was refused. My Aadhaar is {VALID_AADHAAR}."
         c = chat()
-        await c.answer_all(answers)
+        await c.answer_all({**answers, "grievance": said})
         state = await c.say("yes")
 
         produced = extract_docx_text(Path(state["document"]["docx"]))
-        assert GROUPED in produced
+        assert said in produced
         assert state["verification"]["ok"] is True
 
-    async def test_the_session_view_carries_it_for_the_citizen_to_check(
-        self, chat, answers
-    ):
+    async def test_the_form_asks_for_no_identifier_to_carry(self, chat, answers):
+        """The field is gone. What used to be masked on the panel is now
+        simply never collected, which is the stronger version of the same
+        protection."""
         from app.api.views import session_view
 
         c = chat()
         await c.answer_all(answers)
         view = session_view(c.state)
-        entry = next(f for f in view["collected"] if f["name"] == "aadhaar")
-        assert entry["display"] == GROUPED
+        names = {f["name"] for f in view["collected"]}
+
+        assert "aadhaar" not in names, names

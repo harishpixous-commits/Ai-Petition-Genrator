@@ -1,10 +1,18 @@
 # The citizen petition (மனு).
 #
 # Five questions, asked in this order, and then the letter is written. The order
-# is how a person tells their own story — who they are, how old they are, where
-# they live, their Aadhaar number, and only then the grievance itself. A citizen
-# who has just been asked to recite an identifier is not in the frame of mind to
-# describe what went wrong, so the grievance is asked last.
+# is how a person tells their own story — who they are, how old they are, how to
+# reach them, where they live, and only then the grievance itself, which is
+# asked last because it is the part they came to say.
+#
+# NO AADHAAR. The number was collected and is not any more: a petition asking an
+# office to look at a blocked drain does not need a national identity number to
+# do it, and every copy of one is a copy that can leak. Identity is established
+# at the counter, against the card the citizen is holding.
+#
+# The protections around it stay. An Aadhaar can still arrive inside a grievance
+# somebody dictates, or on a card they attach, and it is still masked on screen,
+# redacted before any of it reaches an external model, and kept out of the logs.
 #
 # EVERYTHING a department may need to change lives in this file: the office it is
 # addressed to, the subject line, the wording of each question in both languages,
@@ -114,21 +122,6 @@ fields:
       en: Thank you. Now please tell me your full address.
       ta: நன்றி. இப்போது உங்கள் முழு முகவரியை சொல்லுங்கள்.
 
-  - name: aadhaar
-    type: aadhaar
-    required: true
-    aliases:
-      en: [aadhaar, aadhar, adhar, aadhaar number, id number]
-      ta: [ஆதார், ஆதார் எண், ஆதார் எண்ணை, ஆதாரை, அடையாள எண்]
-    label: {en: Aadhaar number, ta: ஆதார் எண்}
-    prompt:
-      en: >-
-        Next I need your Aadhaar details. For your security, please type your
-        12-digit Aadhaar number in the box rather than saying it aloud.
-      ta: >-
-        அடுத்து ஆதார் விவரம் தேவைப்படுகிறது. பாதுகாப்பிற்காக, உங்கள் ஆதார்
-        எண்ணை பேசுவதற்கு பதிலாக திரையில் உள்ள இடத்தில் உள்ளிடுங்கள்.
-
   # The whole substance of the petition. Free text, deliberately: a grievance
   # that has to fit a dropdown is a grievance that has been changed. It is
   # reproduced verbatim in the document and is never summarised or rephrased.
@@ -153,10 +146,8 @@ fields:
 # arrived with it. Both lists are edited here, never in code.
 enclosures:
   en:
-    - Copy of Aadhaar card
     - Copy of proof of residence, if available
     - Copies of any earlier petition or acknowledgement on this matter
   ta:
-    - ஆதார் அட்டை நகல்
     - வசிப்பிடச் சான்று நகல், இருப்பின்
     - இந்த விவகாரம் தொடர்பாக ஏற்கனவே அளித்த மனு அல்லது ஒப்புகைச் சீட்டு நகல்கள்

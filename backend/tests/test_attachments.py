@@ -125,8 +125,13 @@ class TestTheOffer:
         sid = await _collected(api, answers)
         offer = (await api.get(f"/api/sessions/{sid}")).json()["attachments"]
 
-        assert len(offer["suggested"]) == 3
-        assert "Aadhaar" in offer["suggested"][0]
+        # From the template, so editing `enclosures` in petition.yaml changes
+        # what is offered without changing this test. The Aadhaar copy was
+        # the first of three and went with the field.
+        from app.domain.templates import the_template
+
+        assert tuple(offer["suggested"]) == the_template().enclosures_for("en")
+        assert not any("Aadhaar" in s for s in offer["suggested"])
         assert "suggestion" in offer["suggestion_note"].lower()
         # Nothing is required unless a retrieved OFFICIAL source says so, and
         # with an empty corpus nothing can.

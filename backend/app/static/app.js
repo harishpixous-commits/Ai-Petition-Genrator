@@ -505,10 +505,15 @@ function connectionNotice(message = "") {
 }
 
 /* ------------------------------------------------------------------ masking
-   Aadhaar and mobile are shown with only their last four digits. The full
-   value stays in the record on the server and goes into the petition through
-   the deterministic path; the screen does not need it, and a screen in a
-   public office is the easiest place in the whole system to read one off. */
+   An identifier is shown with only its last four digits. The full value stays
+   in the record on the server and goes into the petition through the
+   deterministic path; the screen does not need it, and a screen in a public
+   office is the easiest place in the whole system to read one off.
+
+   THE FORM NO LONGER ASKS FOR AN AADHAAR. `aadhaar` stays in this set
+   because one can still arrive: typed into the box by a citizen who assumes
+   it is wanted, or read off an attached card. Masking a number nobody asked
+   for costs nothing; failing to mask one that turns up costs a great deal. */
 const SENSITIVE = new Set(["aadhaar", "mobile"]);
 
 function maskDisplay(type, display) {
@@ -547,7 +552,7 @@ function maskInText(text) {
 }
 
 /* The citizen's own turn is masked only when the WHOLE message is one
-   identifier — which is what an answer to "say your Aadhaar number" is.
+   identifier — somebody typing a bare twelve-digit number into the box.
    Deliberately not a search-and-replace over their words: a twelve-digit
    figure quoted inside a grievance would be rewritten on screen, and the
    grievance is reproduced exactly as entered. */

@@ -4,7 +4,7 @@ The SHAPE of the letter is deterministic and lives here, and it follows the
 standard Tamil petition format used when writing to a District Collector or a
 Corporation Commissioner:
 
-    அனுப்புநர்,            the petitioner: name, address, age, Aadhaar
+    அனுப்புநர்,            the petitioner: name, address, age, contact
     பெறுநர்,               the office it is addressed to
     மதிப்பிற்குரிய ஐயா / அம்மா,
     பொருள்: …  தொடர்பாக.    what the petition concerns, in one line
@@ -298,8 +298,9 @@ def _sender_block(
         lines.append(f"{BLOCK_INDENT}{address}")
 
     # Everything else the form collected about the petitioner, in template
-    # order: age, Aadhaar, and a mobile number or email if the form asks for
-    # them. Adding a field to petition.yaml puts it here with no code change.
+    # order: age, and a mobile number or email if the form asks for them.
+    # Adding a field to petition.yaml puts it here with no code change, and
+    # removing one — as the Aadhaar was — takes it out of the block.
     skip = set(VERBATIM_FIELDS) | set(SENDER_NAME_FIELDS) | set(SENDER_ADDRESS_FIELDS)
     for spec in template.fields:
         if spec.name in skip or spec.name not in fields:
@@ -433,7 +434,7 @@ def build_letter_text(
     # -- what is actually in the envelope ----------------------------------- #
     #
     # This used to print the template's list on every petition ever produced:
-    # "Copy of Aadhaar card", "Copy of proof of residence", "Copies of any
+    # "Copy of proof of residence", "Copies of any
     # earlier petition". A receiving officer reading that has been told three
     # documents are enclosed. When they are not, it is the CITIZEN who looks as
     # though they withheld them.

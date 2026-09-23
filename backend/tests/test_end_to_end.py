@@ -336,29 +336,42 @@ class TestHonestCapabilityReporting:
 # --------------------------------------------------------------------------- #
 
 class TestSecurity:
-    async def test_the_aadhaar_never_leaves_the_machine(self, api, answers,
-                                                       valid_aadhaar):
-        """The citizen's own session may hold their own number — they have to
-        be able to check and correct it, and the page masks it behind a reveal
-        control. What must never happen is it travelling outward.
+    async def test_an_aadhaar_spoken_into_a_grievance_never_leaves_the_machine(
+            self, api, answers, valid_aadhaar):
+        """THE FORM NO LONGER ASKS FOR ONE. This is the path that remains,
+        and it is the one that always mattered more: a citizen describing
+        their problem says "my Aadhaar is 2345 6789 0124 and they rejected
+        it", because that is how people explain what happened.
 
-        The two outbound boundaries an attachment adds are the extraction
-        prompt and the embedding request, and both go through `mask_pii`.
+        Removing the field removed the tidy, validated copy. It did not
+        remove the number from the sentence, so the masking on every outbound
+        boundary has to go on working — and this walks a real session with
+        one in the grievance to check that it does.
         """
         from app.services.mask import mask_pii
 
-        sid = await _walk(api, answers)
+        said = f"My land is encroached. My Aadhaar is {valid_aadhaar} and it was rejected."
+        sid = await _walk(api, {**answers, "grievance": said})
         state = (await api.get(f"/api/sessions/{sid}")).json()
 
-        # It is on the citizen's own record, formatted for them to check.
+        # Kept verbatim for the citizen and for the petition: the grievance is
+        # their words, and editing it would be editing their complaint.
         collected = {f["name"]: f for f in state["collected"]}
-        assert collected["aadhaar"]["display"]
+        assert valid_aadhaar in str(collected["grievance"]["value"])
 
-        # And it is removed from anything that leaves.
-        grievance = f"My land is encroached. My Aadhaar is {valid_aadhaar}."
-        assert valid_aadhaar not in mask_pii(grievance)
-        assert valid_aadhaar not in mask_pii(" ".join(
-            str(v) for v in state["collected"][0].values()))
+        # And removed from everything that goes outward.
+        assert valid_aadhaar not in mask_pii(said)
+        assert valid_aadhaar not in mask_pii(str(collected))
+
+    async def test_the_form_no_longer_collects_an_identifier(self, api, answers):
+        """A petition asking an office to look at a blocked drain does not
+        need a national identity number to do it."""
+        sid = await _walk(api, answers)
+        state = (await api.get(f"/api/sessions/{sid}")).json()
+        names = {f["name"] for f in state["collected"]}
+
+        assert "aadhaar" not in names, names
+        assert "aadhaar" not in str(state.get("outstanding") or [])
 
     async def test_an_attachment_analysis_masks_before_sending(self, api, answers,
                                                                valid_aadhaar,

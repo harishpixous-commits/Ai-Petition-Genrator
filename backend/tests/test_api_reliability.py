@@ -270,7 +270,7 @@ async def test_rest_speech_never_reads_the_full_identifier_to_tts(api, answers, 
     result = await api.get(f"/api/sessions/{state['session_id']}/speech")
     assert result.status_code == 200
     assert spoken
-    assert answers["aadhaar"] not in "".join(spoken).replace(" ", "")
+    assert answers["mobile"] not in "".join(spoken).replace(" ", "")
     assert answers["mobile"] not in "".join(spoken).replace(" ", "")
 
 

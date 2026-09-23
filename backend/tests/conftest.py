@@ -39,6 +39,11 @@ os.environ["LOG_LEVEL"] = "INFO"
 # --------------------------------------------------------------------------- #
 
 # Verhoeff-valid, never issued, safe to keep in a repository.
+#
+# The FORM no longer asks for an Aadhaar number. This constant stays because
+# the protections around one do: it can still arrive inside a grievance
+# somebody dictates or on a card they attach, and the validator, the masking
+# and the attachment handling are all still exercised with it.
 VALID_AADHAAR = "234567890124"
 
 
@@ -55,7 +60,6 @@ def answers() -> dict[str, str]:
         "age": "45",
         "mobile": "9876543210",
         "address": "12 Gandhi Street, Peelamedu, Coimbatore",
-        "aadhaar": VALID_AADHAAR,
         "grievance": (
             "The street light outside my house has not worked for three months. "
             "I have complained twice at the panchayat office and nothing has been done."
@@ -70,7 +74,6 @@ def tamil_answers() -> dict[str, str]:
         "age": "45",
         "mobile": "9876543210",
         "address": "12 காந்தி தெரு, பீளமேடு, கோயம்புத்தூர்",
-        "aadhaar": VALID_AADHAAR,
         "grievance": "எனது வீட்டின் முன் உள்ள தெருவிளக்கு மூன்று மாதங்களாக எரியவில்லை.",
     }
 

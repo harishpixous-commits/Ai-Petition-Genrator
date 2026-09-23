@@ -468,7 +468,7 @@ class TestPrivacy:
         assert corpus.stats()["chunks"] == before["chunks"]
         indexed = " ".join(c["text"] for c in corpus.all_chunks())
         assert answers["applicant_name"] not in indexed
-        assert answers["aadhaar"] not in indexed
+        assert answers["mobile"] not in indexed
         assert answers["mobile"] not in indexed
         assert "street light" not in indexed.lower()
 

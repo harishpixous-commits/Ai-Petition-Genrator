@@ -34,7 +34,7 @@ from app.services.render import (
 
 @pytest.fixture
 def fields(answers, valid_aadhaar) -> dict:
-    return {**answers, "age": 45, "aadhaar": valid_aadhaar}
+    return {**answers, "age": 45}
 
 
 @pytest.fixture
@@ -49,7 +49,7 @@ def english_letter(fields) -> str:
 def tamil_letter(tamil_answers, valid_aadhaar) -> str:
     return build_letter_text(
         template=the_template(),
-        fields={**tamil_answers, "age": 45, "aadhaar": valid_aadhaar},
+        fields={**tamil_answers, "age": 45},
         language="ta", composition=None, session_id="abc-123-def-456",
     )
 
@@ -119,7 +119,8 @@ class TestLetterText:
         assert answers["applicant_name"] in block
         assert answers["address"] in block
         assert "Age: 45" in block
-        assert "Aadhaar number: 2345 6789 0124" in block, "grouped as it will be printed"
+        assert "Mobile number: +91 98765 43210" in block, "as it will be printed"
+        assert "Aadhaar" not in block, "the form does not collect one any more"
 
     def test_the_grievance_sits_between_the_opening_and_the_prayer(
         self, english_letter, answers
@@ -309,7 +310,7 @@ class TestDocx:
         produced = " ".join(extract_docx_text(path).split())
         assert tamil_answers["applicant_name"] in produced
         assert tamil_answers["address"] in produced
-        assert "2345 6789 0124" in produced
+        assert "+91 98765 43210" in produced
 
     def test_the_reference_is_in_the_footer(self, tmp_path, english_letter):
         """An office files by the reference, so it has to be on every page."""
@@ -496,7 +497,7 @@ class TestVerification:
         real = nodes.render_service.extract_docx_text
         monkeypatch.setattr(
             nodes.render_service, "extract_docx_text",
-            lambda path: real(path).replace("2345 6789 0124", "XXXX XXXX XXXX"),
+            lambda path: real(path).replace("+91 98765 43210", "XXXXX XXXXX"),
         )
         c = chat()
         await c.answer_all(answers)
@@ -504,7 +505,7 @@ class TestVerification:
 
         assert state["status"] == "failed"
         assert state["verification"]["ok"] is False
-        assert state["verification"]["missing_values"] == ["aadhaar"]
+        assert state["verification"]["missing_values"] == ["mobile"]
         assert "held back" in state["reply"]
 
     async def test_an_unreadable_document_fails_closed(self, chat, answers, monkeypatch):
@@ -727,7 +728,6 @@ class TestTheDateAndPlaceAtTheTop:
 
         fields = {"applicant_name": "Ravi Kumar", "age": 45, "mobile": "9876543210",
                   "address": "12 Gandhi Street, Peelamedu, Coimbatore",
-                  "aadhaar": "234567890124",
                   "grievance": "The drain has been blocked for a month."}
         fields.update(over.pop("fields", {}))
         return build_letter_text(
@@ -859,7 +859,7 @@ class TestALongGrievanceSurvivesToTheDocument:
         text = build_letter_text(
             template=the_template(),
             fields={"applicant_name": "Ravi Kumar", "age": 45,
-                    "mobile": "9344174752", "aadhaar": "234567890124",
+                    "mobile": "9344174752",
                     "address": "12 Gandhi Street, Coimbatore",
                     "grievance": grievance},
             language="en", composition=None, session_id="abc-123")
@@ -878,8 +878,7 @@ class TestALongGrievanceSurvivesToTheDocument:
         grievance = self._long_grievance()
         targets = verification_targets(
             the_template(),
-            {"applicant_name": "Ravi Kumar", "age": 45, "mobile": "9344174752",
-             "aadhaar": "234567890124", "address": "12 Gandhi Street, Coimbatore",
+            {"applicant_name": "Ravi Kumar", "age": 45, "mobile": "9344174752", "address": "12 Gandhi Street, Coimbatore",
              "grievance": grievance},
             "en")
 
@@ -895,7 +894,7 @@ class TestALongGrievanceSurvivesToTheDocument:
         text = build_letter_text(
             template=the_template(),
             fields={"applicant_name": "ரவி குமார்", "age": 45,
-                    "mobile": "9344174752", "aadhaar": "234567890124",
+                    "mobile": "9344174752",
                     "address": "12 காந்தி தெரு, கோயம்புத்தூர்",
                     "grievance": grievance},
             language="ta", composition=None, session_id="abc-123")
@@ -921,7 +920,7 @@ class TestALongGrievanceSurvivesToTheDocument:
         text = build_letter_text(
             template=the_template(),
             fields={"applicant_name": "Ravi Kumar", "age": 45,
-                    "mobile": "9344174752", "aadhaar": "234567890124",
+                    "mobile": "9344174752",
                     "address": "12 Gandhi Street, Coimbatore",
                     "grievance": grievance},
             language="en", composition=None, session_id="abc-123")

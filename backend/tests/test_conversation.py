@@ -10,6 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from app.domain import phrasing
+from app.domain.templates import the_template
 from app.services.render import extract_docx_text
 
 # --------------------------------------------------------------------------- #
@@ -18,7 +19,7 @@ from app.services.render import extract_docx_text
 
 
 class TestEnglishFlow:
-    async def test_every_question_then_a_document(self, chat, answers, valid_aadhaar):
+    async def test_every_question_then_a_document(self, chat, answers):
         c = chat()
 
         await c.open()
@@ -35,9 +36,6 @@ class TestEnglishFlow:
         assert c.awaiting == "address"
 
         await c.say(answers["address"])
-        assert c.awaiting == "aadhaar"
-
-        await c.say(valid_aadhaar)
         assert c.awaiting == "grievance"
 
         state = await c.say(answers["grievance"])
@@ -62,11 +60,22 @@ class TestEnglishFlow:
         c = chat()
         await c.answer_all(answers)
         assert c.status == "confirming"
-        for label in ("Name of petitioner", "Age", "Mobile number", "Address",
-                      "Aadhaar number", "Grievance"):
-            assert label in c.reply, label
+        # Every field the form declares, whatever they are — so adding or
+        # removing one changes this test by changing the form.
+        for spec in the_template().fields:
+            assert spec.label_for("en") in c.reply, spec.name
         # In the printed form, so what is confirmed is what will appear.
-        assert "2345 6789 0124" in c.reply
+        assert "+91 98765 43210" in c.reply
+
+    async def test_the_read_back_has_no_identifier_to_show(self, chat, answers):
+        """The Aadhaar was here, printed in its grouping for the citizen to
+        check. The form no longer asks for one, so there is nothing to
+        check and nothing to leave on a screen in a public office."""
+        c = chat()
+        await c.answer_all(answers)
+
+        assert "Aadhaar" not in c.reply
+        assert "ஆதார்" not in c.reply
 
     async def test_no_question_is_asked_twice(self, chat, answers):
         c = chat()
@@ -136,37 +145,40 @@ async def _upto(chat, answers, field: str):
 
 
 class TestFieldValidation:
-    async def test_correct_aadhaar_is_accepted(self, chat, answers, valid_aadhaar):
-        c = await _upto(chat, answers, "aadhaar")
-        state = await c.say(valid_aadhaar)
-        assert state["fields"]["aadhaar"] == valid_aadhaar
-        assert state["awaiting"] == "grievance"
+    async def test_a_correct_mobile_is_accepted(self, chat, answers):
+        c = await _upto(chat, answers, "mobile")
+        state = await c.say("9876543210")
+        assert state["fields"]["mobile"] == "9876543210"
+        assert state["awaiting"] == "address"
 
-    async def test_short_aadhaar_is_rejected_with_the_count(self, chat, answers):
-        c = await _upto(chat, answers, "aadhaar")
-        state = await c.say("2345 6789")
-        assert state["awaiting"] == "aadhaar"
-        assert "12 digits" in state["reply"]
-        assert "8" in state["reply"]
-        assert "aadhaar" not in state["fields"], "a rejected value is never stored"
+    async def test_a_short_mobile_is_rejected_with_the_count(self, chat, answers):
+        """The count matters. "That is not a valid number" tells a citizen
+        nothing; "10 digits, I heard 8" tells them what to do."""
+        c = await _upto(chat, answers, "mobile")
+        state = await c.say("98765 43")
+        assert state["awaiting"] == "mobile"
+        assert "10 digits" in state["reply"]
+        assert "7" in state["reply"]
+        assert "mobile" not in state["fields"], "a rejected value is never stored"
 
-    async def test_long_aadhaar_is_rejected(self, chat, answers):
-        c = await _upto(chat, answers, "aadhaar")
-        state = await c.say("2345 6789 0124 5678")
-        assert state["awaiting"] == "aadhaar"
-        assert "12 digits" in state["reply"]
+    async def test_a_long_mobile_is_rejected(self, chat, answers):
+        c = await _upto(chat, answers, "mobile")
+        state = await c.say("9876543210123")
+        assert state["awaiting"] == "mobile"
+        assert "10 digits" in state["reply"]
 
-    async def test_transposed_aadhaar_is_caught_by_the_checksum(
-        self, chat, answers, valid_aadhaar
+    async def test_an_impossible_prefix_is_caught_and_can_be_corrected(
+        self, chat, answers
     ):
-        c = await _upto(chat, answers, "aadhaar")
-        swapped = valid_aadhaar[:9] + valid_aadhaar[10] + valid_aadhaar[9] + valid_aadhaar[11]
-        state = await c.say(swapped)
-        assert state["awaiting"] == "aadhaar"
-        assert "check digit" in state["reply"]
+        """An Indian mobile number starts 6, 7, 8 or 9. The point of the test
+        is the recovery: the citizen is told, and the next attempt lands."""
+        c = await _upto(chat, answers, "mobile")
+        state = await c.say("1234567890")
+        assert state["awaiting"] == "mobile"
+        assert "6, 7, 8" in state["reply"]
 
-        state = await c.say(valid_aadhaar)
-        assert state["fields"]["aadhaar"] == valid_aadhaar
+        state = await c.say("9876543210")
+        assert state["fields"]["mobile"] == "9876543210"
 
     async def test_invalid_age_is_rejected(self, chat, answers):
         c = await _upto(chat, answers, "age")
@@ -192,16 +204,16 @@ class TestFieldValidation:
         """The attempt counter has to climb, or the rephrase never triggers and
         a citizen whose accent defeats the recogniser hears the same sentence
         for ever."""
-        c = await _upto(chat, answers, "aadhaar")
+        c = await _upto(chat, answers, "mobile")
         for _ in range(3):
             state = await c.say("1234")
-        assert state["attempts"]["aadhaar"] == 3
-        assert state["awaiting"] == "aadhaar"
-        assert "aadhaar" not in state["fields"]
+        assert state["attempts"]["mobile"] == 3
+        assert state["awaiting"] == "mobile"
+        assert "mobile" not in state["fields"]
 
-        state = await c.say(answers["aadhaar"])
-        assert state["fields"]["aadhaar"] == answers["aadhaar"]
-        assert "aadhaar" not in state["attempts"], "the counter resets on success"
+        state = await c.say(answers["mobile"])
+        assert state["fields"]["mobile"] == answers["mobile"]
+        assert "mobile" not in state["attempts"], "the counter resets on success"
 
 
 # --------------------------------------------------------------------------- #

@@ -288,13 +288,37 @@ class TestWhatMayBeSpoken:
         assert "2345" not in spoken
         assert "?" in spoken
 
-    def test_an_identifier_question_asks_for_it_to_be_typed(self):
-        view = {"status": "collecting", "awaiting": "aadhaar"}
+    def test_an_identifier_that_must_be_typed_is_asked_for_that_way(self):
+        """The FORM no longer asks for an Aadhaar. The rule that an
+        identifier of that class is typed rather than said in a room with a
+        queue in it is unchanged, and this checks the rule rather than the
+        field: a template declaring one still gets the typed request.
+        """
+        import dataclasses
+
+        from app.domain.templates import TemplateField
+
+        template = the_template()
+        with_identifier = dataclasses.replace(template, fields=(
+            *template.fields,
+            TemplateField(name="bank_account", type="bank_account", required=True,
+                          label={"en": "Bank account number"},
+                          prompt={"en": "Please give your bank account number."}),
+        ))
         spoken = speech_text.speech_for(
-            display_text="Please say your 12-digit Aadhaar number.",
-            view=view, template=the_template(), language="en",
+            display_text="Please give your bank account number.",
+            view={"status": "collecting", "awaiting": "bank_account"},
+            template=with_identifier, language="en",
         )
         assert "type" in spoken.lower()
+
+    def test_the_form_asks_for_no_such_identifier_at_all(self):
+        """The stronger version of the same protection: nothing to type,
+        nothing to say, nothing to leak."""
+        from app.domain.fields import SPEAK_NEVER_TYPES
+
+        asked = {f.type for f in the_template().fields}
+        assert not asked & SPEAK_NEVER_TYPES, sorted(asked)
 
     def test_an_operator_may_allow_spoken_identifiers(self):
         """A citizen who cannot type is the person this service is for."""

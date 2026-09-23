@@ -31,12 +31,29 @@ class TestTheForm:
         assert the_template().id == "petition"
 
     def test_the_fields_come_in_the_order_asked(self):
-        """Who you are, how to reach you, then the grievance. A citizen who has
-        just recited an identifier is not in the frame of mind to describe what
-        went wrong, so the grievance is always last."""
+        """Who you are, how to reach you, where you live, then the grievance.
+
+        The grievance is always last: it is the part the citizen came to say,
+        and asking it after a run of short factual questions is what lets them
+        settle into telling it.
+
+        NO IDENTIFIER. The Aadhaar number was here and was removed — a
+        petition asking an office to look at a blocked drain does not need a
+        national identity number to do it.
+        """
         assert the_template().field_names == (
-            "applicant_name", "age", "mobile", "address", "aadhaar", "grievance",
+            "applicant_name", "age", "mobile", "address", "grievance",
         )
+
+    def test_the_form_asks_for_no_identifier_at_all(self):
+        """The protections around one stay, because an Aadhaar can still
+        arrive inside a grievance or on an attached card. What is gone is the
+        step that asked a citizen to hand one over to file a complaint."""
+        from app.domain.fields import SENSITIVE_TYPES
+
+        asked = {f.type for f in the_template().fields}
+        assert "aadhaar" not in asked
+        assert not (asked & SENSITIVE_TYPES) - {"mobile"}, sorted(asked)
 
     def test_every_field_is_required(self):
         template = the_template()
@@ -62,12 +79,11 @@ class TestMissingFields:
 
     def test_it_shrinks_as_values_arrive(self):
         assert missing_fields(the_template(), {"applicant_name": "Ravi", "age": 45}) == [
-            "mobile", "address", "aadhaar", "grievance",
+            "mobile", "address", "grievance",
         ]
 
-    def test_nothing_missing_when_complete(self, answers, valid_aadhaar):
-        collected = {**answers, "aadhaar": valid_aadhaar, "age": 45}
-        assert missing_fields(the_template(), collected) == []
+    def test_nothing_missing_when_complete(self, answers):
+        assert missing_fields(the_template(), {**answers, "age": 45}) == []
 
     def test_next_field_follows_template_order(self):
         assert next_field(the_template(), {}).name == "applicant_name"
@@ -85,7 +101,6 @@ class TestMatchField:
         assert match_field(template, "the address is wrong") == "address"
         assert match_field(template, "my age is wrong") == "age"
         assert match_field(template, "change my name") == "applicant_name"
-        assert match_field(template, "the aadhaar number is incorrect") == "aadhaar"
         assert match_field(template, "my phone number is wrong") == "mobile"
         assert match_field(template, "I want to change the grievance") == "grievance"
 
@@ -93,10 +108,10 @@ class TestMatchField:
         template = the_template()
         assert match_field(template, "முகவரி தவறு", "ta") == "address"
         assert match_field(template, "என் வயது தவறு", "ta") == "age"
-        assert match_field(template, "ஆதார் எண் தவறு", "ta") == "aadhaar"
+        assert match_field(template, "கைபேசி எண் தவறு", "ta") == "mobile"
 
     def test_aliases_are_matched(self):
-        assert match_field(the_template(), "my aadhar is wrong") == "aadhaar"
+        assert match_field(the_template(), "my phone number is wrong") == "mobile"
         assert match_field(the_template(), "the complaint is wrong") == "grievance"
 
     def test_a_bare_yes_or_no_names_nothing(self):
@@ -106,23 +121,23 @@ class TestMatchField:
             assert match_field(the_template(), utterance) is None, utterance
 
     def test_longest_alias_wins(self):
-        assert match_field(the_template(), "the aadhaar number is wrong") == "aadhaar"
+        assert match_field(the_template(), "the mobile number is wrong") == "mobile"
 
 
 class TestValidateExtracted:
-    def test_accepts_good_values(self, valid_aadhaar):
+    def test_accepts_good_values(self):
         accepted, rejected = validate_extracted(
-            the_template(), {"applicant_name": "ravi kumar", "aadhaar": valid_aadhaar}
+            the_template(), {"applicant_name": "ravi kumar", "mobile": "9876543210"}
         )
-        assert accepted == {"applicant_name": "Ravi Kumar", "aadhaar": valid_aadhaar}
+        assert accepted == {"applicant_name": "Ravi Kumar", "mobile": "9876543210"}
         assert rejected == {}
 
     def test_separates_the_bad_ones(self):
         accepted, rejected = validate_extracted(
-            the_template(), {"age": "45", "aadhaar": "1234"}
+            the_template(), {"age": "45", "mobile": "1234"}
         )
         assert accepted == {"age": 45}
-        assert rejected["aadhaar"].code == "aadhaar.length"
+        assert rejected["mobile"].code == "mobile.length"
 
     def test_drops_fields_the_form_does_not_declare(self):
         """A model inventing `father_name` on a form that never asked for one
@@ -374,8 +389,8 @@ class TestAnAliasIsAWordNotASubstring:
     @pytest.mark.parametrize("said,expected", [
         ("my age is wrong", "age"),
         ("change my address", "address"),
-        ("the aadhaar number is incorrect", "aadhaar"),
         ("my phone number is wrong", "mobile"),
+        ("my contact number is incorrect", "mobile"),
         ("I want to change the grievance", "grievance"),
         ("my name is spelled wrong", "applicant_name"),
     ])
@@ -388,7 +403,7 @@ class TestAnAliasIsAWordNotASubstring:
         ("முகவரி தவறு", "address"),
         ("முகவரியை மாற்று", "address"),
         ("பெயரை திருத்து", "applicant_name"),
-        ("ஆதார் எண்ணை மாற்று", "aadhaar"),
+        ("கைபேசி எண்ணை மாற்று", "mobile"),
         ("கைபேசி எண்ணை மாற்று", "mobile"),
         ("குறையை மாற்ற வேண்டும்", "grievance"),
     ])
