@@ -189,13 +189,25 @@ class TestTheWaysOffThePageAreGone:
         assert "lang" not in hidden.replace("body.kiosk", "")
 
 
-class TestTheButtonThatOpensIt:
+class TestTheLinkThatOpensIt:
 
-    def test_it_sits_next_to_new_petition(self):
+    def test_it_lives_with_the_other_destinations(self):
+        """In the navigation, not beside New Petition. It is a PLACE to go,
+        like the three beside it; the buttons on the right are things to DO
+        to the petition in front of you."""
         markup = html()
+        navigation = markup[markup.index('<nav class="main-nav"'):]
+        navigation = navigation[:navigation.index("</nav>")]
 
-        assert 'id="kiosk"' in markup
-        assert markup.index('id="kiosk"') < markup.index('id="new"')
+        assert 'id="navKiosk"' in navigation
+        assert 'href="#kiosk"' in navigation
+
+    def test_it_is_not_in_the_action_cluster(self):
+        markup = html()
+        actions = markup[markup.index('<div class="header-actions">'):]
+        actions = actions[:actions.index('id="new"')]
+
+        assert "kiosk" not in actions.lower(), actions[-300:]
 
     def test_it_is_named_in_both_languages(self):
         source = nav()
@@ -204,7 +216,7 @@ class TestTheButtonThatOpensIt:
         assert 'kiosk: "கியாஸ்க்"' in source
 
     def test_the_label_is_painted(self):
-        assert "kioskText: n.kiosk" in nav()
+        assert "navKiosk: n.kiosk" in nav()
 
 
 class TestTheOperatorIsToldHowToMakeItSilent:

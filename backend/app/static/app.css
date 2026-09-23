@@ -972,6 +972,13 @@ header.app{gap:24px}
 .main-nav a{display:flex;align-items:center;justify-content:center;position:relative;padding:9px 12px;color:var(--muted);text-decoration:none;font-size:11.5px;white-space:nowrap;border-radius:8px;transition:color var(--step),background var(--step)}
 .main-nav a:hover{background:var(--surface-2);color:var(--navy)}
 .main-nav a[aria-current="page"],.main-nav a.active{color:var(--blue);background:var(--blue-soft);font-weight:700}
+/* The kiosk link carries an icon, because it is the one destination that is
+   not simply another view of the citizen's own work — it puts the terminal
+   into counter mode, and that deserves to look like a different kind of
+   thing without shouting. */
+.main-nav a.nav-kiosk{gap:7px}
+.main-nav a.nav-kiosk svg{width:15px;height:15px;flex:none}
+@media(max-width:1180px){.main-nav a.nav-kiosk svg{display:none}}
 .app-page{max-width:1360px;margin:0 auto;padding:0 32px 48px}
 .home-hero{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(300px,1fr);align-items:center;gap:55px;padding:65px 22px 58px}
 .home-hero-copy{max-width:700px}

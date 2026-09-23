@@ -29,6 +29,17 @@
     <a href="#home" data-route="home" id="navHome" aria-current="page">Home</a>
     <a href="#create" data-route="create" id="navCreate">Create Petition</a>
     <a href="#petitions" data-route="petitions" id="navPetitions">My Petitions</a>
+    <!-- A counter terminal: the same petition flow on a machine standing in
+         a government office with a printer attached, where the finished
+         petition comes out of the printer without anybody being asked to
+         find a Print button.
+
+         Here rather than beside New Petition. It is a PLACE to go, like the
+         three beside it, and the buttons on the right are things to DO to
+         the petition in front of you. -->
+    <a href="#kiosk" data-route="kiosk" id="navKiosk" class="nav-kiosk">
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="4" y="3" width="16" height="13" rx="2" stroke="currentColor" stroke-width="1.6"/><path d="M8 20h8M12 16v4M8 7h8M8 10h5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><span>Kiosk</span>
+    </a>
   </nav>
 
   <div class="header-actions">
@@ -40,13 +51,6 @@
     </select>
     <button class="hbtn" id="mic" type="button">
       <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3" stroke="currentColor" stroke-width="1.7"/><path d="M6 11a6 6 0 0 0 12 0M12 17v4m-3 0h6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg><span class="txt" id="micText">Voice</span>
-    </button>
-    <!-- A counter terminal. The same petition flow, on a machine standing in
-         a government office with a printer attached: the citizen fills it in
-         and the finished petition comes out of the printer without anybody
-         being asked to find a Print button. -->
-    <button class="hbtn" id="kiosk" type="button" data-route="kiosk">
-      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="4" y="3" width="16" height="13" rx="2" stroke="currentColor" stroke-width="1.7"/><path d="M8 20h8M12 16v4M8 7h8M8 10h5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg><span class="txt" id="kioskText">Kiosk</span>
     </button>
     <button class="hbtn primary" id="new" type="button">
       <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span class="txt" id="newText">New Petition</span>

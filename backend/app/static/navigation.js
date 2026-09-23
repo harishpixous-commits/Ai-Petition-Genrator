@@ -162,7 +162,7 @@ function navigationLabels() {
     if (n[key]) el.textContent = n[key];
   });
   for (const [id, text] of Object.entries({ navHome: n.home, navCreate: n.create,
-    navPetitions: n.petitions, clearFilters: n.clear, kioskText: n.kiosk,
+    navPetitions: n.petitions, navKiosk: n.kiosk, clearFilters: n.clear,
     petitionsRetry: n.retry, petitionsPrevious: n.previous, petitionsNext: n.next })) {
     if ($(id)) $(id).textContent = text;
   }
@@ -190,7 +190,10 @@ function syncNavigation() {
   });
   $("new").hidden = currentRoute !== "generator";
   $("mic").hidden = currentRoute !== "generator";
-  $("kiosk").hidden = typeof kiosk !== "undefined" && kiosk;
+  // Inside a kiosk session the whole navigation is hidden by CSS; this keeps
+  // the link out of the tab order as well, so a keyboard cannot reach a
+  // destination the terminal is not meant to leave for.
+  $("navKiosk").hidden = typeof kiosk !== "undefined" && kiosk;
 }
 
 function editorText() { return $("letter").innerText.replace(/\u00a0/g, " ").trimEnd(); }
