@@ -59,6 +59,27 @@ def status(settings: Settings | None = None) -> dict:
     }
 
 
+def request_for(language: str, settings: Settings | None = None) -> dict:
+    """Which voice, which model and which language the request asks for.
+
+    Its own function so it can be checked without a network call. It was
+    inline, and a test that restated the expression instead of calling it
+    would keep passing while the request changed underneath it.
+
+    The speaker is LOWERCASED. The API is case-sensitive and Sarvam's own
+    console displays these voices capitalised — choosing "Ishita" there and
+    copying the label across gets HTTP 400, `stream` logs it and yields
+    nothing, and the citizen gets a service that has quietly stopped
+    talking. Nothing turns red; the reason is one line in a log.
+    """
+    s = settings or get_settings()
+    return {
+        "target_language_code": "ta-IN" if language == "ta" else "en-IN",
+        "model": s.sarvam_tts_model,
+        "speaker": (s.sarvam_tts_speaker or "").strip().lower(),
+    }
+
+
 def _chunks(text: str) -> list[str]:
     words, out, current = str(text or "").split(), [], ""
     for word in words:
@@ -135,11 +156,7 @@ async def stream(
         return
 
     keys = s.sarvam_key_list
-    payload_base = {
-        "target_language_code": "ta-IN" if language == "ta" else "en-IN",
-        "model": s.sarvam_tts_model,
-        "speaker": s.sarvam_tts_speaker,
-    }
+    payload_base = request_for(language, s)
 
     active = 0
     async with httpx.AsyncClient(timeout=30.0) as client:

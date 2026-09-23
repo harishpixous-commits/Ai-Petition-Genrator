@@ -214,8 +214,20 @@ class Settings(BaseSettings):
     sarvam_api_keys: str = ""
     # bulbul:v2 is retired — it answers HTTP 400 "has been deprecated", and
     # anushka is not a v3 speaker. Both defaults are load-bearing.
+    #
+    # The speaker is CASE-SENSITIVE and Sarvam's own console displays these
+    # names capitalised: picking "Ishita" there and pasting it here gets
+    # HTTP 400 "Speaker 'Ishita' is not recognized". `tts.py` lowercases it
+    # on the way out so either spelling works, but the value stored is the
+    # one the API actually uses.
+    #
+    # Verified against the live API. The v3 list, at the time of writing:
+    #   aditya ritu ashutosh priya neha rahul pooja rohan simran kavya amit
+    #   dev ishita shreya ratan varun manan sumit roopa kabir aayan shubh
+    #   advait anand tanya tarun sunny mani gokul vijay shruti suhani mohit
+    #   kavitha rehan soham rupali
     sarvam_tts_model: str = "bulbul:v3"
-    sarvam_tts_speaker: str = "priya"
+    sarvam_tts_speaker: str = "ishita"
 
     # -- translation ------------------------------------------------------- #
     nllb_worker: str = ""  # path to the Node NLLB worker, optional
