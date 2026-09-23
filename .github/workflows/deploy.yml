@@ -70,6 +70,21 @@ jobs:
     permissions:
       contents: write
 
+    # A BACKUP MUST NEVER BE THE REASON A DEPLOYMENT DOES NOT HAPPEN.
+    #
+    # This job writes a branch ref with the workflow token, and that write
+    # is refused outright when a repository's default workflow permissions
+    # are read-only (Settings > Actions > General > Workflow permissions).
+    # Without this line the failure propagates: `deploy` needs this job, so
+    # a repository setting unrelated to the application would silently stop
+    # every release.
+    #
+    # Marked tolerated instead. The step prints what to change, the run is
+    # flagged, and the deployment continues — with the previous version
+    # still recoverable from the release tags, which are written by a
+    # different job.
+    continue-on-error: true
+
     steps:
       - name: Checkout full history
         uses: actions/checkout@v4
@@ -121,7 +136,17 @@ jobs:
           # Forced because the branch is a POINTER, not a line of work: it
           # moves backwards and forwards as deployments come and go, and a
           # fast-forward-only push would refuse the ordinary case.
-          git push --force origin "${LAST_GOOD}:refs/heads/production-backup"
+          if ! git push --force origin "${LAST_GOOD}:refs/heads/production-backup"; then
+            echo "::warning::Could not update production-backup."
+            echo ""
+            echo "The workflow token could not write to this repository. Check"
+            echo "Settings > Actions > General > Workflow permissions and set"
+            echo "'Read and write permissions'."
+            echo ""
+            echo "The deployment continues. ${LAST_GOOD} is still recoverable"
+            echo "from the release tags."
+            exit 0
+          fi
 
           {
             echo "### Previous production preserved"
@@ -779,6 +804,12 @@ jobs:
     permissions:
       contents: write
 
+    # The deployment has already happened and passed its health gate by the
+    # time this runs, so a tag that cannot be written is a bookkeeping
+    # problem and not a failed release. Marking the whole run red for it
+    # would teach everybody to ignore red runs.
+    continue-on-error: true
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -808,7 +839,11 @@ jobs:
               tag -a "${TAG}" "${GITHUB_SHA}" -m "$(printf '%s\n\ndeployed: %s\ncommit:   %s\nrun:      %s\n' \
                 "${SUBJECT}" "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" "${GITHUB_SHA}" \
                 "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}")"
-          git push origin "refs/tags/${TAG}"
+          if ! git push origin "refs/tags/${TAG}"; then
+            echo "::warning::Could not push ${TAG}. The deployment is fine."
+            echo "Check Settings > Actions > General > Workflow permissions."
+            exit 0
+          fi
 
           {
             echo "### Release tagged"
