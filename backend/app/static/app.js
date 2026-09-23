@@ -420,6 +420,16 @@ const EXPERIENCE = {
     longHint: "Include the location, what happened, and the action you are requesting. Your words are kept unchanged.",
     copiedError: "Copy is unavailable. Select the petition text to copy it, or download the Word document.",
     popupError: "Allow pop-ups for this page to print, or download the document.",
+    kiosk: "Kiosk",
+    kioskPrinting: "Printing your petition…",
+    kioskDoneTitle: "Your petition has been printed",
+    kioskDoneText: "Please collect it from the printer. Check every detail before "
+                   + "signing it.",
+    kioskClearing: (n) => `This screen clears in ${n} seconds.`,
+    kioskNext: "Start a new petition",
+    kioskStay: "I need more time",
+    kioskNoPrinter: "The petition is ready but could not be sent to the printer. "
+                    + "Use the Print button, or ask the staff at the counter.",
     helpTitle: "From your concern to a clear petition",
     helpText: "1. Answer the questions by typing or using voice.\n2. Review your details and select Edit to make corrections.\n3. Confirm to create your document, then download or print it.\n\nYour progress is restored on this browser. Your grievance is kept in your own words. Review the document before signing; this app does not submit it to an office.",
     close: "Got it", forget: "Forget on this browser", forgetText: "The saved link will be removed from this browser. Existing server records and downloaded files are kept.",
@@ -443,6 +453,16 @@ const EXPERIENCE = {
     longHint: "இடம், நடந்தது, நீங்கள் கோரும் நடவடிக்கை ஆகியவற்றைக் குறிப்பிடவும். உங்கள் சொற்கள் மாற்றப்படாது.",
     copiedError: "நகலெடுக்க இயலவில்லை. மனு உரையைத் தேர்ந்தெடுத்து நகலெடுக்கவும் அல்லது Word ஆவணத்தைப் பதிவிறக்கவும்.",
     popupError: "அச்சிட இந்தப் பக்கத்திற்குப் பாப்-அப் அனுமதி அளிக்கவும் அல்லது ஆவணத்தைப் பதிவிறக்கவும்.",
+    kiosk: "கியாஸ்க்",
+    kioskPrinting: "உங்கள் மனு அச்சிடப்படுகிறது…",
+    kioskDoneTitle: "உங்கள் மனு அச்சிடப்பட்டுவிட்டது",
+    kioskDoneText: "அச்சுப்பொறியில் இருந்து பெற்றுக்கொள்ளுங்கள். கையொப்பமிடும் முன் "
+                   + "ஒவ்வொரு விவரத்தையும் சரிபார்க்கவும்.",
+    kioskClearing: (n) => `இந்தத் திரை ${n} வினாடிகளில் அழிக்கப்படும்.`,
+    kioskNext: "புதிய மனு தொடங்கு",
+    kioskStay: "இன்னும் சிறிது நேரம் வேண்டும்",
+    kioskNoPrinter: "மனு தயாராக உள்ளது, ஆனால் அச்சுப்பொறிக்கு அனுப்ப முடியவில்லை. "
+                    + "'அச்சிடு' பொத்தானை பயன்படுத்தவும் அல்லது பணியாளரிடம் கேட்கவும்.",
     helpTitle: "உங்கள் குறையிலிருந்து தெளிவான மனு வரை",
     helpText: "1. தட்டச்சு அல்லது குரல் மூலம் கேள்விகளுக்குப் பதிலளிக்கவும்.\n2. விவரங்களைச் சரிபார்த்து தேவையான திருத்தங்களைச் செய்யவும்.\n3. உறுதிசெய்த பிறகு ஆவணத்தைப் பதிவிறக்கவும் அல்லது அச்சிடவும்.\n\nஇந்த உலாவியில் உங்கள் மனுவை மீண்டும் தொடரலாம். உங்கள் குறை மாற்றப்படாது. கையொப்பமிடும் முன் ஆவணத்தைச் சரிபார்க்கவும். இந்தச் செயலி மனுவை அலுவலகத்திற்குச் சமர்ப்பிக்காது.",
     close: "புரிந்தது", forget: "இந்த உலாவியில் மற", forgetText: "இந்த உலாவியிலிருந்து சேமித்த இணைப்பு நீக்கப்படும். சேவையகப் பதிவுகளும் பதிவிறக்கிய கோப்புகளும் இருக்கும்.",
@@ -971,6 +991,9 @@ function render(v) {
       updated.toLocaleTimeString(lang === "ta" ? "ta-IN" : "en-IN", { hour: "2-digit", minute: "2-digit" }));
   }
   document.querySelector("main.workspace").dataset.status = v.status;
+  // The terminal's whole point: the petition reaches the printer without
+  // anybody having to find a button. A no-op everywhere else.
+  kioskMaybePrint(v);
   clearTimeout(generationPoll);
   // The recovery poll is for a generation this page started and then lost
   // track of. NOT for one running on the voice socket: that socket delivers
@@ -1802,6 +1825,111 @@ function confirmThen(title, text, keepLabel, goLabel, onGo, onKeep) {
   document.addEventListener("keydown", onKey);
   back.querySelector("[data-keep]").focus();
 }
+
+/* ------------------------------------------------------------------ kiosk
+   A counter terminal: the citizen fills the petition in and it comes out of
+   the printer, without anybody being asked to find a Print button.
+
+   IT IS THE SAME FLOW, not a copy of it. Kiosk mode is a flag on the page
+   that already exists — the same graph, the same questions, the same
+   document, the same voice. A second implementation would be two things to
+   fix every time one of them changed, and the copy is always the one nobody
+   remembers to change.
+
+   What the flag actually does is three things:
+
+     * prints the petition the moment it is ready, once
+     * clears the screen afterwards, because the next person in the queue
+       must not be shown the last citizen's name, address and grievance
+     * hides the parts of the page that lead away from the task — browsing
+       saved petitions is an operator's job, not a queue's
+
+   SILENT PRINTING is a browser setting, not something a page can ask for.
+   Launch the terminal with:
+
+       chrome --kiosk --kiosk-printing https://<host>/#kiosk
+
+   `--kiosk-printing` sends `window.print()` straight to the default printer
+   with no dialog. Without it the citizen gets the ordinary print dialog,
+   which still works and is what a developer sees. */
+
+const KIOSK_CLEAR_SECONDS = 45;
+
+let kiosk = false;
+let kioskPrintedFor = null;      // the session whose petition has been printed
+let kioskCountdown = null;
+
+function setKioskMode(on) {
+  kiosk = Boolean(on);
+  document.body.classList.toggle("kiosk", kiosk);
+  if (!kiosk) stopKioskCountdown();
+  $("kioskDone").hidden = true;
+}
+
+/** Print as soon as the petition exists, and only once for it. */
+function kioskMaybePrint(v) {
+  if (!kiosk || !v || v.status !== "ready" || !v.letter_text) return;
+  if (kioskPrintedFor === v.session_id) return;
+  kioskPrintedFor = v.session_id;
+
+  // The CURRENT page, not a popup. `window.open` from a timer rather than a
+  // click is blocked by default, and a kiosk has nobody to click "allow" —
+  // the print stylesheet already reduces this page to the letter alone.
+  bubble("system", T().kioskPrinting);
+  try {
+    window.print();
+  } catch {
+    bubble("system", T().kioskNoPrinter, true);
+    return;
+  }
+  showKioskDone();
+}
+
+function showKioskDone() {
+  const t = T();
+  $("kioskDoneTitle").textContent = t.kioskDoneTitle;
+  $("kioskNext").textContent = t.kioskNext;
+  $("kioskStay").textContent = t.kioskStay;
+  $("kioskDone").hidden = false;
+  startKioskCountdown();
+}
+
+/** Clear the screen for the next citizen, visibly and interruptibly.
+ *
+ *  Visible, because a screen that wipes itself without warning loses
+ *  somebody's work. Interruptible, because the person reading it may be
+ *  slow, and "I need more time" is a reasonable thing to need.
+ */
+function startKioskCountdown() {
+  stopKioskCountdown();
+  let left = KIOSK_CLEAR_SECONDS;
+  const tick = () => {
+    $("kioskDoneText").textContent =
+      `${T().kioskDoneText} ${T().kioskClearing(left)}`;
+    if (left <= 0) { stopKioskCountdown(); void kioskRestart(); return; }
+    left -= 1;
+  };
+  tick();
+  kioskCountdown = setInterval(tick, 1000);
+}
+
+function stopKioskCountdown() {
+  if (kioskCountdown) { clearInterval(kioskCountdown); kioskCountdown = null; }
+}
+
+async function kioskRestart() {
+  stopKioskCountdown();
+  $("kioskDone").hidden = true;
+  kioskPrintedFor = null;
+  forgetSession();
+  await start();
+}
+
+$("kioskNext").onclick = () => { void kioskRestart(); };
+$("kioskStay").onclick = () => {
+  stopKioskCountdown();
+  $("kioskDoneText").textContent = T().kioskDoneText;
+};
 
 /* -------------------------------------------------------------- document */
 

@@ -37,6 +37,7 @@ const NAV = {
     homePetitionsEyebrow: "PICK UP WHERE YOU LEFT OFF",
     homePetitionsTitle: "My petitions",
     homePetitionsDescription: "Find, open, and manage your saved petitions, with their documents and versions.",
+    kiosk: "Kiosk",
     homeGuideEyebrow: "THREE SIMPLE STEPS",
     homeGuideTitle: "A little guidance, all the way.",
     homeStepOneTitle: "Share your concern",
@@ -101,6 +102,7 @@ const NAV = {
     homePetitionsEyebrow: "நிறுத்திய இடத்திலிருந்து தொடருங்கள்",
     homePetitionsTitle: "எனது மனுக்கள்",
     homePetitionsDescription: "சேமித்த மனுக்களை அவற்றின் ஆவணங்கள் மற்றும் பதிப்புகளுடன் தேடலாம், திறக்கலாம், நிர்வகிக்கலாம்.",
+    kiosk: "கியாஸ்க்",
     homeGuideEyebrow: "மூன்று எளிய படிகள்",
     homeGuideTitle: "ஒவ்வொரு படியிலும் வழிகாட்டுதல்.",
     homeStepOneTitle: "உங்கள் குறையைச் சொல்லுங்கள்",
@@ -160,7 +162,7 @@ function navigationLabels() {
     if (n[key]) el.textContent = n[key];
   });
   for (const [id, text] of Object.entries({ navHome: n.home, navCreate: n.create,
-    navPetitions: n.petitions, clearFilters: n.clear,
+    navPetitions: n.petitions, clearFilters: n.clear, kioskText: n.kiosk,
     petitionsRetry: n.retry, petitionsPrevious: n.previous, petitionsNext: n.next })) {
     if ($(id)) $(id).textContent = text;
   }
@@ -188,6 +190,7 @@ function syncNavigation() {
   });
   $("new").hidden = currentRoute !== "generator";
   $("mic").hidden = currentRoute !== "generator";
+  $("kiosk").hidden = typeof kiosk !== "undefined" && kiosk;
 }
 
 function editorText() { return $("letter").innerText.replace(/\u00a0/g, " ").trimEnd(); }
@@ -225,8 +228,16 @@ async function navigate(route, options = {}) {
   if (!options.checked && !guardUnsaved(() => navigate(route, { ...options, checked: true }))) return;
   if (editingLetter) stopEditing(true);
   stopVoice();
-  if (route === "create") { await start(); return; }
+  // Kiosk is the create flow with the terminal behaviour switched on. One
+  // page, one graph, one set of questions — the flag is the only difference.
+  if (route === "kiosk" || route === "create") {
+    setKioskMode(route === "kiosk");
+    await start();
+    if (route === "kiosk") setPage("generator", "#kiosk", options.replace);
+    return;
+  }
   if (route === "generator") { await openPetition(options.id, options.edit, options.replace); return; }
+  setKioskMode(false);
   setPage(route === "petitions" ? "petitions" : "home", route === "petitions" ? "#petitions" : "#home", options.replace);
   if (route === "petitions") await loadPetitions();
 }
@@ -579,7 +590,10 @@ async function routeFromHash(initial = false) {
   const hash = location.hash;
   if (!initial && (busy || requestPending)) { window.history.replaceState(null, "", routeHash); return; }
   const match = /^#petition\/([\da-f-]{36})$/i.exec(hash);
-  const route = match ? "generator" : hash === "#petitions" ? "petitions" : hash === "#create" ? "create" : "home";
+  const route = match ? "generator"
+    : hash === "#kiosk" ? "kiosk"
+    : hash === "#petitions" ? "petitions"
+    : hash === "#create" ? "create" : "home";
   if (!initial && !guardUnsaved(() => navigate(route, { id: match?.[1], checked: true, replace: true }))) {
     window.history.replaceState(null, "", routeHash); return;
   }

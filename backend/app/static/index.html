@@ -41,6 +41,13 @@
     <button class="hbtn" id="mic" type="button">
       <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3" stroke="currentColor" stroke-width="1.7"/><path d="M6 11a6 6 0 0 0 12 0M12 17v4m-3 0h6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg><span class="txt" id="micText">Voice</span>
     </button>
+    <!-- A counter terminal. The same petition flow, on a machine standing in
+         a government office with a printer attached: the citizen fills it in
+         and the finished petition comes out of the printer without anybody
+         being asked to find a Print button. -->
+    <button class="hbtn" id="kiosk" type="button" data-route="kiosk">
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="4" y="3" width="16" height="13" rx="2" stroke="currentColor" stroke-width="1.7"/><path d="M8 20h8M12 16v4M8 7h8M8 10h5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg><span class="txt" id="kioskText">Kiosk</span>
+    </button>
     <button class="hbtn primary" id="new" type="button">
       <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span class="txt" id="newText">New Petition</span>
     </button>
@@ -260,6 +267,23 @@
           <button class="btn" id="voiceRetry" type="button"></button>
           <button class="btn" id="voiceDismiss" type="button"></button>
         </span>
+      </div>
+
+      <!-- Kiosk only. Shown once the petition has gone to the printer, and
+           it clears the screen afterwards: the next person in the queue must
+           not be shown the last citizen's name, address and grievance. -->
+      <div class="kiosk-done" id="kioskDone" hidden role="status" aria-live="polite">
+        <span class="kd-tick" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none"><path d="m5 12 4 4L19 6" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </span>
+        <div class="kd-text">
+          <h3 id="kioskDoneTitle"></h3>
+          <p id="kioskDoneText"></p>
+        </div>
+        <div class="kd-acts">
+          <button class="btn primary" id="kioskNext" type="button"></button>
+          <button class="btn" id="kioskStay" type="button"></button>
+        </div>
       </div>
 
       <div class="card-body" id="log" role="log" aria-live="polite" aria-atomic="false"></div>
