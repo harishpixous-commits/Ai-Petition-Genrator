@@ -477,12 +477,35 @@ class TestCommandsAfterThePetitionExists:
     should have been, and saying "stop" did nothing whatsoever."""
 
     @pytest.mark.parametrize("said", [
-        "yes please read it", "read it", "read my petition aloud", "go ahead",
-        "படி", "வாசிக்க",
+        "yes please read it", "read it", "read my petition aloud",
+        "படி", "படிக்கவும்", "வாசிக்க",
     ])
     def test_asking_for_it_to_be_read(self, said):
         from app.api.ws import _READ_ALOUD
         assert _READ_ALOUD.search(said), said
+
+    @pytest.mark.parametrize("said", [
+        "மறுபடியும்", "மறுபடி சொல்லுங்கள்", "படிவம்",
+    ])
+    def test_and_the_words_that_merely_contain_it(self, said):
+        """படி is two characters and Tamil is matched as a substring,
+        because \b does not work against the script. It sits inside
+        மறுபடியும் — AGAIN, one of the two commonest ways to reject an
+        answer — and inside படிவம், form. A citizen saying their grievance
+        was wrong had it recited back to them instead. It is still honoured
+        as the whole utterance, where it is unambiguous."""
+        from app.api.ws import _READ_ALOUD
+        assert not _READ_ALOUD.search(said), said
+
+    @pytest.mark.parametrize("said", ["go ahead", "carry on", "please do"])
+    def test_go_ahead_is_a_yes_to_the_offer_not_a_word_to_look_for(self, said):
+        """It was in `_READ_ALOUD`, which is also consulted at a grievance
+        read-back — where "go ahead" means yes, that is right. It still
+        starts a reading here, where the question really is "shall I read
+        it?"."""
+        from app.api.ws import _GO_AHEAD, _READ_ALOUD
+        assert _GO_AHEAD.search(said), said
+        assert not _READ_ALOUD.search(said), said
 
     @pytest.mark.parametrize("said", [
         "stop", "stop reading", "that is enough", "quiet please",

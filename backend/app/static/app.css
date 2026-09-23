@@ -666,8 +666,65 @@ body.kiosk [data-route="home"] { display: none !important; }
 .dictation .dc-text:empty::before {
   content: attr(data-empty); color: var(--muted); font-style: italic;
 }
-.dictation .dc-acts { display: flex; gap: 8px; margin-top: 10px; }
-.dictation .btn { height: 34px; padding: 0 14px; font-size: 12.5px; }
+.dictation .dc-acts { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+.dictation .btn { height: 36px; padding: 0 16px; font-size: 12.5px; }
+
+/* THE LEVEL METER. Twelve bars, each scaled from the analyser's own reading
+   of the microphone. Deliberately not a canvas animation on a timer: a
+   panel that keeps dancing while the microphone is muted, unplugged or
+   denied is the most misleading thing on this page, because it is the one
+   thing a citizen uses to decide whether they are being heard. Silence
+   here means silence there. */
+.dc-wave {
+  display: flex; align-items: flex-end; justify-content: center;
+  gap: 3px; height: 34px; margin: 2px 0 12px;
+}
+.dc-wave i {
+  display: block; width: 4px; border-radius: 2px;
+  height: 10%; min-height: 4px;
+  background: linear-gradient(180deg, var(--accent), var(--accent-2, var(--accent)));
+  transform-origin: bottom;
+  transition: height 90ms linear;
+}
+/* Paused, or the assistant is speaking: flat, and visibly so. */
+.dictation[data-live="off"] .dc-wave i { height: 4px; opacity: .35; }
+.dictation[data-live="off"] .dc-dot { animation: none; background: var(--muted); }
+
+.dictation .dc-sub { margin: 4px 0 0; color: var(--muted); font-size: 12.5px; }
+.dictation .dc-marks {
+  display: flex; align-items: center; gap: 10px; margin-top: 8px;
+  font-size: 11.5px; color: var(--muted);
+}
+.dictation .dc-mark { display: inline-flex; align-items: center; gap: 5px; color: var(--good, #1d7a4d); }
+.dictation .dc-mark::before { content: "\2713"; font-weight: 800; }
+.dictation .dc-count { margin-left: auto; }
+
+/* Agreed to. Held on screen for a moment while the next question is asked,
+   so the citizen sees the complaint accepted instead of inferring it. */
+.grievance-done {
+  display: flex; align-items: center; gap: 12px;
+  margin: 10px 16px 0; padding: 14px 16px;
+  border-radius: var(--r); font-size: 13.5px;
+  background: color-mix(in srgb, var(--good, #1d7a4d) 10%, var(--surface-2));
+  border: 1px solid color-mix(in srgb, var(--good, #1d7a4d) 35%, var(--line));
+  animation: rise var(--step);
+}
+.grievance-done .gd-tick {
+  flex: none; display: grid; place-items: center;
+  width: 30px; height: 30px; border-radius: 50%;
+  background: var(--good, #1d7a4d); color: white;
+}
+.grievance-done .gd-tick svg { width: 17px; height: 17px; }
+.grievance-done .gd-text { display: flex; flex-direction: column; gap: 2px; }
+.grievance-done strong { font-size: 14px; }
+.grievance-done span { color: var(--muted); }
+
+/* One screen reader announcement, one movement, and nothing that spins. */
+@media (prefers-reduced-motion: reduce) {
+  .dc-wave i { transition: none; }
+  .dictation .dc-dot { animation: none; }
+  .grievance-done { animation: none; }
+}
 
 /* The answer that was heard, waiting to be agreed with.
    Sits above the error banner and below the waveform, in the citizen's line
@@ -854,7 +911,9 @@ body.kiosk [data-route="home"] { display: none !important; }
   .composer{padding:12px}.composer textarea{padding-left:10px}.send-btn{padding:9px 11px;gap:5px}.send-btn svg{width:16px;height:16px}.icon-btn{width:30px}.composer-hint{font-size:8px;gap:8px}.composer-actions{gap:4px;margin-top:9px}.composer-actions #confirm{font-size:11px}
   .dictation{margin:10px 10px 0;padding:10px;font-size:12px}
   .dictation .dc-text{font-size:13px;max-height:110px}
-  .dictation .dc-acts .btn{flex:1 1 0;min-height:40px;height:auto}
+  .dictation .dc-acts .btn{flex:1 1 90px;min-height:40px;height:auto}
+  .dc-wave{height:28px}
+  .grievance-done{margin:10px 12px 0;padding:12px}
   .answer-check{margin:10px 10px 0;padding:10px;gap:9px;font-size:12px}
   .answer-check .ac-value{font-size:14px}
   .answer-check .ac-acts{margin-left:0;width:100%}
@@ -911,12 +970,41 @@ body.kiosk [data-route="home"] { display: none !important; }
     border:0;box-shadow:none;background:white;overflow:visible;
     position:static;grid-template-columns:none}
 
-  /* The margins of the printed page, now that @page has none. */
+  /* THE MARGINS OF THE PRINTED PAGE, now that @page has none.
+
+     `padding` alone was wrong and the second page showed it: padding opens
+     at the top of the FIRST page and closes at the bottom of the LAST one,
+     so a two-page petition began page two hard against the edge of the
+     sheet, first line touching the paper's top.
+
+     The obvious fix — `@page{margin:18mm 16mm}` — is the one that is not
+     available here. Chrome draws its own header and footer (the date, the
+     page title, the URL, "1/2") INSIDE the page margin, so a real @page
+     margin is exactly the room it needs. Zero margin is what removed them,
+     and it was removed on request.
+
+     So the vertical margin is made out of a repeating table part instead.
+     A `table-header-group` is drawn again at the top of every page it
+     spans, and a `table-footer-group` at the bottom of every one — that is
+     what the parts are for, and it is the one mechanism in CSS that
+     repeats down a printed document. Two empty ones, the height of the
+     margin, give every page the same gutter with nothing printed in it.
+
+     The SIDES stay as padding: they apply to every page already, because a
+     page break is horizontal. */
   .paper{
-    display:block!important;
-    max-width:none;margin:0;padding:18mm 16mm;
+    display:table!important;
+    max-width:none;margin:0;padding:0 16mm;width:100%;
     border:0;border-radius:0;box-shadow:none;background:white;
     color:black;font-size:11pt;line-height:1.85}
+
+  .paper::before,.paper::after{content:"";display:block;height:16mm}
+  .paper::before{display:table-header-group}
+  .paper::after{display:table-footer-group}
+
+  /* The emblem is positioned against the top of the first page and would be
+     repeated into the gutter otherwise. */
+  .paper.has-emblem{padding-top:0;background-position:var(--emblem-x) 6mm}
 }
 /* Asking for the petition to be written differently. Tucked under the toolbar
    rather than in a dialog: the citizen is reading the document while they

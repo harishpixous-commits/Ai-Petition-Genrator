@@ -243,16 +243,47 @@
            that nothing has been dropped — which is the only way to trust a
            machine with a complaint you cannot see. -->
       <div class="dictation" id="dictation" hidden role="group" aria-live="polite">
+        <!-- The bars move with the real input level, from the same analyser
+             the waveform above uses. A decorative animation that keeps
+             dancing at a dead microphone is the single most misleading thing
+             this panel could show, so it is driven by measurement or it is
+             still. -->
+        <div class="dc-wave" id="dictationWave" aria-hidden="true">
+          <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+        </div>
         <div class="dc-head">
           <span class="dc-dot" aria-hidden="true"></span>
           <span class="dc-title" id="dictationTitle"></span>
           <span class="dc-time" id="dictationTime">00:00</span>
+        </div>
+        <p class="dc-sub" id="dictationSub"></p>
+        <p class="dc-text" id="dictationText"></p>
+        <div class="dc-marks">
+          <!-- Shown only when the browser CONFIRMS the track is doing it.
+               A tick the citizen cannot check is worse than no tick. -->
+          <span class="dc-mark" id="dictationNoise" hidden></span>
           <span class="dc-count" id="dictationCount"></span>
         </div>
-        <p class="dc-text" id="dictationText"></p>
         <div class="dc-acts">
           <button class="btn primary" id="dictationFinish" type="button"></button>
+          <button class="btn" id="dictationPause" type="button"></button>
           <button class="btn" id="dictationRestart" type="button"></button>
+        </div>
+      </div>
+
+      <!-- Shown for a moment once a grievance is agreed to, and then the
+           next question is asked on its own. It exists because a complaint
+           takes minutes to give and may have been edited twice: the citizen
+           should SEE it accepted rather than infer it from the conversation
+           moving on. -->
+      <div class="grievance-done" id="grievanceDone" hidden role="status"
+           aria-live="polite">
+        <span class="gd-tick" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none"><path d="m5 12 4 4L19 6" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </span>
+        <div class="gd-text">
+          <strong id="grievanceDoneTitle"></strong>
+          <span id="grievanceDoneText"></span>
         </div>
       </div>
 
@@ -276,6 +307,9 @@
                assistant said "review the text on screen"; a citizen who
                cannot read it needs this. -->
           <button class="btn" id="answerReadOut" type="button" hidden></button>
+          <!-- Only for a grievance. It asks the same question the voice path
+               asks for "change that", and lands in the same state. -->
+          <button class="btn" id="answerEdit" type="button" hidden></button>
         </div>
       </div>
 

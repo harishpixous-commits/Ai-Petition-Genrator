@@ -129,21 +129,82 @@ SPOKEN: dict[str, dict[str, str]] = {
     # speaking and not of typing, and it is appended to the question rather
     # than replacing it.
     "long_intro": {
-        "en": ("Take as much time as you need. When you are finished, pause "
-               "or say 'finished'."),
-        "ta": ("தேவையான அளவு விரிவாக பேசுங்கள். நீங்கள் முடித்ததும் "
+        "en": "You may take your time. When you are finished, say 'finished'.",
+        "ta": ("தேவையான அளவு விரிவாக பேசலாம். நீங்கள் முடித்ததும் "
                "'முடிந்தது' என்று சொல்லலாம்."),
     },
     # After a long grievance. The text is NOT read back: two minutes of
     # speech read back is two minutes nobody listens to, and the whole of it
     # is on the screen in front of them.
     "long_captured": {
-        "en": ("I captured your full grievance. Please review the text on "
-               "screen. Would you like to confirm it, add more details, or "
-               "say it again?"),
-        "ta": ("உங்கள் முழு குறையும் பதிவு செய்யப்பட்டுள்ளது. திரையில் உள்ள "
-               "உரையை சரிபார்க்கவும். உறுதி செய்யலாமா, மேலும் விவரம் "
-               "சேர்க்கலாமா, அல்லது மீண்டும் சொல்ல வேண்டுமா?"),
+        "en": ("Your grievance has been recorded. Is this correct? You can "
+               "say Yes, Retry, or tell me what you want to change."),
+        "ta": ("உங்கள் குறை பதிவு செய்யப்பட்டுள்ளது. இது சரியா? "
+               "'ஆம்', 'மீண்டும்', அல்லது மாற்ற வேண்டியதைச் சொல்லலாம்."),
+    },
+    # Retry, when the citizen rejects the whole grievance. Distinct from the
+    # short-field `say_again`: "please tell me again", said of a two-minute
+    # complaint, does not make clear that the whole thing is being redone.
+    "long_say_again": {
+        "en": "Okay. Please tell me your grievance again.",
+        "ta": "சரி. உங்கள் குறையை மீண்டும் முழுமையாக சொல்லுங்கள்.",
+    },
+    "long_confirmed": {
+        "en": "Grievance confirmed.",
+        "ta": "குறை உறுதி செய்யப்பட்டது.",
+    },
+    "long_paused": {
+        "en": "Paused. Say continue when you are ready.",
+        "ta": "நிறுத்தப்பட்டது. தயாரானதும் தொடரலாம்.",
+    },
+    "long_resumed": {
+        "en": "Please continue. I am listening.",
+        "ta": "தொடர்ந்து சொல்லுங்கள். நான் கேட்டுக்கொண்டிருக்கிறேன்.",
+    },
+    # --- editing a captured grievance by voice ----------------------------
+    #
+    # Every one of these ends by asking again. An edit is never an approval:
+    # the citizen hears what changed, sees the whole text, and is asked
+    # whether it is right NOW.
+    "edit_changed": {
+        "en": "I changed {old} to {new}. Is the grievance correct now?",
+        "ta": "{old} என்பதை {new} என்று மாற்றிவிட்டேன். இப்போது சரியா?",
+    },
+    "edit_removed": {
+        "en": "I removed that. Is the grievance correct now?",
+        "ta": "அதை நீக்கிவிட்டேன். இப்போது சரியா?",
+    },
+    "edit_added": {
+        "en": "I added that. Is the grievance correct now?",
+        "ta": "அதைச் சேர்த்துவிட்டேன். இப்போது சரியா?",
+    },
+    # The brief, word for word: Citizen "Change that." -> AI "Which part
+    # would you like to change?" -> Do not guess.
+    "edit_which_part": {
+        "en": "Which part would you like to change?",
+        "ta": "எந்த பகுதியை மாற்ற வேண்டும்?",
+    },
+    "edit_what_instead": {
+        "en": "What should it say instead?",
+        "ta": "அதற்குப் பதிலாக என்ன சொல்ல வேண்டும்?",
+    },
+    "edit_not_found": {
+        "en": ("I could not find those words in your grievance. Which part "
+               "would you like to change?"),
+        "ta": ("அந்த வார்த்தைகள் உங்கள் குறையில் கிடைக்கவில்லை. "
+               "எந்த பகுதியை மாற்ற வேண்டும்?"),
+    },
+    "edit_only_one": {
+        "en": ("That is the whole grievance. Say 'again' to record it from "
+               "the start, or tell me what to change."),
+        "ta": ("அதுதான் முழு குறை. முதலிலிருந்து சொல்ல 'மீண்டும்' "
+               "என்று சொல்லலாம், அல்லது மாற்ற வேண்டியதைச் சொல்லுங்கள்."),
+    },
+    "edit_too_long": {
+        "en": ("There is not enough room left to add that. Everything you "
+               "have said is saved."),
+        "ta": ("அதைச் சேர்க்க இடம் போதாது. சொன்ன அனைத்தும் "
+               "பதிவில் உள்ளது."),
     },
     "long_continue": {
         "en": "Please continue.",

@@ -382,7 +382,9 @@ class TestWhatTheAssistantSays:
             session.drain("tts.start")
             said = " ".join(session.spoken_lines())
 
-        assert "as much time as you need" in said.lower(), said
+        # The wording is the brief's, word for word.
+        assert "take your time" in said.lower(), said
+        assert "finished" in said.lower(), said
         # Appended to the workflow's own question, not instead of it.
         assert AtGrievance.question() in said, said
 
@@ -399,7 +401,12 @@ class TestWhatTheAssistantSays:
             session.settle(Phase.WAITING_CONFIRMATION)
             said = " ".join(session.spoken_lines())
 
-        assert "review the text on screen" in said.lower(), said
+        # Not recited, and the three things the citizen may now do are
+        # named — the brief's wording: "You can say Yes, Retry, or tell me
+        # what you want to change."
+        assert "is this correct" in said.lower(), said
+        for offer in ("yes", "retry", "change"):
+            assert offer in said.lower(), (offer, said)
         assert "Sentence 7" not in said, "the whole thing was read out after all"
         assert session.card()["lengthy"] is True
         # ...but the page was given every word of it.

@@ -45,6 +45,8 @@ _REFUSE_EN = (
     "tell you again", "say it again", "repeat", "repeating", "again",
     "change it", "change that", "want to change", "let me change",
     "let me repeat", "let me say", "let me tell", "redo", "start over",
+    "start again", "start from the beginning", "do it again", "do it over",
+    "i want to say it again", "say it once more", "once more",
     "no", "nope", "nah", "not that", "thats not",
 )
 _REFUSE_TA = (
@@ -70,6 +72,8 @@ _AGREE_EN = (
     "continue", "proceed", "go ahead", "move ahead", "moving ahead",
     "carry on", "next one", "next", "good", "perfect",
     "exactly", "done", "save it", "keep it",
+    "sari", "seri", "sarithan", "serithan", "sari than", "seri than",
+    "aama", "aamam", "aamaam", "aamaa", "sariya",
 )
 _AGREE_TA = (
     # "ஆம்" / "ஆமாம்" — yes. "ஆமா" is the spoken form and is what a
@@ -81,7 +85,7 @@ _AGREE_TA = (
     # "தொடரலாம்" — let us continue. "அடுத்தது" — next.
     "தொடர", "அடுத்த",
     # "ஓகே" — okay. "இதுதான்" — this is it. "உறுதி" — confirm.
-    "ஓகே", "இதுதான்",
+    "ஓகே", "இதுதான்", "அதுதான்",
     "உறுதி", "பரவாயில்ல",
 )
 
@@ -257,6 +261,24 @@ def _as_answer(original: str) -> str:
     return text.strip(" ,.:;-—")
 
 
+def is_refusal(text: str, language: Language = "en") -> bool:
+    """Did the citizen use an explicit word of refusal?
+
+    Narrower than `read(...).intent == "retry"`, which is also what comes
+    back when an utterance was simply too thin to act on. This asks only
+    whether one of the refusal words is actually in it.
+
+    It exists for one place: while the assistant is asking WHICH PART of a
+    grievance to change, a citizen who has thought better of the whole thing
+    says "start again". That is not the name of a phrase in their complaint,
+    so the clarification would ask again, and again — and the fallback
+    reading of "retry" cannot be used to escape, because it is also what a
+    misheard phrase returns, and escaping on it would throw the complaint
+    away every time a word was not found.
+    """
+    return _present(_normalise(text), _REFUSE_EN + _REFUSE_TA)
+
+
 def read(text: str, language: Language = "en") -> Reading:
     """Interpret a reply to "is that correct?".
 
@@ -339,7 +361,7 @@ _MORE_EN = (
     "add one more", "i want to add", "i would like to add", "want to add",
     "also", "and also", "additionally", "in addition", "furthermore",
     "i forgot", "i forgot to mention", "forgot to say", "let me add",
-    "there is more", "theres more", "more to say", "continue", "carry on",
+    "there is more", "theres more", "more to say",
 )
 _MORE_TA = (
     # "இன்னும்" — more / still. "மேலும்" — furthermore.

@@ -214,3 +214,58 @@ class TestOnlyThePetitionIsPrinted:
         """None of these are named in the print rules. All of them sit below
         a level the chain hides, which is why naming them is unnecessary."""
         assert panel not in print_block()
+
+
+class TestEveryPageHasAMargin:
+    """REPORTED FROM A TWO-PAGE PRINT PREVIEW. Page two began hard against
+    the top edge of the sheet, the first line of Tamil touching the paper.
+
+    `padding` cannot do this. It opens at the top of the first page and
+    closes at the bottom of the last, and the pages in between get neither.
+    `@page{margin}` can, and is the one thing not available here: Chrome
+    draws its own header and footer inside the page margin, so giving the
+    page a real margin gives them the room they were denied on purpose.
+
+    A repeating table part is what is left, and it is the right tool rather
+    than a workaround — `table-header-group` exists to be drawn again at the
+    top of every page it spans.
+    """
+
+    def test_the_page_still_has_no_margin_of_its_own(self):
+        """Because that is what keeps the browser's header off the paper.
+        If this ever goes back, the date and the URL come back with it."""
+        assert re.search(r"@page\{[^}]*margin:0", print_block().replace(" ", ""))
+
+    def test_the_gutter_repeats_on_every_page(self):
+        block = print_block().replace(" ", "").replace("\n", "")
+
+        assert "display:table-header-group" in block
+        assert "display:table-footer-group" in block
+
+    def test_the_paper_is_a_table_so_the_parts_apply(self):
+        """A header group inside something that is not a table is drawn
+        once, as an ordinary block, and page two is bare again."""
+        block = print_block().replace(" ", "").replace("\n", "")
+
+        assert "display:table!important" in block
+
+    def test_the_gutter_has_a_height(self):
+        """An empty repeating part with no height is no margin at all."""
+        block = print_block().replace(" ", "").replace("\n", "")
+        gutter = re.search(r"\.paper::before,\.paper::after\{([^}]*)\}", block)
+
+        assert gutter, block
+        assert "mm" in gutter.group(1), gutter.group(1)
+
+    def test_the_side_margins_stay_as_padding(self):
+        """A page break is horizontal, so the sides already apply to every
+        page and need none of this."""
+        block = print_block().replace(" ", "").replace("\n", "")
+        paper = re.search(r"\.paper\{([^}]*)\}", block)
+
+        assert "padding:016mm" in paper.group(1), paper.group(1)
+
+    def test_the_emblem_is_not_repeated_into_the_gutter(self):
+        """It is a background positioned against the top of the paper. With
+        a repeating header above it, it would print again on page two."""
+        assert "has-emblem" in print_block()

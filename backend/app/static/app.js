@@ -150,7 +150,10 @@ const UI = {
       idle: "Voice off",
       connecting: "Connecting…",
       listening: "Listening…",
-      long_listening: "Recording grievance…",
+      long_listening: "Listening to your grievance…",
+      long_paused: "Paused",
+      long_editing: "Updating your grievance…",
+      long_confirmed: "Grievance confirmed",
       user_speaking: "You're speaking…",
       transcribing: "Transcribing…",
       reading_back: "Reading back…",
@@ -171,11 +174,22 @@ const UI = {
     answerReadOut: "Read it to me",
     noiseOn: "✓ Noise reduction active",
     noiseHigh: "High background noise — please speak a little closer to the microphone.",
-    dictationTitle: "Recording grievance…",
+    dictationTitle: "Listening to your grievance…",
     dictationPaused: "Grievance captured",
+    dictationHeld: "Paused",
+    dictationSub: "You can continue speaking",
+    dictationSubHeld: "Press Resume when you are ready",
+    dictationSubDone: "Check it below, then confirm it",
     dictationEmpty: "Your words will appear here as you speak.",
     dictationFinish: "Finish",
+    dictationPause: "Pause",
+    dictationResume: "Resume",
     dictationRestart: "Start over",
+    answerEdit: "Edit",
+    answerGrievanceHeading: "Your grievance",
+    answerGrievanceAsk: "Say yes, retry, or tell me what to change.",
+    grievanceDoneTitle: "Grievance confirmed",
+    grievanceDoneText: "Your grievance has been saved.",
     dictationCount: (n) => n === 1 ? "1 part" : `${n} parts`,
     dictationSafe: "Connection interrupted. Your recorded grievance is safe. Please continue.",
     dictationFull: "The box is full. Please send what is there before saying more.",
@@ -344,7 +358,10 @@ const UI = {
       idle: "குரல் நிறுத்தப்பட்டது",
       connecting: "இணைக்கப்படுகிறது…",
       listening: "கேட்கிறேன்…",
-      long_listening: "குறை பதிவாகிறது…",
+      long_listening: "உங்கள் குறையை கேட்கிறேன்…",
+      long_paused: "நிறுத்தப்பட்டது",
+      long_editing: "குறை மாற்றப்படுகிறது…",
+      long_confirmed: "குறை உறுதி செய்யப்பட்டது",
       user_speaking: "நீங்கள் பேசுகிறீர்கள்…",
       transcribing: "புரிந்துகொள்கிறேன்…",
       reading_back: "மீண்டும் வாசிக்கிறேன்…",
@@ -365,11 +382,22 @@ const UI = {
     answerReadOut: "படித்துக் காட்டு",
     noiseOn: "✓ பின்னணி சத்தம் குறைக்கப்படுகிறது",
     noiseHigh: "பின்னணி சத்தம் அதிகமாக உள்ளது. மைக்ரோஃபோனுக்கு அருகில் பேசுங்கள்.",
-    dictationTitle: "குறை பதிவாகிறது…",
+    dictationTitle: "உங்கள் குறையை கேட்கிறேன்…",
     dictationPaused: "குறை பதிவு செய்யப்பட்டது",
+    dictationHeld: "நிறுத்தப்பட்டது",
+    dictationSub: "தொடர்ந்து பேசலாம்",
+    dictationSubHeld: "தயாரானதும் தொடர் என்பதை அழுத்தவும்",
+    dictationSubDone: "கீழே பார்த்து உறுதி செய்யவும்",
     dictationEmpty: "நீங்கள் பேசும்போது உங்கள் வார்த்தைகள் இங்கே தோன்றும்.",
     dictationFinish: "முடிந்தது",
+    dictationPause: "நிறுத்து",
+    dictationResume: "தொடர்",
     dictationRestart: "மீண்டும் தொடங்கு",
+    answerEdit: "மாற்று",
+    answerGrievanceHeading: "உங்கள் குறை",
+    answerGrievanceAsk: "ஆம், மீண்டும், அல்லது மாற்ற வேண்டியதைச் சொல்லுங்கள்.",
+    grievanceDoneTitle: "குறை உறுதி செய்யப்பட்டது",
+    grievanceDoneText: "உங்கள் குறை சேமிக்கப்பட்டது.",
     dictationCount: (n) => n === 1 ? "1 பகுதி" : `${n} பகுதிகள்`,
     dictationSafe: "இணைப்பு தற்காலிகமாக துண்டிக்கப்பட்டது. இதுவரை பதிவு செய்யப்பட்ட குறை பாதுகாப்பாக உள்ளது. தொடர்ந்து சொல்லுங்கள்.",
     dictationFull: "பெட்டி நிரம்பிவிட்டது. மேலும் சொல்வதற்கு முன் உள்ளதை அனுப்பவும்.",
@@ -2119,6 +2147,9 @@ const VOICE = {
   USER_SPEAKING: "user_speaking", TRANSCRIBING: "transcribing",
   READING_BACK: "reading_back", WAITING_CONFIRMATION: "waiting_confirmation",
   LONG_LISTENING: "long_listening",
+  LONG_PAUSED: "long_paused",
+  LONG_EDITING: "long_editing",
+  LONG_CONFIRMED: "long_confirmed",
   PROCESSING: "processing", GENERATING: "generating",
   ASSISTANT_SPEAKING: "assistant_speaking",
   RECONNECTING: "reconnecting", ERROR: "error", ENDED: "ended",
@@ -2262,21 +2293,84 @@ function showDictation(m) {
   const panel = $("dictation");
   if (!m || (!m.capturing && !m.text)) {
     panel.hidden = true;
+    dictationPaused = false;
     stopDictationClock();
     return;
   }
-  $("dictationTitle").textContent = m.capturing ? t.dictationTitle : t.dictationPaused;
+  dictationPaused = m.paused === true;
+  // THREE STATES, not two. "Recording", "paused" and "captured" are
+  // different things to a citizen mid-complaint, and showing "captured"
+  // over a pause tells them it has been taken when it has not.
+  const held = dictationPaused;
+  const live = m.capturing && !held;
+  $("dictationTitle").textContent =
+    live ? t.dictationTitle : held ? t.dictationHeld : t.dictationPaused;
+  $("dictationSub").textContent =
+    live ? t.dictationSub : held ? t.dictationSubHeld : t.dictationSubDone;
   $("dictationCount").textContent = m.segments ? t.dictationCount(m.segments) : "";
   $("dictationText").textContent = m.text || "";
   $("dictationText").dataset.empty = t.dictationEmpty;
   $("dictationFinish").textContent = t.dictationFinish;
+  $("dictationPause").textContent = held ? t.dictationResume : t.dictationPause;
   $("dictationRestart").textContent = t.dictationRestart;
   $("dictationFinish").disabled = !m.segments;
+  $("dictationPause").hidden = !m.capturing && !held;
+
+  // Claimed only when the track REPORTED it on. Firefox applies some of
+  // these constraints, Safari applies them differently, and a conference
+  // microphone may do its own processing and refuse — none of which fails
+  // `getUserMedia`. A tick the citizen cannot check is worse than no tick.
+  const noise = $("dictationNoise");
+  noise.textContent = t.noiseOn.replace(/^\u2713\s*/, "");
+  noise.hidden = voice.processing.noise !== true;
+
+  // The bars follow the real input level. Flat while paused, because the
+  // microphone really is closed then.
+  panel.dataset.live = live ? "on" : "off";
   panel.hidden = false;
   // The transcript grows downwards; a citizen watching it wants the words
   // they just said, not the ones they opened with.
   $("dictationText").scrollTop = $("dictationText").scrollHeight;
-  if (m.capturing) startDictationClock(); else stopDictationClock();
+  if (live) startDictationClock(); else stopDictationClock();
+}
+
+/** Twelve bars, scaled by the measured microphone level.
+ *
+ * NOT an animation on a timer. This panel is the one thing a citizen uses
+ * to decide whether they are being heard, so bars that keep dancing at a
+ * muted, unplugged or denied microphone are the most misleading pixels on
+ * the page. No level, no movement. */
+function paintDictationBars() {
+  const panel = $("dictation");
+  if (panel.hidden || panel.dataset.live !== "on") return;
+  const bars = panel.querySelectorAll(".dc-wave i");
+  const level = Math.min(1, (voice.rms || 0) / 0.22);
+  for (let i = 0; i < bars.length; i++) {
+    // A fixed shape across the row so the middle reads as louder than the
+    // ends, multiplied by the real level. The jitter is small and seeded
+    // per-bar, so it looks like sound rather than a progress bar.
+    const shape = 0.45 + 0.55 * Math.sin((i + 1) / (bars.length + 1) * Math.PI);
+    const jitter = 0.75 + 0.25 * Math.sin(Date.now() / 90 + i * 1.7);
+    const pct = Math.max(8, Math.round(level * shape * jitter * 100));
+    bars[i].style.height = pct + "%";
+  }
+}
+
+let dictationPaused = false;
+
+/** The complaint is settled. Shown briefly, then the next question is
+ *  asked on its own — the card is an acknowledgement, not a step. */
+let grievanceDoneTimer = null;
+
+function showGrievanceDone(confirmed) {
+  const panel = $("grievanceDone");
+  if (!confirmed) { panel.hidden = true; return; }
+  const t = T();
+  $("grievanceDoneTitle").textContent = t.grievanceDoneTitle;
+  $("grievanceDoneText").textContent = t.grievanceDoneText;
+  panel.hidden = false;
+  if (grievanceDoneTimer) clearTimeout(grievanceDoneTimer);
+  grievanceDoneTimer = setTimeout(() => { panel.hidden = true; }, 6000);
 }
 
 let dictationStartedAt = 0;
@@ -2309,13 +2403,26 @@ $("dictationRestart").onclick = () => {
   send({ type: "dictation.restart" });
 };
 
-function showAnswer(answer, { lengthy = false } = {}) {
+$("dictationPause").onclick = () => {
+  // One button, both directions. The server is the authority on which state
+  // it is in; this only asks, and the panel repaints when it answers.
+  send({ type: dictationPaused ? "dictation.resume" : "dictation.pause" });
+};
+
+function showAnswer(answer, { lengthy = false, grievance = false } = {}) {
   const t = T();
   const panel = $("answerCheck");
   if (!answer) { panel.hidden = true; return; }
-  $("answerHeading").textContent = t.answerHeading;
+  // A grievance is named as one, and the three things that can be done with
+  // it are spelled out. "Your answer / Is that correct?" over two minutes of
+  // somebody's complaint understates what is being asked of them.
+  $("answerHeading").textContent =
+    grievance ? t.answerGrievanceHeading : t.answerHeading;
   $("answerValue").textContent = answer;
-  $("answerAsk").textContent = t.answerAsk;
+  $("answerAsk").textContent = grievance ? t.answerGrievanceAsk : t.answerAsk;
+  $("answerEdit").textContent = t.answerEdit;
+  $("answerEdit").hidden = !grievance;
+  $("answerEdit").disabled = false;
   $("answerConfirm").textContent = t.answerConfirm;
   $("answerRetry").textContent = t.answerRetryBtn;
   $("answerConfirm").disabled = false;
@@ -2328,6 +2435,13 @@ function showAnswer(answer, { lengthy = false } = {}) {
 }
 
 $("answerReadOut").onclick = () => { send({ type: "answer.read" }); };
+
+$("answerEdit").onclick = () => {
+  // The same workflow action as saying "change that": the server asks which
+  // part, and the answer to that question arrives by voice like any other.
+  $("answerEdit").disabled = true;
+  send({ type: "answer.edit" });
+};
 
 $("answerConfirm").onclick = () => {
   // Disabled immediately, not on the reply. A second press would send a
@@ -2655,6 +2769,8 @@ function startMeter() {
       voice.playRms = 0;
     }
 
+    paintDictationBars();
+
     const meter = $("voiceMeter");
     if (!meter.hidden) {
       const pct = Math.min(100, Math.round((voice.rms / 0.25) * 100));
@@ -2925,7 +3041,8 @@ function openSocket() {
         // outstanding. The page never guesses — it draws what it is told,
         // including being told there is nothing, which is what closes the
         // panel after a confirm, a retry or a dropped connection.
-        showAnswer(m.awaiting ? (m.answer || "") : null, { lengthy: Boolean(m.lengthy) });
+        showAnswer(m.awaiting ? (m.answer || "") : null,
+                   { lengthy: Boolean(m.lengthy), grievance: Boolean(m.grievance) });
         break;
 
       case "voice.noise":
@@ -2934,6 +3051,10 @@ function openSocket() {
         // that helps.
         voice.noisyRoom = Boolean(m.high);
         paintVoice({});
+        break;
+
+      case "voice.grievance":
+        showGrievanceDone(m.confirmed === true);
         break;
 
       case "voice.dictation":

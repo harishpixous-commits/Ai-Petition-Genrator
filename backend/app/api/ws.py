@@ -80,9 +80,12 @@ from enum import StrEnum
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from ..config import get_settings
-from ..domain.answer_intent import continuation, finished
+from ..domain.answer_intent import continuation, finished, is_refusal
 from ..domain.answer_intent import read as read_intent
 from ..domain.fields import MAX_FREE_TEXT, read_boolean
+from ..domain.grievance_edit import EditRequest, read_edit
+from ..domain.grievance_edit import apply as apply_edit
+from ..domain.grievance_edit import contains as grievance_contains
 from ..domain.phrasing import phrase
 from ..domain.templates import next_field, the_template
 from ..logging_setup import preview, session_context
@@ -103,11 +106,35 @@ router = APIRouter()
 # should have been, so neither pattern matched anything in English and only
 # the Tamil alternatives worked — saying "stop" did nothing at all. The
 # tests pin both directions now.
+# TWO PHRASES CAME OUT OF THIS, and both were collisions. The grievance
+# confirmation consults the same pattern, which is what found them.
+#
+# "go ahead" was listed literally. Answering "go ahead" to "shall I read
+# your petition?" is a yes — but the same pattern is consulted when the
+# assistant has just read a GRIEVANCE back and asked whether it is correct,
+# and there "go ahead" means yes, that is right, move on. The citizen was
+# recited their own complaint instead of being taken at their word. It is
+# still honoured at the finished petition, where the question really is
+# "shall I read it?" — see `_GO_AHEAD` below.
+#
+# "படி" is two letters, and Tamil is matched as a substring because \b does
+# not work against the script. It sits inside "மறுபடியும்" — AGAIN, one
+# of the two commonest ways to reject an answer — and inside "படிவம்",
+# form. A citizen saying their grievance was wrong had it read back to them.
+# The longer forms carry the same meaning and collide with neither.
 _READ_ALOUD = re.compile(
-    r"\b(read|aloud|go ahead)\b"
-    r"|படி|வாசி|வாசிக்க|படிக்க",
+    r"\b(read|aloud)\b"
+    # The bare imperative படி is kept, but ONLY as the whole utterance.
+    # Two characters matched anywhere is what put it inside மறுபடியும் and
+    # படிவம்; said on its own it is unambiguous.
+    r"|^\s*படி\s*$"
+    r"|படிக்க|படித்த|படிச்ச|படியுங்|வாசி|வாசிக்க",
     re.I,
 )
+# Only ever consulted once the petition exists and the assistant has offered
+# to read it out. Deliberately NOT part of `_READ_ALOUD`, which is also
+# consulted at a read-back, where every phrase here means agreement.
+_GO_AHEAD = re.compile(r"\b(go ahead|carry on|please do)\b", re.I)
 _STOP_READING = re.compile(
     r"\b(stop|enough|quiet)\b"
     r"|நிறுத்து|போதும்|வேண்டாம்",
@@ -255,6 +282,20 @@ class Phase(StrEnum):
     `isSpeaking` and `isProcessing` can all be true at once by accident, and
     when they are, the page shows a microphone that is listening to a citizen
     the server has stopped hearing.
+
+    THE GRIEVANCE STATES, under the names the brief gave them. Most already
+    existed under a name that is true of every field, and renaming them would
+    have made the enum lie about the short answers that share them:
+
+        GRIEVANCE_READY                 the field is on the table; long_mode
+        GRIEVANCE_LISTENING             LONG_LISTENING
+        GRIEVANCE_USER_SPEAKING         USER_SPEAKING
+        GRIEVANCE_PAUSED                LONG_PAUSED          (new)
+        GRIEVANCE_TRANSCRIBING          TRANSCRIBING
+        GRIEVANCE_REVIEW                READING_BACK
+        GRIEVANCE_WAITING_CONFIRMATION  WAITING_CONFIRMATION
+        GRIEVANCE_EDITING               LONG_EDITING         (new)
+        GRIEVANCE_CONFIRMED             LONG_CONFIRMED       (new)
     """
 
     IDLE = "idle"
@@ -274,6 +315,18 @@ class Phase(StrEnum):
     # two-minute narration reads as though the assistant is waiting for them
     # to finish a sentence.
     LONG_LISTENING = "long_listening"
+    # The citizen asked for a moment. The microphone is off and nothing is
+    # collected, but the grievance so far is intact and the step has not
+    # moved on. Distinct from IDLE, which means the session is not listening
+    # at all, and from LONG_LISTENING, whose page shows a live recording
+    # indicator that would be a lie here.
+    LONG_PAUSED = "long_paused"
+    # A captured grievance is being changed by voice: the instruction has
+    # been understood and the new text is on its way to the screen.
+    LONG_EDITING = "long_editing"
+    # Agreed to. Held while the success card is shown, and then the next
+    # question is asked without anybody pressing anything.
+    LONG_CONFIRMED = "long_confirmed"
     PROCESSING = "processing"
     GENERATING = "generating"
     ASSISTANT_SPEAKING = "assistant_speaking"
@@ -398,6 +451,26 @@ async def voice(websocket: WebSocket, session_id: str, language: str = "en") -> 
         segments: list[str] = _take_draft(session_id) if long_mode else []
         finish_task: asyncio.Task | None = None
 
+        # The citizen asked for a moment. Audio still arrives and is still
+        # discarded before the detector, exactly as it is while the assistant
+        # is speaking — a pause that goes on transcribing is not a pause.
+        paused = False
+
+        # Where an unclear edit instruction has got to.
+        #
+        #   ""              nothing outstanding
+        #   "which_part"    asked which words; waiting to be told them
+        #   "what_instead"  told which words; waiting for the replacement
+        #
+        # THE BRIEF SAYS "do not guess", and this is what not guessing costs.
+        # "Change that" names an operation and no operand, and the only
+        # honest reply is a question. Two steps rather than one, because
+        # naming the words does not say what to put there: "the five days
+        # part" is half an instruction, and acting on half is the guessing
+        # this exists to avoid.
+        edit_stage = ""
+        edit_target = ""
+
         guard = SpeechCommitGuard(
             min_voiced_ms=settings.voice_min_voiced_ms,
             min_voiced_ratio=settings.voice_min_voiced_ratio,
@@ -427,7 +500,7 @@ async def voice(websocket: WebSocket, session_id: str, language: str = "en") -> 
             everything it has learnt about the room survives, and every test
             that decides whether a sound was speech is untouched.
             """
-            patient = long_mode and not dictation_only
+            patient = long_mode and not dictation_only and not paused
             vad.set_hangover(settings.voice_long_silence_ms if patient
                              else settings.voice_silence_ms)
 
@@ -685,8 +758,13 @@ async def voice(websocket: WebSocket, session_id: str, language: str = "en") -> 
                 await websocket.send_json({"type": "state", "state": session_view(result)})
                 return result
 
-        async def respond(result: dict) -> None:
-            """Say whatever the workflow decided, in the form fit to be said."""
+        async def respond(result: dict, *, said_first: str = "") -> None:
+            """Say whatever the workflow decided, in the form fit to be said.
+
+            `said_first` is put in front of it in the same utterance. It is
+            how a confirmed grievance is acknowledged without the next
+            question becoming a separate turn with a silence in front of it.
+            """
             nonlocal language
             if result is None:
                 return
@@ -722,6 +800,11 @@ async def voice(websocket: WebSocket, session_id: str, language: str = "en") -> 
                 spoken = f"{spoken} {speech_text.phrase('long_intro', language)}"
                 long_introduced = True
 
+            if said_first and spoken:
+                spoken = f"{said_first} {spoken}"
+            elif said_first:
+                spoken = said_first
+
             if listening and spoken:
                 await start_speaking(spoken)
             else:
@@ -750,7 +833,8 @@ async def voice(websocket: WebSocket, session_id: str, language: str = "en") -> 
         # two of them directly, and both end up here.
         # ---------------------------------------------------------------- #
 
-        async def announce_pending(spoken: str | None, *, lengthy: bool = False) -> None:
+        async def announce_pending(spoken: str | None, *, lengthy: bool = False,
+                                   grievance: bool = False) -> None:
             """Tell the page what is outstanding, so its buttons agree with
             the assistant's voice. Sent on every change, `answer: null`
             included, so a panel can never be left up over nothing.
@@ -765,6 +849,10 @@ async def voice(websocket: WebSocket, session_id: str, language: str = "en") -> 
                     "answer": spoken,
                     "awaiting": spoken is not None,
                     "lengthy": lengthy,
+                    # So the card can name it, and offer Edit. A grievance is
+                    # the only answer the citizen can change a piece of; for
+                    # a name or a mobile number, retrying IS the edit.
+                    "grievance": grievance,
                 })
 
         # ---------------------------------------------------------------- #
@@ -791,6 +879,7 @@ async def voice(websocket: WebSocket, session_id: str, language: str = "en") -> 
                 await websocket.send_json({
                     "type": "voice.dictation",
                     "capturing": capturing,
+                    "paused": paused,
                     "segments": len(segments),
                     "text": grievance_so_far(),
                 })
@@ -911,7 +1000,7 @@ async def voice(websocket: WebSocket, session_id: str, language: str = "en") -> 
             pending = answer
             spoken = mask_for_display(answer)
             lengthy = len(answer) > settings.voice_long_readback_chars
-            await announce_pending(spoken, lengthy=lengthy)
+            await announce_pending(spoken, lengthy=lengthy, grievance=long_mode)
             # A two-minute grievance read back word for word is two minutes
             # nobody listens to, and the whole of it is already on screen. A
             # short answer is recited, because hearing it is the only way a
@@ -920,6 +1009,133 @@ async def voice(websocket: WebSocket, session_id: str, language: str = "en") -> 
                 asking, answer, language, lengthy=lengthy)
             await start_speaking(sentence, as_phase=Phase.READING_BACK)
 
+        # ---------------------------------------------------------------- #
+        # Editing a captured grievance by voice
+        # ---------------------------------------------------------------- #
+        #
+        # The citizen has heard their complaint read back and, instead of
+        # agreeing or rejecting it, has asked for one thing in it to change.
+        # Before this existed that sentence went to `answer_intent.read`,
+        # which saw content in it and returned REPLACE: the whole complaint
+        # was discarded and the six words of the instruction took its place.
+        #
+        # NOTHING HERE APPROVES ANYTHING. Every path below ends by putting
+        # the new text on screen and asking again.
+
+        async def edit_refused(key: str, *, stage: str = "") -> None:
+            """Say why an edit was not made, and leave the grievance alone."""
+            nonlocal edit_stage
+            edit_stage = stage
+            log.info("voice.edit.refused", extra={"reason": key, "stage": stage})
+            await start_speaking(speech_text.phrase(key, language))
+
+        async def run_grievance_edit(request: EditRequest) -> None:
+            """Apply one parsed instruction to the captured grievance."""
+            nonlocal pending, edit_stage, edit_target
+            if pending is None:
+                return
+            if request.action == "unclear":
+                edit_target = request.target
+                await edit_refused(
+                    "edit_what_instead" if request.target else "edit_which_part",
+                    stage="what_instead" if request.target else "which_part")
+                return
+
+            await set_phase(Phase.LONG_EDITING)
+            result = apply_edit(pending, request, limit=MAX_FREE_TEXT)
+            if not result.ok:
+                # The words are not in the complaint. Asked again rather than
+                # approximated: a near-miss substitution into a document
+                # somebody signs is worse than a question.
+                if result.problem == "not_found":
+                    await edit_refused("edit_not_found", stage="which_part")
+                elif result.problem in ("only_one", "would_empty"):
+                    await edit_refused("edit_only_one")
+                elif result.problem == "too_long":
+                    await edit_refused("edit_too_long")
+                else:
+                    edit_target = result.target
+                    await edit_refused("edit_what_instead", stage="what_instead")
+                return
+
+            # THE EDITED TEXT BECOMES THE WHOLE GRIEVANCE, as one segment.
+            # The pieces it was dictated in are gone — an edit spans them,
+            # and keeping the old boundaries would mean the next "also…"
+            # appended to a version of the text that no longer exists.
+            pending = result.text
+            segments.clear()
+            segments.append(result.text)
+            _keep_draft(session_id, segments)
+            edit_stage, edit_target = "", ""
+            log.info("voice.edit.applied",
+                     extra={"action": request.action, "chars": len(result.text)})
+            await announce_segments(capturing=False)
+
+            if request.action == "substitute":
+                said = speech_text.phrase(
+                    "edit_changed", language,
+                    old=mask_for_display(result.target),
+                    new=mask_for_display(result.replacement))
+            elif request.action == "append":
+                said = speech_text.phrase("edit_added", language)
+            else:
+                said = speech_text.phrase("edit_removed", language)
+            # Straight back to the confirmation it came from, with the new
+            # text on the table. `offer_answer` is what puts it there, so an
+            # edited grievance is confirmed by exactly the path an unedited
+            # one is.
+            await offer_answer(result.text, said=said)
+
+        async def continue_clarified_edit(text: str) -> None:
+            """The citizen is answering "which part?" or "what instead?"."""
+            nonlocal edit_stage, edit_target
+            said = (text or "").strip()
+
+            if edit_stage == "what_instead":
+                # Whatever they say now IS the replacement, word for word.
+                target, edit_target = edit_target, ""
+                edit_stage = ""
+                await run_grievance_edit(
+                    EditRequest("substitute", target=target, replacement=said))
+                return
+
+            # "which_part". They may have thought better of it and given the
+            # whole instruction this time.
+            request = read_edit(said, language)
+            if request is not None and request.action != "unclear":
+                edit_stage = ""
+                await run_grievance_edit(request)
+                return
+
+            # Or changed their mind entirely. An outstanding question must
+            # not trap somebody who has decided the text was fine after all.
+            if read_intent(said, language).intent == "confirm":
+                edit_stage = ""
+                await confirm_pending()
+                return
+
+            # Or given up on the edit and decided to redo the whole thing.
+            # Tested on the EXPLICIT refusal words rather than on the "retry"
+            # reading: that reading is also what a phrase too thin to act on
+            # returns, and escaping on it would throw the complaint away
+            # every time a word was misheard — which is the one situation
+            # this branch exists to recover from.
+            if is_refusal(said, language) and not grievance_contains(
+                    pending or "", said):
+                edit_stage = ""
+                await retry_pending()
+                return
+
+            # Otherwise it names the words. They have to be IN the grievance
+            # — this is the check that stops a misheard phrase becoming a
+            # substitution against text that never contained it.
+            if not said or not grievance_contains(pending or "", said):
+                await edit_refused("edit_not_found", stage="which_part")
+                return
+            edit_target = said
+            edit_stage = "what_instead"
+            await start_speaking(speech_text.phrase("edit_what_instead", language))
+
         async def confirm_pending() -> None:
             """The citizen agreed. NOW the workflow sees the answer.
 
@@ -927,19 +1143,34 @@ async def voice(websocket: WebSocket, session_id: str, language: str = "en") -> 
             reached only after the value has been said back to the person it
             belongs to.
             """
-            nonlocal pending
+            nonlocal pending, edit_stage, edit_target
             stop_finish_timer()
             answer, pending = pending, None
+            was_grievance = long_mode and bool(segments)
             segments.clear()
+            edit_stage, edit_target = "", ""
             # Confirmed: it is the petition's now, not a draft.
             _drop_draft(session_id)
             await announce_pending(None)
             await announce_segments(capturing=False)
             if not answer:
                 return
+            # A grievance is the one answer worth marking as settled on its
+            # own. It took minutes to give, it may have been edited twice,
+            # and the citizen should see it accepted rather than infer it
+            # from the next question arriving.
+            if was_grievance:
+                await set_phase(Phase.LONG_CONFIRMED)
+                with contextlib.suppress(Exception):
+                    await websocket.send_json(
+                        {"type": "voice.grievance", "confirmed": True})
             result = await run_turn(answer, via="voice-confirmed")
             if result is not None:
-                await respond(result)
+                # "Grievance confirmed." and then the next question, in ONE
+                # utterance. Two would put a gap between them that reads as
+                # the assistant having finished.
+                await respond(result, said_first=speech_text.phrase(
+                    "long_confirmed", language) if was_grievance else "")
             elif listening:
                 await set_phase(Phase.LISTENING)
 
@@ -953,7 +1184,7 @@ async def voice(websocket: WebSocket, session_id: str, language: str = "en") -> 
             duplicate — asking them to repeat something and then refusing to
             hear it is the worst failure this loop could have.
             """
-            nonlocal pending
+            nonlocal pending, edit_stage, edit_target
             stop_finish_timer()
             answer, pending = pending, None
             if answer:
@@ -963,11 +1194,16 @@ async def voice(websocket: WebSocket, session_id: str, language: str = "en") -> 
             # about a grievance is rejecting the grievance.
             for segment in segments:
                 guard.forget(segment)
+            was_grievance = long_mode and bool(segments)
             segments.clear()
             _drop_draft(session_id)
+            edit_stage, edit_target = "", ""
             await announce_pending(None)
             await announce_segments(capturing=False)
-            await start_speaking(speech_text.phrase("say_again", language))
+            # "Please tell me again", said of a two-minute complaint, does
+            # not make clear that the whole thing is being started over.
+            await start_speaking(speech_text.phrase(
+                "long_say_again" if was_grievance else "say_again", language))
 
         async def resume_dictation(extra: str) -> None:
             """They had more to say. The grievance is REOPENED, not replaced.
@@ -1070,7 +1306,8 @@ async def voice(websocket: WebSocket, session_id: str, language: str = "en") -> 
                 return False
 
             answer = read_boolean(text)
-            wants_read = answer is True or _READ_ALOUD.search(text or "")
+            wants_read = (answer is True or _READ_ALOUD.search(text or "")
+                          or _GO_AHEAD.search(text or ""))
             wants_stop = answer is False or _STOP_READING.search(text or "")
 
             if wants_stop:
@@ -1102,6 +1339,23 @@ async def voice(websocket: WebSocket, session_id: str, language: str = "en") -> 
                 # would be a correction, and the citizen's whole narration
                 # would be replaced by the afterthought.
                 if long_mode:
+                    # A clarification is outstanding. This utterance answers
+                    # it and nothing else — reading it any other way would
+                    # take "the five days part" for a new grievance.
+                    if edit_stage:
+                        await continue_clarified_edit(text)
+                        return
+                    # AN EDIT IS TESTED BEFORE A CONTINUATION. Both can be
+                    # true of one sentence: "மேலும் ஐந்து நாட்கள் என்பதை
+                    # மூன்று நாட்கள் என்று மாற்றவும்" opens with மேலும், a
+                    # continuation cue, and read that way the instruction to
+                    # change the complaint is APPENDED to it instead.
+                    request = read_edit(text, language)
+                    if request is not None:
+                        log.info("voice.edit.heard",
+                                 extra={"action": request.action})
+                        await run_grievance_edit(request)
+                        return
                     carry = continuation(text, language)
                     if carry is not None:
                         log.info("voice.dictation.resumed",
@@ -1332,6 +1586,14 @@ async def voice(websocket: WebSocket, session_id: str, language: str = "en") -> 
                     and not reading_aloud):
                 return
 
+            # PAUSED, at the same gate and for the same reason. Discarding
+            # here rather than at the transcript is what makes the pause
+            # true: nothing is detected, nothing is sent, nothing is billed,
+            # and a conversation in the room while the citizen thinks cannot
+            # become a sentence in their complaint.
+            if paused:
+                return
+
             # Held before it is classified: if this buffer turns out to be
             # where a word began, the one before it carries the beginning.
             eos.remember(chunk)
@@ -1414,6 +1676,17 @@ async def voice(websocket: WebSocket, session_id: str, language: str = "en") -> 
                                                   Phase.GENERATING,
                                                   Phase.READING_BACK,
                                                   Phase.ASSISTANT_SPEAKING):
+                        continue
+                    # A PAUSE IS NOT A SILENCE. `last_voice_at` is refreshed
+                    # by audio arriving, and a pause discards audio before
+                    # anything touches it — so the quiet clock kept running,
+                    # and a citizen who asked for a minute to think had the
+                    # session taken away at the end of it, with their
+                    # half-told complaint on the screen. They said they were
+                    # coming back. An abandoned pause ends when the socket
+                    # does, and on a kiosk the terminal's own idle reset
+                    # closes it.
+                    if paused:
                         continue
                     await check_the_room()
                     quiet = time.monotonic() - last_voice_at
@@ -1602,9 +1875,45 @@ async def voice(websocket: WebSocket, session_id: str, language: str = "en") -> 
                     # The page's Finish button. The same call the citizen
                     # makes by saying "finished", and by falling quiet.
                     if long_mode and segments and pending is None:
+                        paused = False
+                        apply_pace()
                         await stop_speaking(interrupted=False)
                         eos.abandon()
                         await close_dictation()
+
+                elif kind == "dictation.pause":
+                    # A real pause, not a cosmetic one: the audio gate drops
+                    # every buffer while this is set, so the room is not
+                    # transcribed and the finish timer cannot decide the
+                    # citizen has stopped for good while they are thinking.
+                    if long_mode and not paused:
+                        paused = True
+                        stop_finish_timer()
+                        eos.abandon()
+                        apply_pace()
+                        await announce_segments(capturing=False)
+                        await set_phase(Phase.LONG_PAUSED)
+
+                elif kind == "dictation.resume":
+                    if long_mode and paused:
+                        paused = False
+                        apply_pace()
+                        await announce_segments(capturing=True)
+                        await start_speaking(
+                            speech_text.phrase("long_resumed", language))
+                        if segments:
+                            await start_finish_timer()
+
+                elif kind == "answer.edit":
+                    # The page's Edit button. It asks the same question the
+                    # voice path asks for "change that" and lands in the same
+                    # state, so tapping it and saying it are one flow.
+                    if pending is not None and long_mode:
+                        await stop_speaking(interrupted=False)
+                        eos.abandon()
+                        edit_stage, edit_target = "which_part", ""
+                        await start_speaking(
+                            speech_text.phrase("edit_which_part", language))
 
                 elif kind == "dictation.restart":
                     # Start the whole narration again, mid-flow. Everything
@@ -1614,6 +1923,9 @@ async def voice(websocket: WebSocket, session_id: str, language: str = "en") -> 
                         for segment in segments:
                             guard.forget(segment)
                         segments.clear()
+                        paused = False
+                        edit_stage, edit_target = "", ""
+                        apply_pace()
                         _drop_draft(session_id)
                         eos.abandon()
                         await announce_segments(capturing=True)
