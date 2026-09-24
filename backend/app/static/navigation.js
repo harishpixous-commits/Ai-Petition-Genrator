@@ -131,7 +131,8 @@ function syncNavigation() {
     el.setAttribute("aria-disabled", String(requestPending || busy));
   });
   $("new").hidden = currentRoute !== "generator";
-  $("mic").hidden = currentRoute !== "generator";
+  // The spoken-replies toggle lives on the assistant panel now, which only
+  // exists on the generator page, so its container governs when it shows.
   // Inside a kiosk session the whole navigation is hidden by CSS; this keeps
   // the link out of the tab order as well, so a keyboard cannot reach a
   // destination the terminal is not meant to leave for.

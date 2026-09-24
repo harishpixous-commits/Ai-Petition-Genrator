@@ -132,6 +132,17 @@ main.workspace.generating .middle{display:none}
 .ai-badge{width:37px;height:37px;flex:none;display:grid;place-items:center;background:var(--blue-soft);border:1px solid #dcefeb;border-radius:11px;color:var(--blue)}
 .ai-badge svg{width:23px;height:23px}
 .card-body{flex:1;min-height:0;overflow-y:auto;scrollbar-width:thin;scrollbar-color:#ccd8d9 transparent}
+/* The spoken-replies toggle, on the panel whose voice it controls. It keeps
+   the same shape as the Details button beside it so the two read as one pair
+   of panel controls rather than as a button and a stray. */
+.voice-toggle{display:inline-flex;margin-left:auto;align-items:center;gap:6px;padding:8px 11px;border:1px solid var(--line);border-radius:8px;background:white;color:var(--ink);font-size:11px;font-weight:700;white-space:nowrap;cursor:pointer;font-family:inherit;transition:background var(--step),border-color var(--step),color var(--step)}
+.voice-toggle svg{width:16px;height:16px;flex:none}
+.voice-toggle:hover{border-color:var(--blue);color:var(--blue)}
+/* Speaking, so the state is visible without reading the label. */
+.voice-toggle[aria-pressed="true"]{border-color:var(--blue);color:var(--blue)}
+.voice-toggle:disabled{opacity:.5;cursor:not-allowed}
+/* The auto margin now lives on whichever of the pair comes first. */
+.voice-toggle + .details-toggle{margin-left:8px}
 .details-toggle{display:none;margin-left:auto;align-items:center;gap:6px;padding:8px;border:1px solid var(--line);border-radius:8px;background:white;color:var(--blue);font-size:11px}
 .details-toggle svg{width:17px;height:17px}
 
@@ -946,7 +957,7 @@ body.kiosk [data-route="home"] { display: none !important; }
   :root{--header-h:71px}
   header.app{min-height:71px;padding:13px 17px}
   .brand{gap:9px}.brand-text h1{font-size:13px;max-width:195px}.brand-text p{font-size:8.5px}
-  .header-actions #mic{display:none}.hbtn.primary{padding:8px 10px}.hbtn.primary .txt{font-size:10px}select.lang{font-size:11px;padding-left:10px}
+  .hbtn.primary{padding:8px 10px}.hbtn.primary .txt{font-size:10px}select.lang{font-size:11px;padding-left:10px}
   .workspace-intro{padding:24px 18px 20px;align-items:flex-start;gap:20px}.workspace-intro h2{font-size:25px;letter-spacing:-.85px}.eyebrow{font-size:8px;letter-spacing:1.3px}.workspace-intro #workspaceSubtitle{font-size:11px;max-width:480px}
   .intro-meta{gap:8px;padding-top:4px}.lifecycle{padding:6px 8px;font-size:9px;white-space:normal}.save-status{max-width:165px;text-align:right;font-size:9px}
   .stepper{margin:0 18px;min-height:60px;gap:7px;padding:10px 13px;justify-content:space-between;border-radius:10px}.step{gap:7px;font-size:10px}.step .marker{width:22px;height:22px;font-size:8px}.step-arrow{font-size:12px}
@@ -1433,7 +1444,7 @@ header.app{gap:24px}
   .filter-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:15px}.filter-field label{font-size:10px}.filter-field input,.filter-field select{font-size:11px}.petition-search input{font-size:11.5px}.filter-sort select{width:145px}
 }
 @media(max-width:820px){
-  header.app{gap:8px 16px}.main-nav{gap:3px;padding-bottom:8px}.main-nav a{font-size:10.5px;min-height:32px;padding-inline:13px}.header-actions #helpBtn{display:inline-flex}.header-actions #mic{display:none}
+  header.app{gap:8px 16px}.main-nav{gap:3px;padding-bottom:8px}.main-nav a{font-size:10.5px;min-height:32px;padding-inline:13px}.header-actions #helpBtn{display:inline-flex}
   .app-page{padding:0 18px 32px}.home-hero{grid-template-columns:minmax(0,1.35fr) minmax(185px,.8fr);padding:38px 5px 36px;gap:15px}.home-hero h2{font-size:31px;letter-spacing:-1px}.home-hero .eyebrow{font-size:8px;letter-spacing:1.4px;margin-bottom:13px}.home-description{margin-top:16px;font-size:11.5px;line-height:1.9}.home-capabilities{font-size:9px;gap:9px 17px;margin-top:19px}.home-capabilities svg{width:13px;height:13px}.home-illustration{height:250px}.hero-sheet{width:151px;height:200px}.sheet-front{padding:17px}.hero-sheet-heading{gap:8px;padding-bottom:12px}.hero-sheet-lines{padding-top:15px;gap:9px}.hero-sheet-lines i{height:3px}.hero-document-mark{width:26px;height:29px}.hero-document-mark svg{width:19px;height:19px}.hero-sheet-sign{margin-top:13px}.hero-check{width:35px;height:35px;border-width:4px;top:9%;right:10%}.hero-check svg{width:18px;height:18px}.hero-caption{font-size:7px;bottom:0}.hero-orbit{inset:30px 0}.orbit-two{inset:15px 15px}
   .home-actions{gap:13px}.home-action-card{padding:22px 20px;min-height:205px;gap:12px;flex-wrap:wrap}.home-action-icon{width:33px;height:33px}.home-action-icon svg{width:19px;height:19px}.home-action-card>div{flex:1;min-width:100px}.home-action-card h3{font-size:18px}.action-eyebrow{font-size:6.5px;letter-spacing:.85px}.home-action-card p{margin-top:8px;font-size:10px}.action-arrow{position:absolute;right:19px;bottom:18px;width:25px;height:25px}.action-arrow svg{width:14px;height:14px}.home-guide{display:block;margin-top:33px;padding:25px 5px 0}.home-guide-heading{margin-bottom:21px}.home-guide h3{font-size:18px}.home-steps{gap:25px}.home-steps h4{font-size:11px}.home-steps p{font-size:10px}
   .page-heading{padding:28px 0 22px}.page-heading h2{font-size:28px}.page-heading p:last-child{font-size:11px}.page-heading>.btn{font-size:10px;padding:9px 12px;min-height:38px}.page-heading>.btn svg{width:16px;height:16px}.petition-filters{padding:18px 18px 0}.filter-search-row{gap:14px}.filter-sort{display:block}.filter-sort label{display:none}.filter-sort select{font-size:10px;width:139px;min-height:44px}.petition-search input{font-size:10.5px;padding-left:36px}.petition-search>svg{left:12px;width:16px;height:16px}.filter-field label{font-size:9px}.filter-field input,.filter-field select{font-size:10px;min-height:38px}.filter-footer p{font-size:8.5px}.text-btn{font-size:10px}.petition-results-heading{padding-top:22px}.petition-results-heading h3{font-size:11px}.petition-results-heading>span{font-size:8.5px}.petition-item{padding:19px;gap:18px}.petition-subject{font-size:13px}.petition-reference{font-size:8px}.petition-meta{font-size:8.5px}.petition-item-actions{max-width:150px}.petition-item-actions .btn{font-size:9px}.petition-applicant{font-size:10px}
