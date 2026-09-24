@@ -1032,6 +1032,58 @@ body.kiosk [data-route="home"] { display: none !important; }
   .doc-toolbar{gap:6px;padding:12px}.doc-toolbar .btn{flex:1 1 auto;font-size:9px;padding:7px 9px}.paper-wrap{padding:12px}.paper{padding:25px 20px;font-size:12px}.banner{padding:14px;gap:9px}.banner .ic{width:26px;height:26px;font-size:13px}.banner h3{font-size:12px}.banner p{font-size:10px}.banner .ref{margin-left:35px;text-align:left}.banner .ref b{font-size:9px}
   .modal{padding:23px 21px}.modal h3{font-size:17px}.modal p{font-size:12px}.modal-actions .btn{min-height:40px}
 }
+/* THE ASSISTANT HEADER ON A PHONE.
+   A badge, a title, a status line and two controls do not fit one row at
+   390px. Measured on a Tamil session, which is the case that matters here:
+   the title wrapped, the status ran to three lines, the head grew to 129px,
+   and the Details button ended at x=446 on a 390px screen — 56px past the
+   edge, clipped. Adding the voice toggle to this row is what tipped it.
+
+   So below 640px the head becomes a small grid: badge and title on the first
+   row, the two controls sharing the second. Nothing is hidden and nothing is
+   shrunk to illegibility — there is simply a second row for the things that
+   did not fit on the first. */
+@media(max-width:640px){
+  #chatCard .card-head{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:10px 10px}
+  #chatCard .card-head>.ai-badge{grid-area:1/1/2/2}
+  #chatCard .card-head>div:not(.ai-badge){grid-area:1/2/2/4;min-width:0}
+  #chatCard .card-head>.voice-toggle{grid-area:2/1/3/3;margin-left:0;justify-content:center;min-width:0}
+  #chatCard .card-head>.details-toggle{grid-area:2/3/3/4;margin-left:0}
+  /* The status line has room to breathe now rather than being squeezed
+     into a column two words wide. */
+  #chatCard .card-head .sub{flex-wrap:wrap}
+  #chatCard .card-head h2{line-height:1.35}
+}
+/* Narrower still: the control labels go and the marks carry the meaning,
+   which is what the Details button already did at this width. */
+@media(max-width:400px){
+  #chatCard .card-head>.voice-toggle{padding:8px}
+  #chatCard .card-head>.voice-toggle .txt{font-size:10.5px}
+}
+/* THE HEADER ON A PHONE. The brand was wrapping to three lines inside 91px
+   because Officer Login was holding ~150px of a 390px row. That link is the
+   staff door — the citizen at the counter never wants it — so on a phone it
+   keeps its mark and drops its label, and the service gets its name back.
+   The accessible name stays on the element itself. */
+@media(max-width:570px){
+  .officer-login-link .txt{display:none}
+  .officer-login-link{padding:8px 10px;gap:0}
+}
+/* The stepper scrolled sideways by 18px at 390px: six steps, five gaps and
+   the padding came to 374px inside a 358px rail. Measured, then tightened by
+   more than the overflow so there is room to spare in Tamil. */
+@media(max-width:400px){
+  .stepper{gap:8px;padding:10px 10px;margin:0 14px}
+  .step .marker{width:22px;height:22px}
+}
+/* Smallest phones: the rail carries the marks alone. A Tamil step name does
+   not fit beside five other markers at 320px, and the active one is still
+   obvious — it keeps its ring. Which step it is also reads in plain words
+   just below, on the assistant panel. */
+@media(max-width:365px){
+  .stepper .step.active{font-size:0;gap:0;flex:0 0 auto}
+  .stepper{justify-content:space-between}
+}
 @media(max-width:360px){.brand-text h1{max-width:149px;font-size:11px}.header-actions{gap:4px}.brand{gap:7px}.workspace-intro h2{font-size:23px}.save-status{max-width:105px}.send-btn #sendText{display:none}.send-btn{width:37px;padding:8px}.details-toggle span{display:none}.stepper{gap:9px}}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}
 /* ------------------------------------------------------------------ print
