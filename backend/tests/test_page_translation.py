@@ -60,7 +60,9 @@ def table(language: str) -> dict[str, str]:
 def test_the_page_has_translatable_text_at_all():
     """A guard on the guard. If the attribute is renamed, every test below
     passes vacuously by finding nothing to check."""
-    assert len(wired_keys()) >= 25, wired_keys()
+    # 18 after the saved-petitions screen was removed; the guard exists to
+    # catch the attribute being renamed, which would give 0.
+    assert len(wired_keys()) >= 15, wired_keys()
 
 
 def test_both_tables_parsed():
@@ -117,7 +119,6 @@ def test_the_table_does_not_carry_copy_the_page_stopped_using():
 @pytest.mark.parametrize("key,expected", [
     ("homeTitleLineOne", "உங்கள் குறைகள்."),
     ("homeCreateTitle", "மனு உருவாக்கு"),
-    ("homePetitionsTitle", "அனைத்து மனுக்கள்"),
     ("homeGuideEyebrow", "மூன்று எளிய படிகள்"),
 ])
 def test_the_tamil_actually_says_what_it_should(key, expected):
@@ -161,11 +162,10 @@ def id_map() -> dict[str, str]:
     return dict(re.findall(r"(\w+):\s*n\.(\w+)", block.group(0)))
 
 
-@pytest.mark.parametrize("element_id", [
-    "petitionSortLabel", "filterDateFromLabel", "filterDateToLabel",
-    "filterDepartmentLabel", "filterCategoryLabel", "filterStatusLabel",
-    "filterLanguageLabel", "petitionFilterHint", "versionTitle",
-])
+# The filter, sort and paging labels belonged to the saved-petitions screen
+# and were removed with it. `versionTitle` is the generator's version history
+# and stays.
+@pytest.mark.parametrize("element_id", ["versionTitle"])
 def test_every_filter_label_is_painted(element_id):
     assert element_id in id_map(), element_id
 
@@ -184,38 +184,21 @@ def test_each_painted_label_has_a_string_behind_it(language):
         assert words.get(key, "").strip(), f"{element_id} -> {key} ({language})"
 
 
-def test_the_status_filter_translates_its_own_options():
-    """The sort dropdown had this loop; the status one did not, so Draft,
-    Ready, Preparing, Needs attention and Cancelled sat in English inside a
-    Tamil list."""
-    js = navigation()
-    fn = js[js.index("function navigationLabels"):]
-    fn = fn[:fn.index("\nfunction ")]
-
-    assert 'filterStatus' in fn
-    for value in ("draft", "ready", "generating", "failed", "cancelled"):
-        assert f"{value}: n." in fn, value
+# The status-filter test lived here. It guarded the saved-petitions screen's
+# own dropdown — Draft, Ready, Preparing, Needs attention, Cancelled sitting
+# in English inside a Tamil list — and went when that screen did.
 
 
 # ---------------------------------------------------------------------------
 # One name for the list, everywhere it is named
 # ---------------------------------------------------------------------------
 #
-# A kiosk and a shared counter machine both show every petition made on them,
-# so "My petitions" named something the citizen in front of it does not own.
-# The nav said one thing, the page heading another, and the home card a third.
-
-ALL_PETITIONS = {"en": "All petitions", "ta": "\u0b85\u0ba9\u0bc8\u0ba4\u0bcd\u0ba4\u0bc1 \u0bae\u0ba9\u0bc1\u0b95\u0bcd\u0b95\u0bb3\u0bcd"}
-
-
-@pytest.mark.parametrize("language", ["en", "ta"])
-def test_the_nav_the_heading_and_the_home_card_agree(language):
-    words = table(language)
-    expected = ALL_PETITIONS[language]
-
-    assert words["petitions"].lower() == expected.lower()
-    assert words["petitionsTitle"] == expected
-    assert words["homePetitionsTitle"] == expected
+# The "All petitions" screen was removed from the citizen UI, and with it the
+# three-way naming test that lived here: the nav, the page heading and the home
+# card each had to agree, because a kiosk shows every petition made on it and
+# "My petitions" named something the citizen in front of it does not own. The
+# test below stays: it reads the WHOLE table, so it still catches that phrasing
+# anywhere it comes back.
 
 
 @pytest.mark.parametrize("language", ["en", "ta"])

@@ -192,12 +192,47 @@ class TestASpokenNumberIsWrittenAsFigures:
     # Everything before the mobile question, so mobile is what is asked next.
     BEFORE_MOBILE = {"applicant_name": "Ravi Kumar", "age": 45}
 
+    def _close_cleanly(self, socket):
+        """Close the way the browser closes, and not the way a test is
+        tempted to.
+
+        WHY THIS EXISTS. These two tests used to leave the `with` block
+        straight after reading the transcript, which left the handler parked
+        in `asyncio.wait` on the next `socket.receive()`. Starlette's
+        `WebSocketTestSession.__exit__` then runs its callbacks LIFO:
+
+            close(1000)          queue a disconnect for the app
+            portal.call(cs.cancel)   cancel the app's cancel scope
+            fut.result()             re-raise whatever the task ended as
+
+        The first two are back to back with no guaranteed window in between,
+        so a handler that has not yet noticed the disconnect is simply
+        cancelled, the task future ends CANCELLED, and `fut.result()` raises
+        `CancelledError` into the test thread. It surfaced roughly once in
+        four full-suite runs and never once in fourteen runs of this file
+        alone, because the flake needs the machine to be busy.
+
+        IT IS NOT A DEFECT IN THE HANDLER, and that was checked rather than
+        assumed: a twenty-line websocket endpoint containing no project code,
+        parked the same way, fails at the same rate (12/300), while the same
+        endpoint that has already returned fails 0/300. Measured against the
+        real handler, closing cleanly is 300/300.
+
+        So nothing in `app/api/dictation.py` was changed. The browser sends
+        `dictation.stop` and waits for the acknowledgement, and now so does
+        this test — which makes it a more faithful test, not a quieter one.
+        """
+        socket.send_json({"type": "dictation.stop"})
+        while socket.receive_json().get("type") != "dictation.stopped":
+            pass
+
     def test_the_socket_converts_when_the_mobile_number_is_asked(self, monkeypatch):
         client = self._socket(monkeypatch, self.BEFORE_MOBILE, SPOKEN_NUMBER)
         with client.websocket_connect("/ws/dictation/s1") as socket:
             assert socket.receive_json()["type"] == "dictation.ready"
             socket.send_bytes(bytes(320))
             message = socket.receive_json()
+            self._close_cleanly(socket)
 
         assert message["text"] == "9344174752", message
 
@@ -211,5 +246,6 @@ class TestASpokenNumberIsWrittenAsFigures:
             assert socket.receive_json()["type"] == "dictation.ready"
             socket.send_bytes(bytes(320))
             message = socket.receive_json()
+            self._close_cleanly(socket)
 
         assert message["text"] == SPOKEN_NUMBER, message

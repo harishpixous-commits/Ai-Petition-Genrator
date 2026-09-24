@@ -518,13 +518,13 @@ class TestThePageIsWiredUp:
 
         _, script = self._sources()
 
+        # The bulk-delete, clear-selection and select-all controls were on
+        # the saved-petitions screen, which has been removed from the citizen
+        # UI. They are named in the removal rather than dropped silently:
+        # deletion is irreversible, so if that screen ever returns, its
+        # confirmation handler belongs back on this list.
         for element in ("attachBtn", "confirm", "new", "restart", "cancel",
                         "reviseBtn", "editSave", "editCancel",
-                        "petitionsRetry", "clearFilters",
-                        # Deletion is irreversible: a Delete button with no
-                        # handler is harmless, but one whose confirmation
-                        # handler went missing would not be.
-                        "deleteSelected", "clearSelection", "selectAllMatching",
                         "translateBtn"):
             bound = re.search(
                 rf'\$\("{element}"\)\.(onclick|onsubmit)\s*=|'
