@@ -475,7 +475,7 @@ const EXPERIENCE = {
     offline: "Connection interrupted. Your last saved answers are kept. Reconnect before sending again.",
     expired: "This saved petition is no longer available. Start a new petition to continue.",
     retry: "Reconnect", help: "How it works", details: "View details", conversation: "Back to conversation",
-    inputHint: "Enter to send · Shift + Enter for a new line", retryDraft: "Your answer is still in the box. Check your saved details before sending again.",
+    retryDraft: "Your answer is still in the box. Check your saved details before sending again.",
     sessionGone: "That petition is no longer on this service, so it has been removed from the list.",
     privateHint: "Type this number privately. Only the last four digits appear in the conversation.",
     longHint: "Include the location, what happened, and the action you are requesting. Your words are kept unchanged.",
@@ -506,8 +506,11 @@ const EXPERIENCE = {
     kioskStillThere: "Are you still there? This screen will clear shortly so the "
                      + "next person cannot see your details.",
     helpTitle: "From your concern to a clear petition",
-    helpText: "1. Answer the questions by typing or using voice.\n2. Review your details and select Edit to make corrections.\n3. Confirm to create your document, then download or print it.\n\nYour progress is restored on this browser. Your grievance is kept in your own words. Review the document before signing; this app does not submit it to an office.",
-    close: "Got it", forget: "Forget on this browser", forgetText: "The saved link will be removed from this browser. Existing server records and downloaded files are kept.",
+    helpSteps: ["Answer the questions by typing or using voice.",
+                "Review your details and select Edit to make corrections.",
+                "Confirm to create your document, then download or print it."],
+    helpNote: "Your progress is restored on this browser. Your grievance is kept in your own words. Review the document before signing; this app does not submit it to an office.",
+    close: "Got it",
     readyTitle: "Your petition is ready.", readySubtitle: "Review the document, then download, print, or make a correction.",
     reviewTitle: "Everything ready for a final check.", reviewSubtitle: "Review the details beside your conversation. Confirm when everything is correct.",
     recoveryNeeded: "Checking your last saved progress…", genericError: "That request could not be completed. Please try again.",
@@ -522,7 +525,7 @@ const EXPERIENCE = {
     offline: "இணைப்பு துண்டிக்கப்பட்டது. சேமித்த பதில்கள் உள்ளன. மீண்டும் அனுப்பும் முன் இணைக்கவும்.",
     expired: "சேமித்த மனு கிடைக்கவில்லை. புதிய மனுவைத் தொடங்கவும்.",
     retry: "மீண்டும் இணை", help: "பயன்படுத்துவது எப்படி", details: "விவரங்களைக் காண்க", conversation: "உரையாடலுக்குத் திரும்பு",
-    inputHint: "அனுப்ப Enter · புதிய வரிக்கு Shift + Enter", retryDraft: "உங்கள் பதில் பெட்டியில் உள்ளது. மீண்டும் அனுப்பும் முன் சேமித்த விவரங்களைப் பாருங்கள்.",
+    retryDraft: "உங்கள் பதில் பெட்டியில் உள்ளது. மீண்டும் அனுப்பும் முன் சேமித்த விவரங்களைப் பாருங்கள்.",
     sessionGone: "அந்த மனு இந்தச் சேவையில் இப்போது இல்லை; எனவே பட்டியலிலிருந்து நீக்கப்பட்டது.",
     privateHint: "இந்த எண்ணைத் தட்டச்சு செய்யவும். கடைசி நான்கு இலக்கங்கள் மட்டும் உரையாடலில் தெரியும்.",
     longHint: "இடம், நடந்தது, நீங்கள் கோரும் நடவடிக்கை ஆகியவற்றைக் குறிப்பிடவும். உங்கள் சொற்கள் மாற்றப்படாது.",
@@ -550,8 +553,11 @@ const EXPERIENCE = {
     kioskStillThere: "நீங்கள் இருக்கிறீர்களா? அடுத்தவர் உங்கள் விவரங்களைப் பார்க்காதபடி "
                      + "இந்தத் திரை விரைவில் அழிக்கப்படும்.",
     helpTitle: "உங்கள் குறையிலிருந்து தெளிவான மனு வரை",
-    helpText: "1. தட்டச்சு அல்லது குரல் மூலம் கேள்விகளுக்குப் பதிலளிக்கவும்.\n2. விவரங்களைச் சரிபார்த்து தேவையான திருத்தங்களைச் செய்யவும்.\n3. உறுதிசெய்த பிறகு ஆவணத்தைப் பதிவிறக்கவும் அல்லது அச்சிடவும்.\n\nஇந்த உலாவியில் உங்கள் மனுவை மீண்டும் தொடரலாம். உங்கள் குறை மாற்றப்படாது. கையொப்பமிடும் முன் ஆவணத்தைச் சரிபார்க்கவும். இந்தச் செயலி மனுவை அலுவலகத்திற்குச் சமர்ப்பிக்காது.",
-    close: "புரிந்தது", forget: "இந்த உலாவியில் மற", forgetText: "இந்த உலாவியிலிருந்து சேமித்த இணைப்பு நீக்கப்படும். சேவையகப் பதிவுகளும் பதிவிறக்கிய கோப்புகளும் இருக்கும்.",
+    helpSteps: ["தட்டச்சு அல்லது குரல் மூலம் கேள்விகளுக்குப் பதிலளிக்கவும்.",
+                "விவரங்களைச் சரிபார்த்து தேவையான திருத்தங்களைச் செய்யவும்.",
+                "உறுதிசெய்த பிறகு ஆவணத்தைப் பதிவிறக்கவும் அல்லது அச்சிடவும்."],
+    helpNote: "இந்த உலாவியில் உங்கள் மனுவை மீண்டும் தொடரலாம். உங்கள் குறை மாற்றப்படாது. கையொப்பமிடும் முன் ஆவணத்தைச் சரிபார்க்கவும். இந்தச் செயலி மனுவை அலுவலகத்திற்குச் சமர்ப்பிக்காது.",
+    close: "புரிந்தது",
     readyTitle: "உங்கள் மனு தயார்.", readySubtitle: "ஆவணத்தைச் சரிபார்த்து பதிவிறக்கவும், அச்சிடவும் அல்லது திருத்தவும்.",
     reviewTitle: "இறுதியாகச் சரிபார்ப்போம்.", reviewSubtitle: "உரையாடலுடன் உள்ள விவரங்களைச் சரிபார்க்கவும். அனைத்தும் சரியாக இருந்தால் உறுதிசெய்யவும்.",
     recoveryNeeded: "சேமித்த விவரங்கள் சரிபார்க்கப்படுகின்றன…", genericError: "கோரிக்கையை முடிக்க இயலவில்லை. மீண்டும் முயற்சிக்கவும்.",
@@ -1715,7 +1721,14 @@ function syncControls() {
   $("text").setAttribute("aria-describedby", "inputHint inputCount");
   if ($("inputHint")) $("inputHint").textContent = status === "ready" ? (lang === "ta" ? "உதாரணம்: பொருளை மாற்று, ஒரு வாக்கியத்தைச் சேர், அல்லது முகவரியைத் திருத்து." : "Try “Change the subject”, “Add a sentence”, or “Change my address”.")
     : ["aadhaar", "mobile"].includes(view?.awaiting) ? X().privateHint
-    : view?.awaiting === "grievance" ? X().longHint : X().inputHint;
+    // NO GENERIC KEYBOARD HINT. "Enter to send, Shift + Enter for a new
+    // line" was shown under the box for every ordinary question, which is
+    // most of the interview — a permanent line of instructions about the
+    // keyboard, sitting under a form that also has a Send button. The hints
+    // that remain each say something the citizen could not otherwise know:
+    // that only the last four digits of a number will be shown, what a
+    // useful grievance contains, and what kind of change can be asked for.
+    : view?.awaiting === "grievance" ? X().longHint : "";
   if ($("inputCount")) $("inputCount").textContent = `${$("text").value.length.toLocaleString(lang)} / 6,000`;
   $("new").disabled = generating;
   $("lang").disabled = generating;
@@ -1944,6 +1957,47 @@ $("lang").onchange = () => {
 };
 
 /* ----------------------------------------------------------------- dialogs */
+
+// Something to READ, with one way out of it.
+//
+// `confirmThen` below is for a decision — it has two buttons because it is
+// asking a question. "How it works" asks nothing, and putting a second
+// button on it offered a destructive action to somebody who had pressed a
+// question mark. The steps are an <ol> rather than a paragraph with "1." and
+// "2." typed into it: three separate instructions read as three, and a
+// screen reader announces them as a list of three.
+function explain(title, steps, note, closeLabel) {
+  if (document.querySelector(".modal-backdrop")) return;
+  const priorFocus = document.activeElement;
+  const back = document.createElement("div");
+  back.className = "modal-backdrop";
+  back.innerHTML =
+    `<div class="modal" role="dialog" aria-modal="true" aria-labelledby="mt">
+       <h3 id="mt">${esc(title)}</h3>
+       <ol class="modal-steps">${
+         (steps || []).map((step) => `<li>${esc(step)}</li>`).join("")
+       }</ol>
+       ${note ? `<p class="modal-note">${esc(note)}</p>` : ""}
+       <div class="modal-actions">
+         <button class="btn primary" data-keep>${esc(closeLabel)}</button>
+       </div>
+     </div>`;
+  document.body.appendChild(back);
+  const close = () => {
+    back.remove();
+    document.removeEventListener("keydown", onKey);
+    priorFocus?.focus();
+  };
+  const onKey = (e) => {
+    if (e.key === "Escape") close();
+    // One button, so Tab has nowhere else to go and must not leave the dialog.
+    if (e.key === "Tab") { e.preventDefault(); back.querySelector("[data-keep]").focus(); }
+  };
+  back.querySelector("[data-keep]").onclick = close;
+  back.onclick = (e) => { if (e.target === back) close(); };
+  document.addEventListener("keydown", onKey);
+  back.querySelector("[data-keep]").focus();
+}
 
 function confirmThen(title, text, keepLabel, goLabel, onGo, onKeep) {
   if (document.querySelector(".modal-backdrop")) return;
@@ -2561,12 +2615,7 @@ $("detailsToggle")?.addEventListener("click", () => {
   if (open) $("detailsPanel").scrollIntoView({ behavior: "smooth", block: "start" });
 });
 $("helpBtn")?.addEventListener("click", () => {
-  confirmThen(X().helpTitle, X().helpText, X().close, X().forget, () => {
-    confirmThen(X().forget, X().forgetText, T().dismiss, X().forget, () => {
-      stopVoice(); forgetSession(); resetInterface(); connectionLost = false;
-      connectionNotice(); syncControls();
-    });
-  });
+  explain(X().helpTitle, X().helpSteps, X().helpNote, X().close);
 });
 window.addEventListener("offline", () => {
   connectionLost = true;

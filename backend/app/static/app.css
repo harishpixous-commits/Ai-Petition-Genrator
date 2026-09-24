@@ -857,6 +857,13 @@ body.kiosk [data-route="home"] { display: none !important; }
 .modal{max-width:460px;max-height:calc(100dvh - 40px);overflow-y:auto;width:100%;padding:27px 28px;border:1px solid white;border-radius:18px;background:white;box-shadow:0 20px 80px rgb(16 41 48 / 25%)}
 .modal h3{margin:0 0 10px;font-size:19px;line-height:1.5;letter-spacing:-.4px;color:var(--navy)}
 .modal p{margin:0 0 22px;font-size:12px;line-height:1.85;color:var(--muted)}
+/* Three instructions read as three. They were one paragraph with "1." and
+   "2." typed into it, which runs together at this width and reads as prose. */
+.modal-steps{margin:0 0 18px;padding-left:22px;display:flex;flex-direction:column;gap:9px;font-size:12.5px;line-height:1.7;color:var(--ink)}
+.modal-steps li{padding-left:3px}
+.modal-steps li::marker{font-weight:700;color:var(--navy)}
+/* The caveats, set apart from the steps: they are not a fourth thing to do. */
+.modal-note{margin:0;padding-top:14px;border-top:1px solid var(--line-soft,#e6ecec);font-size:11.5px;line-height:1.8;color:var(--muted)}
 .modal-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;margin-top:20px}
 .modal ol{padding-left:20px;color:var(--muted);font-size:12px;line-height:1.85}
 .modal li{padding:5px 0}
