@@ -807,6 +807,45 @@ async def restart_session(session_id: str, request: Request) -> dict:
         return session_view(state)
 
 
+@router.post("/sessions/{session_id}/submit")
+async def submit_petition(session_id: str, request: Request) -> dict:
+    """The citizen says they are finished with this petition.
+
+    WHAT THIS DOES AND DOES NOT DO, because the difference matters to
+    somebody standing at a counter. It records the moment they pressed the
+    button, and the petition then shows as submitted in the officer portal
+    alongside the document itself. It does NOT transmit anything to a
+    department: no office is written to, no acknowledgement number is issued
+    by any authority, and the printed petition still has to reach the office
+    the way any petition does.
+
+    It is recorded rather than only shown, so that "Successfully submitted"
+    on the screen is a statement about something that happened, not a
+    message with nothing behind it.
+
+    THE PETITION STAYS EDITABLE afterwards, by request. Submitting is the
+    citizen saying they are done, not the record being frozen.
+
+    Idempotent: pressing it twice keeps the first timestamp, because the
+    first one is when they finished.
+    """
+    from datetime import UTC, datetime
+
+    with session_context(session_id):
+        state = await _require_state(request, session_id)
+        if state.get("status") != "ready":
+            raise HTTPException(409, "There is no petition to submit yet.")
+
+        already = state.get("submitted_at")
+        if not already:
+            stamp = datetime.now(UTC).isoformat(timespec="seconds")
+            await _workflow(request).update(session_id, {"submitted_at": stamp})
+            state = await _require_state(request, session_id)
+            log.info("petition.submitted",
+                     extra={"reference": str((state.get("document") or {}).get("reference") or "")})
+        return session_view(state)
+
+
 @router.post("/sessions/{session_id}/cancel")
 async def cancel_session(session_id: str, request: Request) -> dict:
     with session_context(session_id):

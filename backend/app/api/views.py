@@ -349,6 +349,9 @@ def session_view(state: LetterState) -> dict[str, Any]:
     version = int(state.get("document_version") or (versions[-1]["version"] if versions else 0))
     return {
         "session_id": state.get("session_id"),
+        # When the citizen pressed Submit, or null. Recorded rather than
+        # only shown, so the confirmation on screen refers to something.
+        "submitted_at": state.get("submitted_at"),
         "language": language,
         "started_at": state.get("created_at"),
         "updated_at": state.get("updated_at"),

@@ -73,6 +73,10 @@ def _metadata(state: dict, session_id: str, checkpoint_time: str = "") -> dict:
         "created_at": state.get("created_at") or checkpoint_time,
         "updated_at": state.get("updated_at") or checkpoint_time,
         "generated_at": document.get("generated_at"),
+        # The citizen pressed Submit. It does not mean a department received
+        # anything — see  in the REST layer — it means they
+        # said they were finished with it.
+        "submitted_at": state.get("submitted_at"),
         "status": state.get("status") or "collecting",
         "language": state.get("language") if state.get("language") in ("en", "ta") else "en",
         "version": _version(state, document),

@@ -138,6 +138,12 @@ const UI = {
     cancelledTitle: "Petition cancelled",
     cancelledText: "Start a new petition when you are ready.",
 
+    submit: "Submit Petition",
+    submitNote: "Marks this petition as finished. The printed copy still has to reach the office named on it.",
+    submitting: "Submitting…",
+    submittedTitle: "Successfully submitted",
+    submittedText: "Recorded on {date}. Office staff can see this petition. You can still make changes, or start a new petition.",
+    submitFailed: "That could not be submitted. Please try again.",
     pdf: "Download PDF", packagePdf: "Full Package (with attachments)", docx: "Download Word", noPdf: "PDF unavailable",
     enclosuresHeading: "Documents attached to this petition",
     onePage: "1 page", manyPages: "{n} pages",
@@ -362,6 +368,12 @@ const UI = {
     cancelledTitle: "மனு ரத்து செய்யப்பட்டது",
     cancelledText: "தயாரானதும் புதிய மனுவைத் தொடங்கவும்.",
 
+    submit: "மனுவைச் சமர்ப்பி",
+    submitNote: "இந்த மனு முடிந்ததாகக் குறிக்கப்படும். அச்சிடப்பட்ட நகலை அலுவலகத்திற்குச் சேர்ப்பிக்க வேண்டும்.",
+    submitting: "சமர்ப்பிக்கப்படுகிறது…",
+    submittedTitle: "வெற்றிகரமாகச் சமர்ப்பிக்கப்பட்டது",
+    submittedText: "{date} அன்று பதிவு செய்யப்பட்டது. அலுவலகப் பணியாளர்கள் இந்த மனுவைக் காணலாம். நீங்கள் மாற்றங்கள் செய்யலாம்.",
+    submitFailed: "சமர்ப்பிக்க முடியவில்லை. மீண்டும் முயல்க.",
     pdf: "PDF பதிவிறக்கம்",
     packagePdf: "முழு தொகுப்பு (இணைப்புகளுடன்)", docx: "Word பதிவிறக்கம்", noPdf: "PDF இல்லை",
     enclosuresHeading: "இந்த மனுவுடன் இணைக்கப்பட்ட ஆவணங்கள்",
@@ -1659,6 +1671,24 @@ function drawOutcome(v) {
     : (doc.docx_url || "").replace(/\/document\.docx.*$/, "/document/package.pdf");
   $("packagePdf").hidden = !hasLetter || enclosedCount === 0 || !packageUrl;
   setLink($("packagePdf"), packageUrl, t.packagePdf);
+  // Submit, and what it turned into once pressed. The button goes when the
+  // petition is submitted and the confirmation takes its place; the petition
+  // itself stays editable, so everything else on this toolbar is unchanged.
+  const submitted = v.submitted_at;
+  if ($("submitRow")) {
+    $("submitRow").hidden = !hasLetter || Boolean(submitted) || editingLetter;
+    $("submitBtn").textContent = t.submit;
+    $("submitBtn").disabled = busy || requestPending;
+    $("submitNote").textContent = t.submitNote;
+  }
+  if ($("submittedMark")) {
+    $("submittedMark").hidden = !hasLetter || !submitted;
+    if (submitted) {
+      $("submittedTitle").textContent = t.submittedTitle;
+      $("submittedText").textContent =
+        t.submittedText.replace("{date}", submittedOn(submitted));
+    }
+  }
   $("printBtn").disabled = !hasLetter;
   $("readBtn").disabled = !hasLetter;
   $("readBtn").classList.toggle("reading", typing.reading);
@@ -2274,6 +2304,24 @@ $("printBtn").onclick = async () => {
   w.focus();
   await w.document.fonts.ready;
   w.print();
+};
+
+$("submitBtn").onclick = async () => {
+  if (busy || requestPending || !view?.document) return;
+  const t = T();
+  $("submitBtn").disabled = true;
+  $("submitBtn").textContent = t.submitting;
+  const result = await mutate(`/api/sessions/${sid}/submit`);
+  if (result) {
+    render(result);
+    // Moved to, not just shown: on a long petition the confirmation appears
+    // below the fold and the citizen is left looking at an unchanged screen.
+    $("submittedMark")?.scrollIntoView({ behavior: "smooth", block: "center" });
+  } else {
+    $("submitBtn").disabled = false;
+    $("submitBtn").textContent = t.submit;
+    connectionNotice(t.submitFailed);
+  }
 };
 
 $("copyBtn").onclick = async () => {
@@ -2961,6 +3009,20 @@ function updatePageIndicator() {
   });
   label.textContent = T().pageOf
     .replace("{n}", current).replace("{total}", packageState.total);
+}
+
+// The submission date, written the way a date is written here.
+//
+// Its own helper rather than `dateLabel` from navigation.js: that file is a
+// separate script, and reaching across for a function at paint time is the
+// load-order gamble that already broke this page once. An unparseable value
+// comes back as itself, because a wrong date on a government screen is worse
+// than an ugly one.
+function submittedOn(value) {
+  const when = new Date(value);
+  if (Number.isNaN(when.getTime())) return String(value || "");
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${pad(when.getDate())}-${pad(when.getMonth() + 1)}-${when.getFullYear()}`;
 }
 
 function drawEnclosures(attachments) {

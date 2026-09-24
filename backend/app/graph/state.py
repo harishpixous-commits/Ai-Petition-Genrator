@@ -93,6 +93,10 @@ class LetterState(TypedDict, total=False):
     petition_reference: str | None
     pending_edit: dict[str, Any] | None
     document_edited: bool
+    # When the citizen pressed Submit, as an ISO timestamp, or None. The
+    # petition stays editable afterwards by design — this records that they
+    # said they were finished, it does not freeze the record.
+    submitted_at: str | None
     _document_edit: dict[str, Any] | None
     _revision_base: str | None
     _revision_fields: dict[str, Any]
@@ -191,6 +195,7 @@ def new_state(session_id: str, language: Language = "en") -> LetterState:
         petition_reference=None,
         pending_edit=None,
         document_edited=False,
+        submitted_at=None,
         _document_edit=None,
         _revision_base=None,
         _revision_fields={},

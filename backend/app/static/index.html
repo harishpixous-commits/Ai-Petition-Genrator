@@ -221,6 +221,7 @@
           <button class="btn danger" id="cancel" type="button"></button>
         </div>
       </div>
+        </div>
     </section>
   </div>
 
@@ -411,7 +412,26 @@
           </tbody>
           <tfoot class="page-gutter" aria-hidden="true"><tr><td></td></tr></tfoot>
         </table>
+
       </div>
+        <!-- Under the document, where a citizen arrives after reading it.
+             What pressing it does is written on the confirmation rather than
+             implied: the petition is marked finished and shows as submitted
+             to the office staff, and the paper still has to reach the office
+             the way any petition does. -->
+        <div class="submit-row" id="submitRow" hidden>
+          <button class="btn primary submit-btn" id="submitBtn" type="button"></button>
+          <p class="submit-note" id="submitNote"></p>
+        </div>
+        <div class="submitted-mark" id="submittedMark" hidden role="status" aria-live="polite">
+          <span class="sm-tick" aria-hidden="true">
+            <span class="ic-ring"></span>
+            <svg viewBox="0 0 24 24" fill="none"><path d="m5 12.5 4.5 4.5L19 7.5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </span>
+          <div>
+            <h3 id="submittedTitle"></h3>
+            <p id="submittedText"></p>
+          </div>
     </section>
   </div>
 
