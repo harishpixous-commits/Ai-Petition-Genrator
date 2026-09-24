@@ -296,7 +296,14 @@
        below the fold and needed a scroll to reach. -->
   <div class="middle" id="docColumn" hidden>
     <div class="banner" id="outcome" hidden>
-      <div class="ic" id="outcomeIcon" aria-hidden="true">✓</div>
+      <!-- A drawn tick rather than the "✓" character, so it is the same
+           mark at every size and in every font the browser might fall back
+           to. The ring is a second element because it animates on its own
+           and must not carry the mark with it. -->
+      <div class="ic" id="outcomeIcon" aria-hidden="true">
+        <span class="ic-ring"></span>
+        <svg viewBox="0 0 24 24" fill="none"><path d="m5 12.5 4.5 4.5L19 7.5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
       <div>
         <h3 id="outcomeTitle"></h3>
         <p id="outcomeText"></p>

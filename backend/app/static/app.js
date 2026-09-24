@@ -1590,7 +1590,14 @@ function drawOutcome(v) {
     const ok = !v.verification || v.verification.ok;
     $("outcome").hidden = false;
     $("outcome").className = "banner" + (ok ? "" : " bad");
-    $("outcomeIcon").textContent = ok ? "✓" : "!";
+    // The mark is DRAWN, so the shape changes rather than the text. Setting
+    // textContent here would delete the svg and leave a bare character.
+    const mark = $("outcomeIcon").querySelector("path");
+    if (mark) {
+      mark.setAttribute("d", ok
+        ? "m5 12.5 4.5 4.5L19 7.5"                  // a tick
+        : "M12 6.5v7.5M12 17.6v.2");                // a bar and a dot: "!"
+    }
     $("outcomeTitle").textContent = ok ? t.readyTitle : t.verifyBad;
     $("outcomeText").textContent = ok
       ? (v.verification ? t.verifyOk(v.verification.checked) + " · " + t.readyText : t.readyText)

@@ -299,7 +299,22 @@ details.drawer>summary .count{padding:1px 6px;background:var(--blue-soft);color:
 /* The completed document becomes the primary workspace. */
 .banner{display:flex;align-items:flex-start;gap:12px;flex:none;padding:18px 20px;border:1px solid #c9e4d6;border-radius:13px;background:var(--ok-soft)}
 .banner.bad{border-color:#efcbc6;background:var(--bad-soft)}
-.banner .ic{width:31px;height:31px;flex:none;display:grid;place-items:center;border-radius:10px;background:#d7ecdf;color:var(--ok);font-size:16px}
+/* THE SUCCESS MARK. A filled circle with a drawn tick, and a ring that
+   settles around it once — the moment a citizen has been working towards is
+   worth marking, and a character in a square was not reading as one. */
+.banner .ic{position:relative;width:42px;height:42px;flex:none;display:grid;place-items:center;border-radius:50%;background:var(--ok);color:white}
+.banner .ic svg{width:22px;height:22px;position:relative;z-index:1}
+.banner .ic .ic-ring{position:absolute;inset:-6px;border-radius:50%;border:2px solid var(--ok);opacity:.28;animation:tick-ring .9s ease-out both}
+.banner .ic svg path{stroke-dasharray:30;stroke-dashoffset:30;animation:tick-draw .5s .12s ease-out forwards}
+@keyframes tick-ring{0%{transform:scale(.72);opacity:.55}100%{transform:scale(1);opacity:.28}}
+@keyframes tick-draw{to{stroke-dashoffset:0}}
+/* A citizen who has asked for less motion gets the finished mark, drawn. */
+@media(prefers-reduced-motion:reduce){
+  .banner .ic .ic-ring{animation:none}
+  .banner .ic svg path{animation:none;stroke-dashoffset:0}
+}
+.banner.bad .ic{background:var(--bad)}
+.banner.bad .ic .ic-ring{border-color:var(--bad)}
 .banner.bad .ic{background:#f4d6d2;color:var(--bad)}
 .banner h3{margin:0 0 4px;color:#286247;font-size:13px;font-weight:700}
 .banner.bad h3,.banner.bad p{color:var(--bad)}
