@@ -249,6 +249,35 @@ class Settings(BaseSettings):
     # every recent commit by hand — and that only settles the JavaScript,
     # because a change to the Python leaves the assets identical. Two rounds
     # of "it is still not fixed" were a deploy that had not finished.
+    # ---- System-1 decision layer ------------------------------------- #
+    #
+    # WHAT `system1_enabled` ACTUALLY SWITCHES, because the name suggests
+    # more than it does: whether an ALTERNATIVE PROVIDER may be used. The
+    # deterministic provider always runs. It has no model, no network and no
+    # warm-up, it cannot fail in a way the two guards do not catch, and the
+    # attachment-relationship classification it produces is what stops a
+    # third party's acknowledgement number being claimed in a citizen's own
+    # first person. Gating that behind a flag would mean shipping the bug by
+    # default.
+    #
+    # So: off means "deterministic only", which is the approved
+    # configuration. Turning it on is how a candidate provider gets measured
+    # on the same cases without a code change.
+    #
+    # THE GRIEVANCE CATEGORY IS NOT ROUTING, at any setting. It measured
+    # 0.735 on the only case set that never informed it and is carried as
+    # `suggested_category`, a hint for an officer. Department, authority, Act
+    # and Rule continue to come from verified RAG and officer review, and a
+    # test asserts nothing outside `system_one.py` reads the field.
+    #
+    # `system1_confidence_threshold` is 0.0 deliberately: a number picked
+    # without a benchmark behind it is a number nobody can defend. Raise it
+    # only from a measurement. See docs/system-one-review.md.
+    system1_enabled: bool = False
+    system1_provider: str = "deterministic"
+    system1_confidence_threshold: float = 0.0
+    system1_timeout_ms: int = 250
+
     build_sha: str = ""
 
     # -- kiosk: a self-service terminal in a government office ------------- #
