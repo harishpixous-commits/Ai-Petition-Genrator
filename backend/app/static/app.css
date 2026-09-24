@@ -1561,6 +1561,14 @@ header.app{gap:24px}
 /* Manual voice typing lives entirely beside the existing composer. */
 #micInline{color:var(--blue)}
 #micInline.dictating{color:var(--bad);background:var(--bad-soft);border-color:#e6bbb6;box-shadow:0 0 0 3px rgb(182 64 58 / 9%)}
+/* The mark grows while it is listening. At 19px the only thing telling a
+   citizen that dictation is running was a colour change, which is easy to
+   miss on a phone held at arm's length and invisible to anyone who does not
+   distinguish red from grey. Size is the one cue that does not depend on
+   colour. Nothing else about the button moves: the button keeps its box, so
+   the composer does not reflow when dictation starts. */
+#micInline svg{transition:width var(--step),height var(--step)}
+#micInline.dictating svg{width:25px;height:25px}
 #micInline:disabled{opacity:.45;cursor:not-allowed}
 .dictation-status{margin:7px 2px 0;font-size:11px;color:var(--muted);line-height:1.5}
 .dictation-status:empty{display:none}
