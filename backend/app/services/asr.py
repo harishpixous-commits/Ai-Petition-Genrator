@@ -99,6 +99,25 @@ def choose_provider(settings: Settings | None = None) -> str | None:
     return providers[0] if providers else None
 
 
+# The last time dictation failed against the provider, and what it said.
+# Same reason as the one in `tts.py`: "ok" here means a key is configured,
+# and it went on saying so through an outage in which every dictation socket
+# closed with "temporarily unavailable".
+_last_failure: dict[str, object] = {}
+
+
+def note_failure(reason: str) -> None:
+    from datetime import UTC, datetime
+
+    _last_failure.clear()
+    _last_failure.update({"reason": str(reason)[:200],
+                          "at": datetime.now(UTC).isoformat(timespec="seconds")})
+
+
+def note_success() -> None:
+    _last_failure.clear()
+
+
 def status(settings: Settings | None = None) -> dict:
     s = settings or get_settings()
     providers = available_providers(s)
@@ -120,6 +139,7 @@ def status(settings: Settings | None = None) -> dict:
     if fallbacks:
         note += " If it does not answer, dictation falls back to " + ", ".join(fallbacks) + "."
     return {
+        # Configured. NOT the same as working — see `last_failure`.
         "ok": True,
         "provider": _LABELS[primary],
         "providers": [_LABELS[p] for p in providers],
@@ -128,6 +148,10 @@ def status(settings: Settings | None = None) -> dict:
         "sample_rate": s.asr_sample_rate,
         "max_seconds": s.asr_max_seconds,
         "languages": ["ta", "en"] if primary in _TAMIL else ["en"],
+        # What happened the last time a citizen actually pressed the
+        # microphone. Absent means nothing has failed since startup.
+        "last_failure": dict(_last_failure) or None,
+        "working": None if not _last_failure else False,
         "note": note,
     }
 

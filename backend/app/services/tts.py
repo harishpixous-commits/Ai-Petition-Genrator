@@ -30,6 +30,15 @@ log = logging.getLogger(__name__)
 _CHUNK = 450
 
 
+# What each refusal means to somebody who has to fix it.
+_MEANING = {
+    401: " (key not accepted)",
+    402: " (account out of credit — top up the Sarvam account)",
+    403: " (key rejected or revoked)",
+    429: " (rate limited; this one clears on its own)",
+}
+
+
 class TTSUnavailable(RuntimeError):
     """Speech could not be completed; the visible reply remains available."""
 
@@ -39,6 +48,31 @@ def configured(settings: Settings | None = None) -> bool:
     if (s.tts_provider or "auto").lower() == "off":
         return False
     return bool(s.sarvam_key_list)
+
+
+# THE LAST TIME THE PROVIDER REFUSED, and what it said.
+#
+# `ok` below means a key is CONFIGURED. It said true throughout an outage in
+# which every spoken reply returned 503, because a key was indeed present —
+# it was simply being refused. That reading cost hours: the health endpoint
+# was the first thing looked at and it said the subsystem was fine.
+#
+# Remembering the last refusal turns "voice is broken, nobody knows why" into
+# a sentence an operator can act on. Nothing secret goes in here: the reason
+# is the provider's own wording, never a key.
+_last_failure: dict[str, object] = {}
+
+
+def note_failure(reason: str) -> None:
+    from datetime import UTC, datetime
+
+    _last_failure.clear()
+    _last_failure.update({"reason": str(reason)[:200],
+                          "at": datetime.now(UTC).isoformat(timespec="seconds")})
+
+
+def note_success() -> None:
+    _last_failure.clear()
 
 
 def status(settings: Settings | None = None) -> dict:
@@ -51,10 +85,15 @@ def status(settings: Settings | None = None) -> dict:
             "note": "Spoken replies are not configured. The client may use the browser's own voice.",
         }
     return {
+        # Configured. NOT the same as working — see `last_failure`.
         "ok": True,
         "provider": "Sarvam",
         "model": s.sarvam_tts_model,
         "egress": True,
+        # What happened the last time this was actually used. Absent means
+        # nothing has failed since the service started.
+        "last_failure": dict(_last_failure) or None,
+        "working": None if not _last_failure else False,
         "note": "Reply text is sent to a hosted service to be spoken. Citizen identifiers are not spoken.",
     }
 
@@ -189,6 +228,11 @@ async def stream(
     payload_base = request_for(language, s)
 
     active = 0
+    # The last thing the provider actually said. Without it the failure that
+    # reaches the operator is "produced no audio", which describes the symptom
+    # and hides the cause: every key answering 402 Payment Required reads
+    # exactly the same as a network fault or a bad model name.
+    last_status = None
     async with httpx.AsyncClient(timeout=30.0) as client:
         for chunk in _chunks(text):
             encoded = None
@@ -212,9 +256,18 @@ async def stream(
                     active = (active + offset) % len(keys)
                     break
                 # Only a credential or quota problem is worth another key.
+                last_status = response.status_code
                 if response.status_code not in (401, 402, 403, 429):
                     raise TTSUnavailable(f"Speech service returned HTTP {response.status_code}.")
             if not isinstance(encoded, str) or not encoded:
+                # Name the code and how many keys were tried. 402 is an
+                # account out of credit, 401/403 a key that is wrong or
+                # revoked, 429 a rate limit that will pass on its own —
+                # three different things for whoever has to act on it.
+                if last_status is not None:
+                    raise TTSUnavailable(
+                        f"All {len(keys)} Sarvam key(s) refused: HTTP {last_status}"
+                        f"{_MEANING.get(last_status, '')}.")
                 raise TTSUnavailable("Speech service produced no audio.")
             try:
                 clip = base64.b64decode(encoded, validate=True)
@@ -235,5 +288,8 @@ async def speak(text: str, language: str = "en", settings: Settings | None = Non
         parts = [part async for part in stream(text, language, settings)]
     except TTSUnavailable as exc:
         log.info("tts.unavailable", extra={"reason": str(exc)})
+        note_failure(str(exc))
         return None
+    if parts:
+        note_success()
     return join_wav(parts) if parts else None

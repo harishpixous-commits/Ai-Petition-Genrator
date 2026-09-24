@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import logging
 import json
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
@@ -12,6 +13,8 @@ from ..config import get_settings
 from ..domain.fields import digits_from_speech
 from ..services import asr
 from ..services.officer_store import citizen_scope
+
+log = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -123,6 +126,8 @@ async def dictation(socket: WebSocket, session_id: str):
                     text = await asr.transcribe(
                         asr._wav(pcm, settings.asr_sample_rate), language, settings
                     )
+                    # It answered, so whatever was wrong before is not wrong now.
+                    asr.note_success()
                     await emit(
                         {
                             "type": "stt.final" if final else "stt.partial",
@@ -207,7 +212,14 @@ async def dictation(socket: WebSocket, session_id: str):
                 # No message/confirm/submit commands are accepted here.
     except (WebSocketDisconnect, asyncio.CancelledError):
         pass
-    except Exception:
+    except Exception as exc:  # noqa: BLE001
+        # REMEMBERED, not only sent. The citizen is told "voice typing is
+        # temporarily unavailable" and that is all anyone could see — the
+        # health endpoint went on reporting the subsystem fine throughout,
+        # because a key was configured. The reason now reaches /api/health,
+        # where whoever is looking for it will look first.
+        log.info("dictation.failed", extra={"reason": str(exc)[:160]})
+        asr.note_failure(f"{type(exc).__name__}: {exc}")
         with contextlib.suppress(Exception):
             await socket.send_json({"type": "error", "code": "unavailable"})
     finally:
