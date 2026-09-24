@@ -288,34 +288,37 @@ class TestTheWelcomeScreen:
         assert "min-height:64px" in rules.replace(" ", "")
 
 
-class TestTheLinkThatOpensIt:
+class TestTheLinkThatOpensItWasRemoved:
+    """The Kiosk entry in the navigation is gone, by request.
 
-    def test_it_lives_with_the_other_destinations(self):
-        """In the navigation, not beside New Petition. It is a PLACE to go,
-        like the three beside it; the buttons on the right are things to DO
-        to the petition in front of you."""
+    THE MODE IS NOT. A terminal is put into kiosk mode by its deployment —
+    see the configuration tests below, which are untouched — and `#kiosk`
+    still routes, so a machine standing in a government office with a printer
+    attached behaves exactly as it did. What went is the invitation to enter
+    that mode from an ordinary browser, where it is not wanted.
+
+    Removing the link alone would have broken the page: `$("navKiosk").hidden`
+    ran on every navigation, so with the element gone it is `null.hidden`
+    throwing before the rest of the navigation had run. The same shape as the
+    saved-petitions removal before it.
+    """
+
+    def test_the_navigation_no_longer_offers_it(self):
         markup = html()
         navigation = markup[markup.index('<nav class="main-nav"'):]
         navigation = navigation[:navigation.index("</nav>")]
 
-        assert 'id="navKiosk"' in navigation
-        assert 'href="#kiosk"' in navigation
+        assert 'id="navKiosk"' not in navigation
+        assert 'href="#kiosk"' not in navigation
 
-    def test_new_petition_is_still_there_and_separate(self):
+    def test_nothing_paints_a_label_that_is_not_there(self):
+        assert "navKiosk" not in nav()
+
+    def test_new_petition_is_still_there(self):
         markup = html()
         actions = markup[markup.index('<div class="header-actions">'):]
 
         assert 'id="new"' in actions
-        assert "kiosk" not in actions[:actions.index('id="new"')].lower()
-
-    def test_it_is_named_in_both_languages(self):
-        source = nav()
-
-        assert 'kiosk: "Kiosk"' in source
-        assert 'kiosk: "கியோஸ்க்"' in source
-
-    def test_the_label_is_painted(self):
-        assert "navKiosk: n.kiosk" in nav()
 
 
 class TestTheDeploymentDecidesTheTerminalsBehaviour:

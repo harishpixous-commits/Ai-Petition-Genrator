@@ -118,7 +118,7 @@ function navigationLabels() {
   // paging labels were removed with it. What remains is the navigation and
   // the version history, which belongs to the generator.
   for (const [id, text] of Object.entries({ navHome: n.home, navCreate: n.create,
-    navKiosk: n.kiosk, versionTitle: n.history })) {
+    versionTitle: n.history })) {
     if ($(id)) $(id).textContent = text;
   }
   if (view) drawVersions(view);
@@ -135,7 +135,10 @@ function syncNavigation() {
   // Inside a kiosk session the whole navigation is hidden by CSS; this keeps
   // the link out of the tab order as well, so a keyboard cannot reach a
   // destination the terminal is not meant to leave for.
-  $("navKiosk").hidden = typeof kiosk !== "undefined" && kiosk;
+  // The Kiosk link was removed from the navigation. The MODE remains: a
+  // terminal is put into it by its deployment, and #kiosk still works, so a
+  // machine standing in an office with a printer attached is unaffected.
+  // What has gone is the invitation to enter it from an ordinary browser.
 }
 
 function editorText() { return $("letter").innerText.replace(/\u00a0/g, " ").trimEnd(); }
