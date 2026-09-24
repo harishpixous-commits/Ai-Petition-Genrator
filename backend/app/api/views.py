@@ -121,6 +121,34 @@ def analysis_view(analysis: dict[str, Any] | None, language: str) -> dict[str, A
 
 
 
+def _page_count(attachment: Any, session_id: str) -> int:
+    """How many pages this attachment will add, or 0 if it cannot be told.
+
+    A picture is one page. A PDF is however many it has, and that is read
+    from the file rather than guessed — the count is shown to the citizen as
+    a check against the paper in their hand, so a wrong number is worse than
+    no number. Anything unreadable returns 0 and the page says nothing.
+    """
+    kind = str(getattr(attachment, "content_type", "") or "")
+    if kind.startswith("image/"):
+        return 1
+    if kind != "application/pdf":
+        return 0
+    try:
+        from ..services import attachment_store
+
+        path = attachment_store.path_of(session_id, attachment)
+        if path is None:
+            return 0
+        import pymupdf
+
+        with pymupdf.open(path) as document:
+            return int(document.page_count)
+    except Exception:  # noqa: BLE001
+        # A count is a nicety. It never costs the citizen their petition.
+        return 0
+
+
 def attachments_view(state: LetterState, language: str,
                      analysis: dict | None) -> dict[str, Any]:
     """The attachment step, as the page needs to draw it.
@@ -162,6 +190,16 @@ def attachments_view(state: LetterState, language: str,
             "kind": attachment.kind,
             "label": attachment.label(language),
             "size": attachment.size,
+            "content_type": attachment.content_type,
+            # So the preview can show the citizen their own document rather
+            # than only the words "Enclosures: 1. Copy of earlier petition".
+            # Same session scoping as every other route in `rest.py`.
+            "file_url": (f"/api/sessions/{state.get('session_id')}"
+                         f"/attachments/{attachment.attachment_id}/file"),
+            # How many pages of it will be behind the petition. A count is
+            # what turns "it is attached" from a claim into something the
+            # citizen can check against the paper in their hand.
+            "pages": _page_count(attachment, str(state.get("session_id") or "")),
             "confirmed": attachment.confirmed,
             # True while the citizen still has to look at what was read. The
             # page shows a confirmation card, and nothing here reaches the
@@ -180,6 +218,12 @@ def attachments_view(state: LetterState, language: str,
             # that has nothing to do with the complaint is offered as evidence
             # rather than as figures to check — and never whether it is kept.
             "relevance": attachment.relevance or None,
+            # Whose document this appears to be. Advisory in the same sense
+            # as `relevance`, and carried to the officer portal rather than
+            # shown to the citizen as a verdict on their own paperwork —
+            # "this is not your petition" is not a sentence a machine should
+            # put in front of somebody at a counter.
+            "relationship": attachment.relationship or None,
             "fields": fields,
         })
 

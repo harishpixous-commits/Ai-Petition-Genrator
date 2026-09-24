@@ -44,6 +44,7 @@ const UI = {
     attachConflictDocument: "What the document says",
     attachConflictKeep: "Keep mine",
     attachConflictUse: "Use the document's",
+    attachConflictNameOnly: "The petition keeps the name you gave. A name read from a scan is not reliable enough to replace it — if yours is wrong, edit it in Petition Details.",
     attachConflictField: {
       applicant_name: "Name", address: "Address",
     },
@@ -137,7 +138,22 @@ const UI = {
     cancelledTitle: "Petition cancelled",
     cancelledText: "Start a new petition when you are ready.",
 
-    pdf: "Download PDF", docx: "Download Word", noPdf: "PDF unavailable",
+    pdf: "Download PDF", packagePdf: "Full Package (with attachments)", docx: "Download Word", noPdf: "PDF unavailable",
+    enclosuresHeading: "Documents attached to this petition",
+    onePage: "1 page", manyPages: "{n} pages",
+    enclosureIncluded: "Included in the Full Package download, after the letter.",
+    enclosureView: "View", enclosureDownload: "Download",
+    modeLetter: "Petition Only", modePackage: "Full Package",
+    pageOf: "Page {n} of {total}",
+    packagePageLoading: "Loading page…",
+    packagePageAlt: "Page {n}",
+    packagePageFailed: "Unable to preview this page.",
+    packageOpenOriginal: "Open Original",
+    packageBuilding: "Preparing the combined document…",
+    packageUnavailable: "The combined preview could not be prepared on this server. The petition and the attachments are still available.",
+    packageNotMerged: "This document remains attached but cannot be previewed inline.",
+    attachmentWord: "Attachment",
+    enclosureUnreadable: "This file could not be read, but it is still attached.",
     print: "Print", copy: "Copy", copied: "Copied",
     revise: "Edit Petition", editSave: "Save Changes", editCancel: "Cancel",
     editHint: "Edit the petition directly below. Your changes are used exactly as you type them \u2014 nothing is reworded. To ask for a rewording instead, type what you want in the chat.",
@@ -252,6 +268,7 @@ const UI = {
     attachConflictDocument: "ஆவணம் கூறுவது",
     attachConflictKeep: "என்னுடையதைப் பயன்படுத்து",
     attachConflictUse: "ஆவணத்தில் உள்ளதைப் பயன்படுத்து",
+    attachConflictNameOnly: "நீங்கள் கூறிய பெயரே மனுவில் இருக்கும். ஆவணச் சிதறலில் படிக்கப்பட்ட பெயரை நம்ப முடியாது — உங்கள் பெயர் தவறாக இருந்தால், மனு விவரங்களில் திருத்தவும்.",
     attachConflictField: {
       applicant_name: "பெயர்", address: "முகவரி",
     },
@@ -345,7 +362,23 @@ const UI = {
     cancelledTitle: "மனு ரத்து செய்யப்பட்டது",
     cancelledText: "தயாரானதும் புதிய மனுவைத் தொடங்கவும்.",
 
-    pdf: "PDF பதிவிறக்கம்", docx: "Word பதிவிறக்கம்", noPdf: "PDF இல்லை",
+    pdf: "PDF பதிவிறக்கம்",
+    packagePdf: "முழு தொகுப்பு (இணைப்புகளுடன்)", docx: "Word பதிவிறக்கம்", noPdf: "PDF இல்லை",
+    enclosuresHeading: "இந்த மனுவுடன் இணைக்கப்பட்ட ஆவணங்கள்",
+    onePage: "1 பக்கம்", manyPages: "{n} பக்கங்கள்",
+    enclosureIncluded: "முழு தொகுப்பில், கடிதத்திற்குப் பின் இணைக்கப்பட்டுள்ளது.",
+    enclosureView: "பார்", enclosureDownload: "பதிவிறக்கு",
+    modeLetter: "மனு மட்டும்", modePackage: "முழு தொகுப்பு",
+    pageOf: "பக்கம் {n} / {total}",
+    packagePageLoading: "பக்கம் ஏற்றப்படுகிறது…",
+    packagePageAlt: "பக்கம் {n}",
+    packagePageFailed: "இந்தப் பக்கத்தை முன்னோட்டமிட முடியவில்லை.",
+    packageOpenOriginal: "அசலைத் திற",
+    packageBuilding: "இணைந்த ஆவணம் தயாராகிறது…",
+    packageUnavailable: "இணைந்த முன்னோட்டத்தை இந்த சேவையகத்தில் தயாரிக்க முடியவில்லை. மனுவும் இணைப்புகளும் கிடைக்கின்றன.",
+    packageNotMerged: "இந்த ஆவணம் இணைக்கப்பட்டுள்ளது, ஆனால் இங்கே காட்ட முடியாது.",
+    attachmentWord: "இணைப்பு",
+    enclosureUnreadable: "இந்தக் கோப்பைப் படிக்க முடியவில்லை, ஆனால் அது இணைக்கப்பட்டுள்ளது.",
     print: "அச்சிடு", copy: "நகலெடு", copied: "நகலெடுக்கப்பட்டது",
     revise: "மனுவைத் திருத்து", editSave: "மாற்றங்களைச் சேமி", editCancel: "ரத்து",
     editHint: "கீழே உள்ள மனுவை நேரடியாகத் திருத்தலாம். நீங்கள் எழுதியபடியே அப்படியே பயன்படுத்தப்படும் \u2014 எதுவும் மாற்றி எழுதப்படாது. மாற்றி எழுதச் சொல்ல வேண்டுமானால், அரட்டையில் தட்டச்சு செய்யுங்கள்.",
@@ -1405,9 +1438,10 @@ function drawAttachments(v) {
       </div>
       <div class="ap-confirm-actions">
         <button class="btn primary" type="button" data-keep="1">${esc(t.attachConflictKeep)}</button>
-        <button class="btn" type="button" data-use="${esc(c.field)}"
-                data-value="${esc(c.proposed)}">${esc(t.attachConflictUse)}</button>
+        ${c.adoptable === false ? "" : `<button class="btn" type="button" data-use="${esc(c.field)}"
+                data-value="${esc(c.proposed)}">${esc(t.attachConflictUse)}</button>`}
       </div>
+      ${c.adoptable === false ? `<p class="ap-conflict-note">${esc(t.attachConflictNameOnly)}</p>` : ""}
     </div>`).join("");
 
   $("attachConflictList").querySelectorAll("[data-keep]").forEach(b => {
@@ -1558,22 +1592,60 @@ function drawOutcome(v) {
     $("outcomeRef").hidden = !doc.reference;
     $("refValue").textContent = doc.reference || "";
     if (!editingLetter) drawLetter(v.letter_text);
+    drawEnclosures(v.attachments);
+    // The mode switch appears only once something is attached; with nothing
+    // enclosed the two modes are the same document.
+    const hasEnclosures = (v.attachments?.items || []).length > 0;
+    $("previewModes").hidden = !hasEnclosures || editingLetter;
+    if (hasEnclosures && !editingLetter) {
+      drawPackagePages(v);
+      setPreviewMode(packageMode);
+    } else {
+      setPreviewMode(false);
+    }
     paintEmblem(v.emblem);
   } else {
     $("outcome").hidden = true;
+    // No letter yet, so nothing to be enclosed with.
+    if ($("enclosures")) $("enclosures").hidden = true;
   }
 
   // The package or the letter alone. Offered only when something is actually
   // attached: with nothing enclosed the two files are identical and the
   // choice would be a control that does nothing.
+  // TWO OUTPUTS, and they are now genuinely different things rather than
+  // one file with a checkbox:
+  //
+  //   Download PDF / Word   the generated petition, on its own
+  //   Full Package          petition + index + the ORIGINAL attachments
+  //
+  // The checkbox used to decide whether the plain download carried the
+  // attachments rasterised into it. That was a worse version of the package
+  // — pictures of pages, capped at twelve per file, no text layer — offered
+  // in the same place as the real one. The package copies the pages across
+  // instead, so there is nothing left for the toggle to choose between.
   const enclosedCount = (v.attachments?.items || []).length;
-  $("packageToggle").hidden = !hasLetter || enclosedCount === 0;
-  $("packageText").textContent = t.includeAttachments;
-  const whole = $("withEnclosures").checked;
-  const form = (url) => (url && !whole ? `${url}?enclosures=0` : url);
+  $("packageToggle").hidden = true;
+  const form = (url) => (url ? `${url}?enclosures=0` : url);
 
   setLink($("pdf"), form(doc.pdf_url), t.pdf, t.noPdf);
   setLink($("docx"), form(doc.docx_url), t.docx);
+  // Built on request, so it is a plain link rather than something prepared
+  // at generation time: most petitions are never packaged, and copying a
+  // hundred attached pages is not work to do speculatively.
+  //
+  // DERIVED FROM THE SESSION, not from `pdf_url`. It used to be built by
+  // rewriting the PDF link, so whenever the PDF was still converting — Word
+  // and LibreOffice both take seconds — `pdf_url` was null, this came out
+  // empty, and the button for the one download that carries the citizen's
+  // documents disappeared with no explanation. The package endpoint renders
+  // the letter itself and never needed that file.
+  const sid = v.session_id || doc.session_id || "";
+  const packageUrl = sid
+    ? `/api/sessions/${encodeURIComponent(sid)}/document/package.pdf`
+    : (doc.docx_url || "").replace(/\/document\.docx.*$/, "/document/package.pdf");
+  $("packagePdf").hidden = !hasLetter || enclosedCount === 0 || !packageUrl;
+  setLink($("packagePdf"), packageUrl, t.packagePdf);
   $("printBtn").disabled = !hasLetter;
   $("readBtn").disabled = !hasLetter;
   $("readBtn").classList.toggle("reading", typing.reading);
@@ -1659,6 +1731,7 @@ function syncControls() {
   $("editCancel").disabled = busy || requestPending;
   $("reviseBtn").disabled = status !== "ready" || unavailable;
   for (const id of ["pdf", "docx", "printBtn", "copyBtn"]) $(id).hidden = editingLetter;
+  if (editingLetter) $("packagePdf").hidden = true;
   if (typeof syncNavigation === "function") syncNavigation();
 
   $("chatCard").setAttribute("aria-busy", String(generating));
@@ -2459,6 +2532,26 @@ async function loadHealth() {
   } catch { /* The conversation API is the source of connection status. */ }
 }
 
+// Which document the centre shows. The scroll position is left alone on
+// purpose: a citizen switching back to the package expects to be where they
+// were, not thrown to the top of a hundred pages.
+$("modeLetter")?.addEventListener("click", () => setPreviewMode(false));
+$("modePackage")?.addEventListener("click", () => {
+  setPreviewMode(true);
+  if (view) drawPackagePages(view);
+});
+// The page indicator follows the scroll. Throttled to animation frames so a
+// long document does not recompute it on every scroll event.
+let indicatorPending = false;
+function watchScroll(target) {
+  target?.addEventListener("scroll", () => {
+    if (indicatorPending) return;
+    indicatorPending = true;
+    requestAnimationFrame(() => { indicatorPending = false; updatePageIndicator(); });
+  }, { passive: true });
+}
+watchScroll(window);
+
 $("retryConnection")?.addEventListener("click", recover);
 $("detailsToggle")?.addEventListener("click", () => {
   const workspace = document.querySelector("main.workspace");
@@ -2563,6 +2656,380 @@ function drawLetter(text) {
   body.className = "paper-body";
   body.textContent = lines.slice(head).join("\n");
   paper.appendChild(body);
+}
+
+// The attached documents, drawn after the letter.
+//
+// WHY. The letter says "Enclosures: 1. Copy of earlier petition" and stops.
+// The generated document really does carry the pages — a two-page petition
+// with a two-page attachment comes out as four pages plus an index — but the
+// only way to discover that was to download the file and open it. A citizen
+// at a counter reported the attachment as missing for exactly this reason,
+// and they were right about what they could see.
+//
+// This shows the file itself, with its page count, so "it is attached" is
+// something they can check rather than something they are told.
+// The signature of what is currently drawn, so a repaint that changes
+// nothing does not restart an attachment download.
+let enclosureKey = "";
+
+// ---------------------------------------------------------------------------
+// The continuous combined-package preview
+// ---------------------------------------------------------------------------
+//
+// WHAT THIS REPLACES. The centre used to show the petition and, underneath
+// it, a card saying a document was attached. That told the citizen the file
+// existed; it did not show it to them. This draws the package the way it
+// will be filed — petition, index, then the originals — as one scrollable
+// run of pages.
+//
+// HOW IT SURVIVES A HUNDRED PAGES. The server renders one page at a time as
+// an image and the browser asks for them as they come into view. Nothing is
+// inlined into the HTML, the browser's PDF plugin is not involved, and a
+// 103-page annexure costs one request per page the citizen actually scrolls
+// to. Pages already drawn stay drawn; pages never reached are never fetched.
+let packageMode = true;          // Full Package is the default once attached
+let packageState = { sid: "", version: "", total: 0 };
+let pageWatcher = null;
+
+function packageWatcher() {
+  if (pageWatcher) return pageWatcher;
+  if (typeof IntersectionObserver !== "function") return null;
+  // THE ROOT IS THE VIEWPORT, and that was established by measuring rather
+  // than by reading the stylesheet. `.paper-wrap` carries `overflow-y:auto`,
+  // which makes it look like the scrolling element, but at the layout this
+  // page actually uses it computes to `visible` and grows to fit: measured
+  // at 27535px tall with clientHeight == scrollHeight. The window scrolls.
+  //
+  // Rooting the observer on that element was tried and is much worse than
+  // wrong — every sheet is inside it at all times, so all 103 pages of a
+  // hundred-page annexure loaded at once, which is the exact thing this
+  // observer exists to prevent.
+  pageWatcher = new IntersectionObserver((entries) => {
+    entries.forEach((entry) => {
+      if (entry.isIntersecting) loadPackagePage(entry.target);
+    });
+    // One screen of margin above and below, so scrolling at a normal speed
+    // never shows an empty sheet.
+  }, { root: null, rootMargin: "800px 0px", threshold: 0.01 });
+  return pageWatcher;
+}
+
+function loadPackagePage(sheet) {
+  if (!sheet || sheet.dataset.loaded === "1" || sheet.dataset.loading === "1") return;
+  const number = sheet.dataset.page;
+  const url = sheet.dataset.url;
+  if (!number || !url) return;
+  sheet.dataset.loading = "1";
+
+  const image = new Image();
+  image.className = "pp-image";
+  image.alt = (T().packagePageAlt || "Page {n}").replace("{n}", number);
+  image.decoding = "async";
+  image.onload = () => {
+    sheet.dataset.loaded = "1";
+    delete sheet.dataset.loading;
+    sheet.replaceChildren(image);
+    packageWatcher()?.unobserve(sheet);
+  };
+  image.onerror = () => {
+    // One page failing must not cost the citizen the whole preview.
+    delete sheet.dataset.loading;
+    const t = T();
+    const note = document.createElement("div");
+    note.className = "pp-failed";
+    const said = document.createElement("p");
+    said.textContent = t.packagePageFailed;
+    note.appendChild(said);
+    const open = document.createElement("a");
+    open.className = "btn off";
+    open.href = sheet.dataset.original || url;
+    open.target = "_blank";
+    open.rel = "noopener";
+    open.textContent = t.packageOpenOriginal;
+    note.appendChild(open);
+    sheet.replaceChildren(note);
+  };
+  image.src = url;
+}
+
+function packageSheet(entry, pageUrl, t) {
+  const wrap = document.createElement("div");
+  wrap.className = "pp-page";
+
+  // A boundary at the top of each attachment, so a citizen scrolling can see
+  // where their own letter ends and the document they brought begins.
+  if (entry.section === "attachment" && entry.first) {
+    const divider = document.createElement("div");
+    divider.className = "pp-divider";
+    const which = document.createElement("span");
+    which.className = "pp-divider-label";
+    which.textContent = `${t.attachmentWord} ${entry.attachment}`;
+    divider.appendChild(which);
+    const name = document.createElement("strong");
+    // The package labels its index entries "1. Copy of earlier petition".
+    // The divider already says which attachment this is, so the ordinal is
+    // dropped here rather than printed twice.
+    name.textContent = String(entry.label || entry.filename || "")
+      .replace(/^\s*\d+\.\s*/, "");
+    divider.appendChild(name);
+    wrap.appendChild(divider);
+  }
+
+  const sheet = document.createElement("div");
+  sheet.className = "pp-sheet";
+  sheet.dataset.page = String(entry.page);
+  sheet.dataset.url = pageUrl.replace("{n}", String(entry.page));
+  // A skeleton rather than a blank white block: "do not leave blank white
+  // blocks with no indication".
+  const loading = document.createElement("div");
+  loading.className = "pp-loading";
+  loading.textContent = t.packagePageLoading;
+  sheet.appendChild(loading);
+  wrap.appendChild(sheet);
+
+  const number = document.createElement("p");
+  number.className = "pp-number";
+  number.textContent = String(entry.page);
+  wrap.appendChild(number);
+  return { wrap, sheet };
+}
+
+async function drawPackagePages(v) {
+  const box = $("packagePages");
+  if (!box) return;
+  const t = T();
+  const sid = v.session_id || "";
+  const version = String(v.document?.version || v.version || 1);
+  const enclosed = (v.attachments?.items || []).length;
+
+  if (!sid || !enclosed) { box.hidden = true; box.replaceChildren(); return; }
+  // Already drawn for this exact petition version — leave it alone, so that
+  // scrolling is not reset and drawn pages are not re-fetched on a repaint.
+  if (packageState.sid === sid && packageState.version === version
+      && box.childElementCount) return;
+
+  box.replaceChildren();
+  const waiting = document.createElement("p");
+  waiting.className = "pp-status";
+  waiting.textContent = t.packageBuilding;
+  box.appendChild(waiting);
+
+  let plan;
+  try {
+    const response = await fetch(
+      `/api/sessions/${encodeURIComponent(sid)}/document/package/pages`,
+      { headers: { Accept: "application/json" } });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    plan = await response.json();
+  } catch (error) {
+    // The package could not be built — most often because this server has no
+    // PDF engine. Say so, and keep the petition preview usable.
+    box.replaceChildren();
+    const failed = document.createElement("p");
+    failed.className = "pp-status";
+    failed.textContent = t.packageUnavailable;
+    box.appendChild(failed);
+    setPreviewMode(false, true);
+    return;
+  }
+
+  packageState = { sid, version, total: plan.total || 0 };
+  box.replaceChildren();
+  const watcher = packageWatcher();
+  (plan.pages || []).forEach((entry) => {
+    const { wrap, sheet } = packageSheet(entry, plan.page_url, t);
+    box.appendChild(wrap);
+    if (watcher) watcher.observe(sheet);
+    else loadPackagePage(sheet);          // no observer: draw them all
+  });
+
+  // Anything that could not be merged is named rather than quietly dropped.
+  (plan.not_included || []).forEach((item) => {
+    const wrap = document.createElement("div");
+    wrap.className = "pp-page";
+    const sheet = document.createElement("div");
+    sheet.className = "pp-sheet pp-sheet-note";
+    const name = document.createElement("strong");
+    name.textContent = item.label || item.filename || "";
+    sheet.appendChild(name);
+    const why = document.createElement("p");
+    why.textContent = t.packageNotMerged;
+    sheet.appendChild(why);
+    wrap.appendChild(sheet);
+    box.appendChild(wrap);
+  });
+
+  box.hidden = !packageMode;
+  updatePageIndicator();
+}
+
+function setPreviewMode(full, force) {
+  packageMode = Boolean(full);
+  const letterBox = $("letter");
+  const pages = $("packagePages");
+  const enclosures = $("enclosures");
+  if (pages) pages.hidden = !packageMode;
+  // The letter's own sheet is the Petition Only view. In package mode the
+  // petition pages are drawn as images like everything else, so showing both
+  // would print the letter twice.
+  const sheet = document.querySelector(".paper-sheet");
+  if (sheet) sheet.hidden = packageMode;
+  if (letterBox) letterBox.setAttribute("aria-hidden", packageMode ? "true" : "false");
+  if (enclosures) enclosures.hidden = packageMode || !enclosures.childElementCount;
+  const t = T();
+  $("modeLetter")?.setAttribute("aria-pressed", packageMode ? "false" : "true");
+  $("modePackage")?.setAttribute("aria-pressed", packageMode ? "true" : "false");
+  $("modeLetter")?.classList.toggle("on", !packageMode);
+  $("modePackage")?.classList.toggle("on", packageMode);
+  if ($("modeLetter")) $("modeLetter").textContent = t.modeLetter;
+  if ($("modePackage")) $("modePackage").textContent = t.modePackage;
+  updatePageIndicator();
+  if (force) {
+    $("modePackage")?.setAttribute("disabled", "disabled");
+  }
+}
+
+// "Page 41 of 103", from whichever sheet is nearest the middle of the view.
+function updatePageIndicator() {
+  const label = $("pageIndicator");
+  if (!label) return;
+  if (!packageMode || !packageState.total) { label.textContent = ""; return; }
+  const sheets = document.querySelectorAll("#packagePages .pp-sheet[data-page]");
+  let current = 1;
+  // The viewport, for the same reason the observer uses it.
+  const middle = window.innerHeight / 2;
+  sheets.forEach((sheet) => {
+    const box = sheet.getBoundingClientRect();
+    if (box.top <= middle) current = Number(sheet.dataset.page) || current;
+  });
+  label.textContent = T().pageOf
+    .replace("{n}", current).replace("{total}", packageState.total);
+}
+
+function drawEnclosures(attachments) {
+  // `T()` per call, the way every other painter here does it. Reaching for a
+  // bare `t` compiled fine and then threw ReferenceError at runtime, which
+  // aborted `paint()` partway: the enclosure box was emptied, and everything
+  // after this call — the download links, the emblem, the toolbar buttons —
+  // never ran, so the whole toolbar rendered disabled. A real browser found
+  // it; no unit test would have.
+  const t = T();
+  const box = $("enclosures");
+  if (!box) return;
+  const items = (attachments && attachments.items) || [];
+
+  // REBUILT ONLY WHEN SOMETHING CHANGED. `paint()` runs on every state
+  // update, and tearing the DOM down each time cancelled the <iframe>'s
+  // in-flight PDF request and started it again — two aborted fetches for one
+  // attachment, measured in the browser. On a large scan over a slow link
+  // that is a preview which restarts forever and never draws.
+  const key = JSON.stringify([
+    items.map((a) => [a.attachment_id, a.pages, a.label, a.file_url]),
+    editingLetter, t.enclosuresHeading,
+  ]);
+  if (key === enclosureKey) return;
+  enclosureKey = key;
+
+  box.replaceChildren();
+  if (!items.length || editingLetter) { box.hidden = true; return; }
+  box.hidden = false;
+
+  const heading = document.createElement("h3");
+  heading.className = "enclosures-title";
+  heading.textContent = t.enclosuresHeading;
+  box.appendChild(heading);
+
+  items.forEach((item, index) => {
+    const card = document.createElement("figure");
+    card.className = "enclosure";
+
+    const caption = document.createElement("figcaption");
+    const name = document.createElement("strong");
+    name.textContent = `${index + 1}. ${item.label || item.filename || ""}`;
+    caption.appendChild(name);
+
+    const detail = document.createElement("span");
+    detail.className = "enclosure-detail";
+    // The page count is the part that answers the question. Omitted rather
+    // than guessed when the file could not be read — a wrong count is worse
+    // than none, because it is checked against paper in somebody's hand.
+    const pages = Number(item.pages) || 0;
+    detail.textContent = [
+      item.filename,
+      fileType(item.content_type, item.filename),
+      pages ? (pages === 1 ? t.onePage : t.manyPages.replace("{n}", pages)) : "",
+    ].filter(Boolean).join(" · ");
+    caption.appendChild(detail);
+    card.appendChild(caption);
+
+    // A PHOTOGRAPH IS SHOWN, A PDF IS NOT, and that is a decision rather
+    // than an omission. An image is one cheap request and seeing it is the
+    // whole point — a citizen recognises their own photograph instantly.
+    //
+    // Embedding a PDF meant handing Chromium's PDF plugin an attachment that
+    // may be a hundred pages, inside a preview the citizen is scrolling. It
+    // also re-issued its own request every time, which showed up as aborted
+    // fetches in the browser. The card carries what identifies the document
+    // — name, type, page count — and View opens it properly in its own tab.
+    const type = String(item.content_type || "");
+    if (item.file_url && type.startsWith("image/")) {
+      const img = document.createElement("img");
+      img.className = "enclosure-view";
+      img.src = item.file_url;
+      img.alt = item.label || item.filename || "";
+      img.loading = "lazy";
+      card.appendChild(img);
+    } else if (!item.readable) {
+      const note = document.createElement("p");
+      note.className = "enclosure-note";
+      note.textContent = t.enclosureUnreadable;
+      card.appendChild(note);
+    }
+
+    if (item.file_url) {
+      const actions = document.createElement("div");
+      actions.className = "enclosure-actions";
+      // Open it, or take it away. Both are the citizen's own file, served
+      // from their own session — see `attachment_file` in `rest.py`.
+      const open = document.createElement("a");
+      open.className = "btn off";
+      open.href = item.file_url;
+      open.target = "_blank";
+      open.rel = "noopener";
+      open.textContent = t.enclosureView;
+      actions.appendChild(open);
+
+      const save = document.createElement("a");
+      save.className = "btn off";
+      save.href = `${item.file_url}?download=1`;
+      save.setAttribute("download", item.filename || "");
+      save.textContent = t.enclosureDownload;
+      actions.appendChild(save);
+      card.appendChild(actions);
+    }
+
+    const foot = document.createElement("p");
+    foot.className = "enclosure-note";
+    foot.textContent = t.enclosureIncluded;
+    card.appendChild(foot);
+    box.appendChild(card);
+  });
+}
+
+// "PDF", "PNG", "JPEG" — what the citizen would call it, from the declared
+// type and the filename as a fallback. Shown because "2 pages" alone does
+// not tell somebody whether the thing they attached is the scan or the photo.
+function fileType(contentType, filename) {
+  const known = {
+    "application/pdf": "PDF", "image/png": "PNG", "image/jpeg": "JPEG",
+    "image/webp": "WEBP", "text/plain": "TXT",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "DOCX",
+  };
+  const byType = known[String(contentType || "")];
+  if (byType) return byType;
+  const ext = String(filename || "").split(".").pop();
+  return ext && ext.length <= 5 && ext !== filename ? ext.toUpperCase() : "";
 }
 
 function startEditing() {

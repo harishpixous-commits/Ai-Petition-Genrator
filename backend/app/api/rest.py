@@ -35,6 +35,8 @@ from ..services import (
     document_intelligence,
     extraction,
     llm,
+    package,
+    system_one,
     tts,
 )
 from ..services.officer_store import require_citizen_session
@@ -493,23 +495,86 @@ async def add_attachment(
         # on the attachment so a reopened petition shows the same judgement,
         # and so it survives without being recomputed against a grievance
         # that has since been edited.
+        fields = state.get("fields") or {}
         judgement = attachment_relevance.assess(
             kind=attachment.kind, text=read.text,
-            grievance=str((state.get("fields") or {}).get("grievance") or ""),
+            grievance=str(fields.get("grievance") or ""),
             readable=read.readable, language=state.get("language", "en"))
         attachment.relevance = judgement.as_dict()
+
+        # WHOSE document this is. Advisory metadata, stored beside the
+        # relevance judgement and carrying exactly as much authority: none
+        # over the citizen's own fields. Its one effect is to withhold — a
+        # third party's petition may not become the source of the sentence
+        # "I had previously submitted ... under acknowledgement number N".
+        #
+        # The name compared here is the one the CITIZEN gave, never the one
+        # read off the page. That direction is the whole point.
+        attachment.relationship = system_one.describe_attachment(
+            kind=attachment.kind, text=read.text,
+            grievance=str(fields.get("grievance") or ""),
+            citizen_name=str(fields.get("applicant_name") or ""),
+            document_name=(prior.petitioner_name.value
+                           if prior.petitioner_name else ""),
+            readable=read.readable, language=state.get("language", "en"),
+            relevance_level=judgement.level)
 
         current.items.append(attachment)
         log.info("attachment.added",
                  extra={"kind": attachment.kind, "readable": read.readable,
                         "method": read.method, "extracted": prior.has_anything,
                         "relevance": judgement.level,
+                        # The class only. Neither name goes to the log: one is
+                        # the citizen's, the other is a third party's, and
+                        # neither belongs in an operational record.
+                        "relationship": attachment.relationship.get("value"),
+                        "needs_review": attachment.relationship.get("requires_review"),
                         "tables": len(read.tables)})
         result = await _attachment_turn(
             session_id, request,
             intent="attach_added",
             attachments=current.as_state())
         return session_view(result)
+
+
+@router.get("/sessions/{session_id}/attachments/{attachment_id}/file")
+async def attachment_file(session_id: str, attachment_id: str,
+                          request: Request, download: bool = False) -> FileResponse:
+    """The citizen's own attachment, so the page can show it.
+
+    WHY THIS EXISTS. The petition preview drew the letter and nothing else,
+    so a citizen who attached a document saw only the line "Enclosures: 1.
+    Copy of earlier petition" and had no way to tell whether the file itself
+    had gone anywhere. It had — the generated document carries the pages —
+    but the only way to find that out was to download and open it. Somebody
+    at a counter should be able to see their own paperwork on the screen in
+    front of them.
+
+    SCOPED LIKE EVERY OTHER SESSION ROUTE. `_require_state` resolves the
+    session the same way the rest of this file does, so this serves one
+    citizen their own file and nothing else. The response is sandboxed and
+    not cached, because an attachment may carry an Aadhaar card.
+    """
+    with session_context(session_id):
+        state = await _require_state(request, session_id)
+        enclosed = attachment_rules.AttachmentSet.from_state(state.get("attachments"))
+        attachment = enclosed.get(attachment_id)
+        if attachment is None:
+            raise HTTPException(404, "That attachment is not on this petition.")
+        path = attachment_store.path_of(session_id, attachment)
+        if path is None or not path.is_file():
+            raise HTTPException(410, "This attachment is no longer available.")
+        # `?download=1` is the citizen asking for the file rather than a look
+        # at it. Anything this browser cannot display is sent as a download
+        # whichever they asked for, because an inline .docx is a blank tab.
+        inline = (not download) and attachment.content_type in (
+            "application/pdf", "image/png", "image/jpeg", "image/webp")
+        return FileResponse(
+            path, media_type=attachment.content_type or "application/octet-stream",
+            filename=attachment.filename,
+            content_disposition_type="inline" if inline else "attachment",
+            headers={"Cache-Control": "no-store",
+                     "Content-Security-Policy": "sandbox; default-src 'none'"})
 
 
 @router.delete("/sessions/{session_id}/attachments/{attachment_id}")
@@ -805,6 +870,260 @@ async def _letter_only(state: LetterState, kind: str) -> Path:
                  "The full petition PDF is available.")
     log.info("document.letter_only", extra={"kind": kind, "error": error or ""})
     return pdf_path
+
+
+@router.get("/sessions/{session_id}/document/package.pdf")
+async def document_package(session_id: str, request: Request) -> FileResponse:
+    """The petition, an index, and then the citizen's originals.
+
+    WHY THIS IS NOT THE ORDINARY PDF. The DOCX carries its attachments as
+    pictures — that is all a Word file can hold of another document — and it
+    stops at twelve pages per attachment. The PDF is converted from that
+    DOCX, so it inherits both limits.
+
+    This is assembled the other way round: the pages of an attached PDF are
+    COPIED ACROSS, so their text layer survives and a hundred-page annexure
+    arrives as a hundred pages. It is what an office receives and files; the
+    DOCX remains the thing a citizen edits.
+
+    Built on request rather than at generation time. Most petitions are
+    never packaged, the inputs cannot change once the petition is ready, and
+    copying a hundred pages is not work to do speculatively on every
+    generation.
+    """
+    with session_context(session_id):
+        built, result, document = await _package_for(request, session_id)
+        reference = str(document.get("reference") or session_id).replace("/", "-")
+        return FileResponse(
+            built, media_type="application/pdf",
+            filename=f"{reference}-package.pdf",
+            headers={"Cache-Control": "no-store",
+                     "X-Petition-Version": str(document.get("version") or 1),
+                     "X-Package-Pages": str(result.total_pages),
+                     "X-Package-Complete": "1" if result.complete else "0"})
+
+
+async def _package_for(request: Request, session_id: str):
+    """Build the combined package, or hand back the one already built.
+
+    Shared by the download and by the page renderer that draws the preview,
+    because those are two views of ONE document and rebuilding it per page
+    request would copy a hundred attached pages a hundred times over.
+
+    Keyed on the document version, so a petition edited after generation
+    rebuilds rather than serving the previous version's package.
+    """
+    state = await _require_state(request, session_id)
+    document = state.get("document") or {}
+    if state.get("status") != "ready" or not document.get("docx"):
+        raise HTTPException(409, "The petition has not been generated yet.")
+
+    version = str(document.get("version") or 1)
+    cached = _PACKAGE_CACHE.get(session_id)
+    if cached and cached[0] == version and cached[1].is_file():
+        return cached[1], cached[2], document
+
+    built, result = await _build_package(state, session_id, document)
+    _PACKAGE_CACHE[session_id] = (version, built, result)
+    return built, result, document
+
+
+async def _build_package(state: LetterState, session_id: str, document: dict):
+    """The assembly itself. Kept apart from the caching so each reads."""
+
+    language = state.get("language", "en")
+    enclosed = attachment_rules.AttachmentSet.from_state(state.get("attachments"))
+
+    # THE LETTER ALONE IS THE BASE, not the ordinary PDF. That one already
+    # carries the attachments rasterised into it, so packaging it would
+    # deliver every attachment twice — once as pictures inside the letter
+    # and again as the originals behind the index. Measured on a real
+    # petition: a 2-page letter with one 2-page enclosure came out as
+    # 7 pages instead of 5.
+    #
+    # THE ORDINARY PDF IS NOT REQUIRED TO EXIST. It used to be, and that
+    # was wrong: the letter-only PDF is rendered here from `letter_text`
+    # anyway, so gating on a file this endpoint does not use meant the
+    # package was refused whenever the main PDF conversion was slow,
+    # queued or unavailable — which is exactly when a citizen is standing
+    # at a counter pressing the button again.
+    try:
+        letter = await _letter_only(state, "pdf")
+    except Exception as exc:  # noqa: BLE001
+        log.warning("document.package_letter_failed",
+                    extra={"error": str(exc)[:200]})
+        raise HTTPException(
+            503, "The petition could not be converted to PDF on this "
+                 "server, so the combined package cannot be built. The "
+                 "petition and the attachments are still available "
+                 "separately.") from exc
+    if not letter.is_file():
+        raise HTTPException(410, "The generated file is no longer on disk.")
+    items = []
+    for index, attachment in enumerate(enclosed.items, start=1):
+        try:
+            source = attachment_store.path_of(session_id, attachment)
+        except Exception:  # noqa: BLE001
+            source = None
+        if source is None:
+            continue
+        items.append(package.Item(
+            label=f"{index}. {attachment.label(language)}",
+            path=Path(source), filename=attachment.filename))
+
+    # Beside the petition it belongs to, so it is cleaned up with it.
+    destination = letter.with_name(f"{letter.stem}-package.pdf")
+    words = _PACKAGE_WORDS.get(language, _PACKAGE_WORDS["en"])
+    result = await package.build(
+        letter, items, destination,
+        index_title=words["index"], held_separately=words["separate"])
+
+    log.info("document.package", extra={
+        "attachments": len(result.items),
+        "included": sum(1 for i in result.items if i.included),
+        "pages": result.total_pages,
+        "complete": result.complete,
+    })
+    return destination, result
+
+
+# One built package per session, keyed by document version. The preview asks
+# for pages one at a time, and rebuilding a hundred-page package on each of
+# those requests would copy the citizen's attachments a hundred times over.
+_PACKAGE_CACHE: dict[str, tuple[str, Path, object]] = {}
+
+# What a preview page is rendered at. 110 DPI is legible for a scanned Tamil
+# letter on a laptop without producing a megabyte per page; the citizen who
+# needs to read the small print opens the original, which is one click away.
+_PREVIEW_DPI = 110
+_PREVIEW_MAX_DPI = 200
+
+
+@router.get("/sessions/{session_id}/document/package/pages")
+async def package_pages(session_id: str, request: Request) -> dict:
+    """What the combined package contains, page by page.
+
+    The preview draws one continuous document — petition, index, then the
+    citizen's originals — and it needs to know how many pages there are and
+    where each attachment begins BEFORE it draws anything, so it can put up
+    the right number of placeholders and load only what is on screen.
+
+    Sending the pages themselves here instead would mean a hundred images in
+    one response for a hundred-page annexure. It sends a list of numbers.
+    """
+    import pymupdf
+
+    with session_context(session_id):
+        built, result, document = await _package_for(request, session_id)
+        language = "ta" if (await _require_state(request, session_id)
+                            ).get("language") == "ta" else "en"
+        # Counted from the FILE, not from the arithmetic. `Result.total_pages`
+        # adds an index page whether or not one was drawn, which is right
+        # whenever something is attached and one short of the truth when
+        # nothing is — and a preview that asks for a page which is not there
+        # is a broken image in front of a citizen.
+        with pymupdf.open(built) as document_:
+            total = int(document_.page_count)
+
+        pages: list[dict] = []
+        petition_pages = int(getattr(result, "petition_pages", 0) or 0)
+        for number in range(1, petition_pages + 1):
+            pages.append({"page": number, "section": "petition"})
+        placed = [item for item in result.items if item.included]
+        if placed:
+            pages.append({"page": petition_pages + 1, "section": "index"})
+        # Each attachment's own run of pages, so the preview can draw a
+        # boundary at the top of the first one rather than guessing.
+        cursor = petition_pages + (1 if placed else 0)
+        for order, item in enumerate(placed, start=1):
+            for offset in range(int(item.pages or 0)):
+                cursor += 1
+                pages.append({
+                    "page": cursor,
+                    "section": "attachment",
+                    "attachment": order,
+                    "label": item.label,
+                    "filename": item.filename,
+                    "first": offset == 0,
+                    "of": int(item.pages or 0),
+                })
+
+        missing = [{"label": i.label, "filename": i.filename,
+                    "reason": i.reason} for i in result.items if not i.included]
+        return {
+            "total": total,
+            "petition_pages": petition_pages,
+            "complete": bool(result.complete),
+            "language": language,
+            "pages": pages,
+            # Named rather than silently dropped: "do not pretend it was
+            # merged if it was not".
+            "not_included": missing,
+            "page_url": (f"/api/sessions/{session_id}"
+                         f"/document/package/page/{{n}}.png"),
+            "version": str(document.get("version") or 1),
+        }
+
+
+@router.get("/sessions/{session_id}/document/package/page/{number}.png")
+async def package_page(session_id: str, number: int, request: Request,
+                       dpi: int = _PREVIEW_DPI) -> Response:
+    """One page of the combined package, drawn as an image.
+
+    WHY AN IMAGE AND NOT THE PDF. Handing the browser's PDF plugin an
+    embedded document was measured doing two things badly: it re-issued its
+    own requests (aborted fetches in the browser log), and it gives no way to
+    load a hundred-page annexure a page at a time. Rendering here means the
+    preview is a list of ordinary images that the page can lazy-load, and
+    what the citizen sees is the actual page — the scan, the handwriting, the
+    photograph — not a transcription of it.
+
+    Cached on disk beside the package, because scrolling back up a long
+    document must not re-render what was already drawn.
+    """
+    import asyncio
+
+    import pymupdf
+
+    with session_context(session_id):
+        built, result, document = await _package_for(request, session_id)
+        with pymupdf.open(built) as document_:
+            total = int(document_.page_count)
+        if number < 1 or number > total:
+            raise HTTPException(404, "That page is not in this package.")
+        # Clamped rather than trusted: a query string must not be able to ask
+        # this server to render a 2000 DPI bitmap of a hundred-page document.
+        resolution = max(60, min(int(dpi or _PREVIEW_DPI), _PREVIEW_MAX_DPI))
+
+        cache = built.with_name(f"{built.stem}-p{number}-{resolution}.png")
+        if not cache.is_file():
+            def draw() -> None:
+                with pymupdf.open(built) as document_:
+                    document_[number - 1].get_pixmap(dpi=resolution).save(str(cache))
+
+            try:
+                await asyncio.to_thread(draw)
+            except Exception as exc:  # noqa: BLE001
+                log.warning("document.package_page_failed",
+                            extra={"page": number, "error": str(exc)[:160]})
+                raise HTTPException(
+                    500, "That page could not be drawn.") from exc
+
+        return FileResponse(
+            cache, media_type="image/png",
+            headers={"Cache-Control": "no-store",
+                     "X-Package-Page": str(number),
+                     "X-Package-Pages": str(total)})
+
+
+# The two phrases the index page needs. Not in the template: they describe
+# this service's own packaging, not the letter an office prescribes.
+_PACKAGE_WORDS = {
+    "en": {"index": "SUPPORTING DOCUMENTS",
+           "separate": "held separately with this petition"},
+    "ta": {"index": "\u0b87\u0ba3\u0bc8\u0b95\u0bcd\u0b95\u0baa\u0bcd\u0baa\u0b9f\u0bcd\u0b9f \u0b86\u0bb5\u0ba3\u0b99\u0bcd\u0b95\u0bb3\u0bcd",
+           "separate": "\u0ba4\u0ba9\u0bbf\u0baf\u0bbe\u0b95 \u0b87\u0ba3\u0bc8\u0b95\u0bcd\u0b95\u0baa\u0bcd\u0baa\u0b9f\u0bcd\u0b9f\u0ba4\u0bc1"},
+}
 
 
 async def _document(request: Request, session_id: str, kind: str, *,

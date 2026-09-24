@@ -28,7 +28,6 @@
   <nav class="main-nav" aria-label="Main navigation">
     <a href="#home" data-route="home" id="navHome" aria-current="page">Home</a>
     <a href="#create" data-route="create" id="navCreate">Create Petition</a>
-    <a href="#petitions" data-route="petitions" id="navPetitions">All Petitions</a>
     <!-- A counter terminal: the same petition flow on a machine standing in
          a government office with a printer attached, where the finished
          petition comes out of the printer without anybody being asked to
@@ -105,11 +104,6 @@
       <div><span class="action-eyebrow" id="homeCreateEyebrow" data-i18n="homeCreateEyebrow">START SOMETHING NEW</span><h3 id="homeCreateTitle" data-i18n="homeCreateTitle">Create a petition</h3><p id="homeCreateDescription" data-i18n="homeCreateDescription">A guided conversation, a complete draft, and a document ready for your review.</p></div>
       <span class="action-arrow" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M5 12h14m-6-6 6 6-6 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
     </a>
-    <a class="home-action-card library-action" href="#petitions" data-route="petitions" id="homePetitionsBtn">
-      <span class="home-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M3 7a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v9H3V7Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M7 12h10M7 16h6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></span>
-      <div><span class="action-eyebrow" id="homePetitionsEyebrow" data-i18n="homePetitionsEyebrow">PICK UP WHERE YOU LEFT OFF</span><h3 id="homePetitionsTitle" data-i18n="homePetitionsTitle">All petitions</h3><p id="homePetitionsDescription" data-i18n="homePetitionsDescription">Find, open, and manage the petitions saved on this machine, with their documents and versions.</p></div>
-      <span class="action-arrow" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M5 12h14m-6-6 6 6-6 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
-    </a>
   </div>
 
 
@@ -123,52 +117,6 @@
   </section>
 </section>
 
-<section class="petitions-page app-page" id="petitionsPage" hidden aria-labelledby="petitionsTitle">
-  <div class="page-heading">
-    <div><p class="eyebrow" id="petitionsEyebrow" data-i18n="petitionsEyebrow">SAVED DOCUMENTS</p><h2 id="petitionsTitle" data-i18n="petitionsTitle">All petitions</h2><p id="petitionsDescription" data-i18n="petitionsDescription">Find a petition, review its details, and pick up where it was left off.</p></div>
-    <a class="btn primary" href="#create" data-route="create"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span id="petitionsCreateText" data-i18n="petitionsCreateText">Create petition</span></a>
-  </div>
-
-  <form class="petition-filters" id="petitionFilters" autocomplete="off">
-    <div class="filter-search-row">
-      <div class="petition-search"><label class="sr-only" for="petitionSearch" id="petitionSearchLabel">Search petitions</label><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" stroke="currentColor" stroke-width="1.7"/><path d="m16 16 5 5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg><input id="petitionSearch" type="search" placeholder="Search by reference, applicant name, or subject" maxlength="200"></div>
-      <div class="filter-sort"><label for="petitionSort" id="petitionSortLabel">Sort by</label><select id="petitionSort"><option value="newest">Newest first</option><option value="oldest">Oldest first</option><option value="updated">Recently updated</option></select></div>
-    </div>
-    <div class="filter-grid">
-      <div class="filter-field"><label for="filterDateFrom" id="filterDateFromLabel">Created from</label><input id="filterDateFrom" type="date"></div>
-      <div class="filter-field"><label for="filterDateTo" id="filterDateToLabel">Created to</label><input id="filterDateTo" type="date"></div>
-      <div class="filter-field"><label for="filterDepartment" id="filterDepartmentLabel">Department</label><select id="filterDepartment"><option value="">All departments</option></select></div>
-      <div class="filter-field"><label for="filterCategory" id="filterCategoryLabel">Category</label><select id="filterCategory"><option value="">All categories</option></select></div>
-      <div class="filter-field"><label for="filterStatus" id="filterStatusLabel">Status</label><select id="filterStatus"><option value="">All statuses</option><option value="draft">Draft</option><option value="ready">Ready</option><option value="generating">Preparing</option><option value="failed">Needs attention</option><option value="cancelled">Cancelled</option></select></div>
-      <div class="filter-field"><label for="filterLanguage" id="filterLanguageLabel">Language</label><select id="filterLanguage"><option value="">All languages</option><option value="en">English</option><option value="ta">தமிழ்</option></select></div>
-    </div>
-    <div class="filter-footer"><p id="petitionFilterHint">Search and filters apply to the saved petitions.</p><button class="text-btn" id="clearFilters" type="button">Clear filters</button></div>
-  </form>
-
-  <div class="petition-results-heading">
-    <h3 id="petitionCount" role="status" aria-live="polite">Your petitions</h3>
-    <label class="petition-select-all" id="selectAllWrap" hidden><input type="checkbox" id="selectAllPetitions"><span id="selectAllText">Select all</span></label>
-    <span id="petitionsResultsNote">Saved documents and drafts</span>
-  </div>
-  <!-- Appears only once something is ticked. A delete button standing on a page
-       of petitions with nothing selected is an invitation to an accident. -->
-  <div class="petition-selection" id="petitionSelection" hidden role="status" aria-live="polite">
-    <span class="selection-count" id="selectionCount">0 selected</span>
-    <button class="text-btn" id="selectAllMatching" type="button" hidden>Select all</button>
-    <span class="selection-spacer"></span>
-    <button class="text-btn" id="clearSelection" type="button">Clear selection</button>
-    <button class="btn danger" id="deleteSelected" type="button">
-      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 7h14M10 7V5h4v2m-8 0 1 12h8l1-12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      <span id="deleteSelectedText">Delete</span></button>
-  </div>
-  <div class="collection-state" id="petitionsLoading" role="status" aria-live="polite"><span class="collection-spinner" aria-hidden="true"></span><h3 id="petitionsLoadingTitle" data-i18n="petitionsLoadingTitle">Loading petitions</h3><p id="petitionsLoadingText" data-i18n="petitionsLoadingText">Getting the saved documents ready.</p></div>
-  <div class="collection-state" id="petitionsEmpty" hidden>
-    <span class="state-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M3 7a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v9H3V7Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M8 13h8m-8 3h5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></span><h3 id="petitionsEmptyTitle">Your petitions will be here</h3><p id="petitionsEmptyText">Create your first petition and return here to find it, make changes, or download it.</p><a class="btn primary" href="#create" data-route="create" id="petitionsEmptyCreate" data-i18n="petitionsEmptyCreate">Create your first petition</a>
-  </div>
-  <div class="collection-state collection-error" id="petitionsError" hidden role="alert"><span class="state-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.5"/><path d="M12 7v6m0 4v.1" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></span><h3 id="petitionsErrorTitle" data-i18n="petitionsErrorTitle">We couldn’t load the petitions</h3><p id="petitionsErrorText">Please try again in a moment.</p><button class="btn" id="petitionsRetry" type="button">Try again</button></div>
-  <div class="petitions-list" id="petitionsList" aria-live="polite" aria-label="Saved petitions"></div>
-  <nav class="petitions-pagination" id="petitionsPagination" hidden aria-label="Petition pages"><button class="btn" id="petitionsPrevious" type="button">Previous</button><span id="petitionsPageInfo" aria-live="polite">Page 1</span><button class="btn" id="petitionsNext" type="button">Next</button></nav>
-</section>
 
 <section id="generatorPage" hidden aria-label="Create and review a petition">
 
@@ -384,6 +332,10 @@
         <!-- The petition, read out. For a citizen who cannot read the screen
              the document is otherwise the one part of this service that
              never speaks. -->
+        <!-- The petition plus the citizen's originals, as real pages. Shown
+             only when something is attached: with nothing enclosed it would
+             be the same file as the PDF beside it. -->
+        <a class="btn off" id="packagePdf" download hidden></a>
         <button class="btn" id="readBtn" type="button">
           <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 9v6h3.5L12 19V5L7.5 9H4Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M16 9.2a4 4 0 0 1 0 5.6M18.5 6.5a8 8 0 0 1 0 11" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
           <span id="readText"></span>
@@ -425,11 +377,30 @@
 
            The gutter rows are `display:none` on screen, so this changes
            nothing about how the page looks in a browser. -->
+      <!-- WHICH DOCUMENT THE CENTRE IS SHOWING. Hidden until something is
+           attached, because with no enclosures the two modes are the same
+           document and the choice would be a control that does nothing. -->
+      <div class="preview-modes" id="previewModes" role="group" hidden>
+        <button class="pm-btn" id="modeLetter" type="button" aria-pressed="false"></button>
+        <button class="pm-btn" id="modePackage" type="button" aria-pressed="true"></button>
+        <span class="pm-count" id="pageIndicator" aria-live="polite"></span>
+      </div>
       <div class="paper-wrap">
+        <!-- The combined package, drawn as one continuous run of pages:
+             petition, index, then the citizen's originals. Pages are loaded
+             as they come into view, so a hundred-page annexure costs one
+             request per page the citizen actually looks at. -->
+        <div class="package-pages" id="packagePages" hidden></div>
         <table class="paper-sheet">
           <thead class="page-gutter" aria-hidden="true"><tr><td></td></tr></thead>
           <tbody>
-            <tr><td><article class="paper" id="letter"></article></td></tr>
+            <tr><td><article class="paper" id="letter"></article>
+              <!-- What is actually attached, shown after the letter the way
+                   the document carries it. Before this the preview drew the
+                   letter alone, so a citizen who attached a file saw only the
+                   words "Enclosures: 1. Copy of earlier petition" and could
+                   not tell whether the file had gone anywhere. It had. -->
+              <aside class="enclosures" id="enclosures" hidden></aside></td></tr>
           </tbody>
           <tfoot class="page-gutter" aria-hidden="true"><tr><td></td></tr></tfoot>
         </table>
