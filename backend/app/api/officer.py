@@ -215,6 +215,11 @@ def attachments(state, sid):
             "kind": a.kind,
             "url": f"/api/officer/petitions/{quote(sid, safe='')}/attachments/{quote(a.attachment_id, safe='')}",
             "metadata": a.note or "",
+            # AI-ASSISTED, and the portal labels it that way. It is a
+            # classification for an officer to agree or disagree with, not a
+            # determination: nothing downstream branches on it, and the
+            # officer's own view of the document governs.
+            "relationship": a.relationship or None,
         }
         for a in AttachmentSet.from_state(state.get("attachments")).items
     ]
@@ -235,14 +240,26 @@ async def petition(sid: str, request: Request, user: OfficerUser):
         "Address supplied by citizen": fields.get("address"),
         "Supporting documents": str(len(AttachmentSet.from_state(state.get("attachments")).items)),
     }
-    previous = []
+    # "Previous submissions" is a claim about THIS citizen's history, so a
+    # reference number read off a document belonging to somebody else does not
+    # belong in it. Listed under its own heading instead, where an officer can
+    # see both that the number exists and that it is not the petitioner's.
+    previous, third_party = [], []
     for attachment in AttachmentSet.from_state(state.get("attachments")).items:
         if attachment.confirmed and attachment.kind in ("acknowledgement", "previous_petition"):
             reference = (attachment.extracted or {}).get("reference_number")
-            if isinstance(reference, dict) and reference.get("value"):
+            if not (isinstance(reference, dict) and reference.get("value")):
+                continue
+            relationship = attachment.relationship or {}
+            if relationship.get("first_person_allowed", True):
                 previous.append(str(reference["value"]))
+            else:
+                third_party.append(str(reference["value"]))
     if previous:
         facts["Previous submissions"] = ", ".join(previous)
+    if third_party:
+        facts["Referenced in an enclosed document (not the petitioner's)"] = \
+            ", ".join(third_party)
     with store.database() as db:
         notes = [
             dict(n)

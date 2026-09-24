@@ -43,9 +43,31 @@ from typing import Any
 # 641012" are one place written at two lengths. Applying the same rule to a
 # name says "Harish Kumar" and "Harish Kumaresan" are the same person, which
 # is how a petition ends up filed under the wrong name.
-COMPARED: tuple[tuple[str, str, str], ...] = (
-    ("applicant_name", "petitioner_name", "exact"),
-    ("address", "address", "extends"),
+# The fourth element is whether the DOCUMENT'S value may be adopted, and
+# for the name it is False. What happened without it:
+#
+#   The citizen typed      Harish
+#   The PDF said           சேதுபாலா
+#   Extraction produced    சேபாலா          (confidence 0.8)
+#
+# — a syllable short of the name on the page. That misreading was offered
+# as a one-click replacement for a name the citizen had typed correctly,
+# they took it, and the petition went out under a name belonging to nobody:
+# not the citizen, not the person in the document.
+#
+# The DISAGREEMENT is still worth raising. A document naming somebody else
+# is worth a second look at a counter, and it may be exactly right — a
+# neighbour's earlier petition is legitimate evidence. What is not offered
+# any more is the swap. A citizen knows their own name; an OCR pass over a
+# scanned Tamil letter does not, and the one thing it cannot be allowed to
+# do is rename them.
+#
+# The address stays adoptable. "72/11 Gandhipuram" against "72/11
+# Gandhipuram, Coimbatore 641012" is one place written at two lengths, and
+# the longer one really is better for an office trying to visit it.
+COMPARED: tuple[tuple[str, str, str, bool], ...] = (
+    ("applicant_name", "petitioner_name", "exact", False),
+    ("address", "address", "extends", True),
 )
 
 # Punctuation and case carry no meaning in an address. "80/33, Sidhapudur."
@@ -93,6 +115,9 @@ class Conflict:
     filename: str
     where: str = ""           # "page 2", "slide 4", or empty
     confidence: float = 0.0
+    # Whether the page may offer to put the document's value on the petition.
+    # False means the disagreement is shown and nothing is offered.
+    adoptable: bool = True
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -103,6 +128,7 @@ class Conflict:
             "filename": self.filename,
             "where": self.where,
             "confidence": round(self.confidence, 2),
+            "adoptable": self.adoptable,
         }
 
 
@@ -123,7 +149,7 @@ def find(fields: dict[str, Any], attachments: Any) -> list[Conflict]:
         prior = PriorPetition.from_dict(getattr(attachment, "extracted", None))
         if prior is None:
             continue
-        for petition_field, prior_field, mode in COMPARED:
+        for petition_field, prior_field, mode, adoptable in COMPARED:
             current = fields.get(petition_field)
             value = getattr(prior, prior_field, None)
             if not current or value is None or not value.value.strip():
@@ -138,5 +164,6 @@ def find(fields: dict[str, Any], attachments: Any) -> list[Conflict]:
                 filename=attachment.filename,
                 where=value.where(),
                 confidence=value.confidence,
+                adoptable=adoptable,
             ))
     return found

@@ -1315,22 +1315,53 @@ def _enclosure_detail(attachment: Any, language: str) -> str:
 def _prior_reference(enclosed: Any, language: str) -> str:
     """The sentence about an earlier petition, if one is actually evidenced.
 
-    Three conditions, all required, and every one of them is the citizen's
+    Four conditions, all required, and the first three are the citizen's
     decision rather than the software's:
 
       1. a document was attached,
       2. something was read out of it,
-      3. the citizen looked at what was read and confirmed it.
+      3. the citizen looked at what was read and confirmed it,
+      4. the document is not, on the face of it, somebody else's.
 
     Fail any one and the petition says nothing about an earlier submission. A
     petition that claims a prior reference number which does not resolve is
     worse than one that claims nothing: it sends a receiving officer to look
     for a file that was never opened.
+
+    CONDITION 4 WAS ADDED AFTER A REAL FAILURE, and it is the only one the
+    citizen cannot see themselves. A citizen called Harish attached a previous
+    petition belonging to Sethubala and confirmed what had been read out of
+    it — correctly, because it HAD been read correctly. The document was
+    genuine and the acknowledgement number was genuine. The sentence built
+    from them was not:
+
+        "I had previously submitted a petition regarding the same issue
+         under acknowledgement number 4412."
+
+    Harish had not. Confirming that a document says something is not the same
+    as claiming it is about you, and nothing in conditions 1 to 3 can tell the
+    difference. The relationship classification can, so it is consulted here —
+    to WITHHOLD the sentence, never to write one.
+
+    A third party's petition is still enclosed, still listed, and still
+    evidence. It simply does not get to speak in the citizen's first person.
     """
     for attachment in getattr(enclosed, "items", []):
         if attachment.kind not in ("previous_petition", "acknowledgement", "response"):
             continue
         if not attachment.confirmed or not attachment.extracted:
+            continue
+        relationship = getattr(attachment, "relationship", None) or {}
+        # Default True on purpose. Absent for attachments uploaded before this
+        # existed, and True when the classifier could not be reached: both
+        # mean "not established", and an unestablished document keeps the
+        # behaviour it has always had rather than being newly silenced. What
+        # withholds the sentence is evidence that the document is somebody
+        # else's, never the absence of evidence that it is theirs.
+        if not relationship.get("first_person_allowed", True):
+            log.info("prior_reference.withheld",
+                     extra={"relationship": relationship.get("value"),
+                            "kind": attachment.kind})
             continue
         prior = prior_petition.PriorPetition.from_dict(attachment.extracted)
         if prior is None:

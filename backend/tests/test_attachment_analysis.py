@@ -476,3 +476,79 @@ class TestWhatTheContentsPageIsAllowedToSay:
                           size=10, kind="photo", confirmed=True, extracted=None)
 
         assert _enclosure_detail(bare, "en") == ""
+
+
+class TestADocumentMayNotRenameThePetitioner:
+    """REPORTED FROM A GENERATED PETITION, and the worst kind of wrong: it
+    looked like a considered choice.
+
+        the citizen typed      Harish
+        the attached PDF said  சேதுபாலா
+        extraction produced    சேபாலா      (confidence 0.8)
+
+    A syllable short of the name on the page. That misreading was offered as
+    a one-click replacement for a name the citizen had typed correctly, they
+    took it, and the petition went out under a name belonging to nobody —
+    not the citizen, not the person in the document.
+
+    The DISAGREEMENT is still worth raising: a document naming somebody else
+    is worth a second look at a counter, and it is often legitimate, because
+    a neighbour's earlier petition is real evidence. What is not offered any
+    more is the swap.
+    """
+
+    @staticmethod
+    def _attachment(text: str) -> Attachment:
+        return Attachment(
+            attachment_id="a1", filename="previous_petition.pdf",
+            stored_name="a1.pdf", content_type="application/pdf", size=10,
+            kind="previous_petition", confirmed=True,
+            extracted=prior_petition.analyse(text).as_dict())
+
+    def _letter(self, name: str) -> str:
+        return build_letter_text(
+            template=the_template(),
+            fields={"applicant_name": name, "age": 23, "mobile": "9344174752",
+                    "address": "80/33 Perumal Kovil Street, Theni",
+                    "grievance": "The road is damaged."},
+            language="en", composition=None, session_id="prior-000000000002")
+
+    def test_the_disagreement_is_still_reported(self):
+        found = attachment_conflicts.find(
+            {"applicant_name": "Harish",
+             "address": "80/33 Perumal Kovil Street, Theni"},
+            AttachmentSet([self._attachment(self._letter("Sethubala"))]))
+
+        assert [c.field for c in found] == ["applicant_name"]
+        assert found[0].current == "Harish"
+
+    def test_but_the_document_is_not_offered_as_a_replacement(self):
+        found = attachment_conflicts.find(
+            {"applicant_name": "Harish"},
+            AttachmentSet([self._attachment(self._letter("Sethubala"))]))
+
+        assert found[0].adoptable is False
+        assert found[0].as_dict()["adoptable"] is False
+
+    def test_an_address_still_may_be_adopted(self):
+        """A document's address is often better than the one typed at a
+        counter — the same place with the postcode on it."""
+        found = attachment_conflicts.find(
+            {"applicant_name": "Harish", "address": "Somewhere else entirely"},
+            AttachmentSet([self._attachment(self._letter("Harish"))]))
+
+        assert [c.field for c in found] == ["address"]
+        assert found[0].adoptable is True
+
+    def test_the_page_offers_no_button_for_a_name(self):
+        """The other half of the rule. A server that marks the value
+        unadoptable and a page that offers it anyway is no rule at all."""
+        import pathlib
+        import re
+
+        source = pathlib.Path("app/static/app.js").read_text(encoding="utf-8")
+        card = source[source.index('$("attachConflictList").innerHTML'):]
+        card = card[:card.index("</div>`).join")]
+
+        assert "adoptable === false" in card
+        assert re.search(r"adoptable === false \?\s*\"\"\s*:", card), card

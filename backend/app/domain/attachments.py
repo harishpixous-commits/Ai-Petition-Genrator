@@ -161,6 +161,17 @@ class Attachment:
     # `attachment_relevance` judged it at upload. Advisory: it changes how the
     # file is PRESENTED, never whether it is kept or listed.
     relevance: dict[str, Any] | None = None
+    # WHOSE document this appears to be, as System-1 classified it at upload:
+    # their own earlier petition, somebody else's, a reply from an office, a
+    # receipt. Advisory in the same sense as `relevance` — it cannot keep a
+    # file out and it cannot alter a single citizen field.
+    #
+    # It has exactly one power, and it is a power to WITHHOLD: a document
+    # classified as a third party's may not become the source of the sentence
+    # "I had previously submitted a petition ... under acknowledgement number
+    # N". See `_prior_reference` in `graph/nodes.py`. Sethubala's reference
+    # number in Harish's first person is a false claim on a government form.
+    relationship: dict[str, Any] | None = None
 
     def label(self, language: Language = "en") -> str:
         base = KIND_LABELS.get(self.kind, KIND_LABELS["other"]).get(

@@ -143,6 +143,23 @@
         id: "sample-receipt",
         filename: "Previous complaint receipt · sample",
         kind: "acknowledgement",
+        relationship: {
+          value: "ACKNOWLEDGEMENT",
+          confidence: 0.8,
+          reason: "reads as a receipt",
+        },
+      },
+      {
+        // The case an officer most needs to be able to see at a glance, so
+        // the design preview carries it rather than only the easy one.
+        id: "sample-third-party",
+        filename: "Earlier petition · sample",
+        kind: "previous_petition",
+        relationship: {
+          value: "THIRD_PARTY_SUPPORTING_DOCUMENT",
+          confidence: 0.85,
+          reason: "a petition naming a different person",
+        },
       },
     ],
     notes: [],
@@ -181,6 +198,38 @@
   }
   const badge = (s) =>
     `<span class="badge ${esc(s.toLowerCase().replaceAll(" ", "-"))}">${esc(s)}</span>`;
+  // Whose document this appears to be, as System-1 classified it at upload.
+  // Labelled as AI-assisted every time it is shown: it is a classification an
+  // officer may disagree with, not a determination, and nothing in the
+  // service routes on it. A third party's document is called out because that
+  // is the case an officer most needs to notice — the petition in front of
+  // them encloses somebody else's paperwork.
+  const RELATIONSHIP_LABELS = {
+    OWN_PREVIOUS_PETITION: "Petitioner's own earlier petition",
+    THIRD_PARTY_SUPPORTING_DOCUMENT: "Third-party supporting document",
+    ACKNOWLEDGEMENT: "Acknowledgement / receipt",
+    GOVERNMENT_RESPONSE: "Reply from an office",
+    CERTIFICATE: "Certificate",
+    PHOTO_EVIDENCE: "Photograph",
+    GENERAL_SUPPORTING_DOCUMENT: "Supporting document",
+    UNRELATED: "Does not appear related to this complaint",
+    UNKNOWN: "Could not be established",
+  };
+  const relationship = (f) => {
+    const r = f && f.relationship;
+    if (!r || !r.value) return "";
+    const label = RELATIONSHIP_LABELS[r.value] || r.value;
+    const flag = r.value === "THIRD_PARTY_SUPPORTING_DOCUMENT" ? " third-party" : "";
+    const confidence =
+      typeof r.confidence === "number" && r.confidence > 0
+        ? `<span class="rel-confidence">Confidence ${r.confidence.toFixed(2)}</span>`
+        : "";
+    return `<div class="relationship${flag}"><span class="rel-label">Document relationship</span><strong>${esc(
+      label,
+    )}</strong>${confidence}${
+      r.reason ? `<p class="muted">${esc(r.reason)}</p>` : ""
+    }<p class="rel-caveat">AI-assisted classification · not an official determination · officer review required</p></div>`;
+  };
   const banner = () =>
     demo
       ? '<div class="sample-banner">Design preview · Fictional sample records. Changes stay in this preview; no official action is taken.</div>'
@@ -403,7 +452,7 @@
       )
       .join(
         "",
-      )}<p class="muted">Source-grounded assistance. Officer verification is required.</p></section><section class="panel"><h3>Suggested Process</h3><p class="muted">Review → Verify department → Confirm authority → Record action → Closure</p>${(a.processing_steps || []).map(finding).join("")}<h4>Processing hierarchy / escalation</h4>${(a.processing_hierarchy || []).map(finding).join("") || '<p class="muted">Verification required</p>'}<h4>Current status</h4>${badge(p.status)}<p class="muted">No automatic routing or official decision is made.</p></section><section class="panel"><h3>Supporting Documents</h3>${(p.attachments || []).map((f) => `<div class="attachment"><strong>${esc(f.filename)}</strong><p class="muted">${esc(f.kind || "Document")}</p>${f.url ? `<div class="actions"><a target="_blank" rel="noopener" href="${esc(f.url)}">View ↗</a><a href="${esc(f.url)}?download=1">Download ↓</a></div>` : '<p class="muted">Sample file · No document uploaded</p>'}${f.metadata ? `<p>${esc(f.metadata)}</p>` : ""}</div>`).join("") || '<p class="muted">No supporting documents attached.</p>'}</section><section class="panel"><h3>Officer Review</h3><div id="savedNotes">${(p.notes || []).map((n) => `<div class="note">${esc(n.text)}<p class="muted">${esc(n.author)} · ${esc(date(n.created_at))}</p></div>`).join("")}</div><form class="review-form" id="reviewForm"><div><label for="note">Officer notes</label><textarea id="note" rows="3" maxlength="4000" placeholder="Record observations or the next step…"></textarea></div><div><label for="reviewStatus">Status</label><select id="reviewStatus">${statuses.map((s) => `<option ${p.status === s ? "selected" : ""}>${s}</option>`).join("")}</select></div><button class="hbtn primary" type="submit">Save review</button><p id="reviewError" class="error" role="alert"></p></form></section></aside></div>`;
+      )}<p class="muted">Source-grounded assistance. Officer verification is required.</p></section><section class="panel"><h3>Suggested Process</h3><p class="muted">Review → Verify department → Confirm authority → Record action → Closure</p>${(a.processing_steps || []).map(finding).join("")}<h4>Processing hierarchy / escalation</h4>${(a.processing_hierarchy || []).map(finding).join("") || '<p class="muted">Verification required</p>'}<h4>Current status</h4>${badge(p.status)}<p class="muted">No automatic routing or official decision is made.</p></section><section class="panel"><h3>Supporting Documents</h3>${(p.attachments || []).map((f) => `<div class="attachment"><strong>${esc(f.filename)}</strong><p class="muted">${esc(f.kind || "Document")}</p>${relationship(f)}${f.url ? `<div class="actions"><a target="_blank" rel="noopener" href="${esc(f.url)}">View ↗</a><a href="${esc(f.url)}?download=1">Download ↓</a></div>` : '<p class="muted">Sample file · No document uploaded</p>'}${f.metadata ? `<p>${esc(f.metadata)}</p>` : ""}</div>`).join("") || '<p class="muted">No supporting documents attached.</p>'}</section><section class="panel"><h3>Officer Review</h3><div id="savedNotes">${(p.notes || []).map((n) => `<div class="note">${esc(n.text)}<p class="muted">${esc(n.author)} · ${esc(date(n.created_at))}</p></div>`).join("")}</div><form class="review-form" id="reviewForm"><div><label for="note">Officer notes</label><textarea id="note" rows="3" maxlength="4000" placeholder="Record observations or the next step…"></textarea></div><div><label for="reviewStatus">Status</label><select id="reviewStatus">${statuses.map((s) => `<option ${p.status === s ? "selected" : ""}>${s}</option>`).join("")}</select></div><button class="hbtn primary" type="submit">Save review</button><p id="reviewError" class="error" role="alert"></p></form></section></aside></div>`;
     document.getElementById("print").onclick = () => window.print();
     document.getElementById("reviewForm").onsubmit = async (e) => {
       e.preventDefault();
