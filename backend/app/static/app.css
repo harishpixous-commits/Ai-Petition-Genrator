@@ -184,7 +184,17 @@ main.workspace.generating .middle{display:none}
 .btn.danger{color:var(--bad);border-color:#f0dfdd;background:transparent}
 .btn.danger:hover:not(:disabled){background:var(--bad-soft);border-color:#e5bab3;color:var(--bad)}
 .btn.grow{flex:1}
-.composer-actions #restart,.composer-actions #cancel{padding:5px 10px;min-height:30px;font-size:10px;border-color:transparent;color:#7c8c93;font-weight:400}
+/* START OVER IS A BUTTON AND NOW LOOKS LIKE ONE. It had a transparent
+   border, muted grey and normal weight, which is the styling of a text link:
+   it read as a caption under the composer rather than as something to press.
+   It keeps the border, the ink and the weight that .btn gives it, and stays
+   smaller than Confirm so the primary action is still the obvious one.
+
+   CANCEL IS DELIBERATELY QUIETER and keeps the old treatment. It abandons
+   the petition, and a destructive action does not compete for the eye with
+   the two that carry the work forward. */
+.composer-actions #restart{padding:6px 13px;min-height:32px;font-size:10.5px}
+.composer-actions #cancel{padding:5px 10px;min-height:30px;font-size:10px;border-color:transparent;color:#7c8c93;font-weight:400}
 .composer-actions #cancel{margin-left:auto}
 .composer-actions #cancel:hover{color:var(--bad)}
 .composer-actions #confirm{width:100%;flex-basis:100%;padding:12px;font-size:12px}
