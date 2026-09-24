@@ -1280,3 +1280,73 @@ class TestWhichBuildIsRunning:
             encoding="utf-8")
 
         assert "secrets.BUILD_SHA" not in workflow
+
+
+class TestTheWorkspaceKeepsItsColumns:
+    """The three-column layout, asserted structurally.
+
+    WHY THIS EXISTS. An edit to `index.html` left one orphaned `</div>` in the
+    conversation card. Tag COUNTS stayed balanced — the browser silently
+    re-nests a stray close — so nothing caught it, but `main.workspace` was
+    closed early and the Petition Details panel was hoisted out to <body>. On
+    screen it stopped being the right-hand column and appeared full-width
+    underneath the chat.
+
+    Counting tags cannot see this. What it needs is the question the layout
+    actually depends on: are the panels still siblings inside the grid?
+    """
+
+    @staticmethod
+    def _markup():
+        import pathlib
+
+        return (pathlib.Path(__file__).resolve().parent.parent
+                / "app" / "static" / "index.html").read_text(encoding="utf-8")
+
+    def test_every_column_is_inside_the_workspace(self):
+        """Parsed, not pattern-matched, so a misplaced close is caught the
+        way the browser sees it rather than the way the file reads."""
+        from html.parser import HTMLParser
+
+        VOID = {"area", "base", "br", "col", "embed", "hr", "img", "input",
+                "link", "meta", "param", "source", "track", "wbr"}
+
+        class Nesting(HTMLParser):
+            def __init__(self):
+                super().__init__(convert_charrefs=True)
+                self.stack, self.parent_of = [], {}
+
+            def handle_starttag(self, tag, attrs):
+                ident = dict(attrs).get("id")
+                if ident:
+                    holder = next((t for t in reversed(self.stack) if t[1]), (None, None))
+                    self.parent_of[ident] = holder[1]
+                if tag not in VOID:
+                    self.stack.append((tag, ident or self._named(attrs)))
+
+            @staticmethod
+            def _named(attrs):
+                classes = dict(attrs).get("class", "")
+                return "workspace" if "workspace" in classes.split() else None
+
+            def handle_endtag(self, tag):
+                for i in range(len(self.stack) - 1, -1, -1):
+                    if self.stack[i][0] == tag:
+                        del self.stack[i:]
+                        return
+
+        parser = Nesting()
+        parser.feed(self._markup())
+
+        assert parser.parent_of.get("detailsPanel") == "workspace", (
+            "the Petition Details panel is no longer inside main.workspace — "
+            "it will render underneath the conversation instead of beside it")
+        assert parser.parent_of.get("docColumn") == "workspace"
+        assert parser.parent_of.get("genPanel") == "workspace"
+
+    def test_the_grid_still_declares_two_columns(self):
+        import pathlib
+
+        css = (pathlib.Path(__file__).resolve().parent.parent
+               / "app" / "static" / "app.css").read_text(encoding="utf-8")
+        assert "grid-template-columns" in css[css.index(".workspace{"):css.index(".workspace{") + 400]
