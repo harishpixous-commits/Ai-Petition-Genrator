@@ -2296,10 +2296,32 @@ $("printBtn").onclick = async () => {
      <style>
        @font-face { font-family:"Noto Sans Tamil";
          src:url("${location.origin}/assets/fonts/NotoSansTamil-Regular.ttf") format("truetype"); }
-       body { font: 12pt/1.8 "Noto Sans Tamil","Segoe UI",serif; margin: 22mm 20mm;
-              white-space: pre-wrap; }
+       body { font: 12pt/1.8 "Noto Sans Tamil","Segoe UI",serif; margin: 22mm 20mm; }
+       /* THE SAME TWO BLOCKS THE PREVIEW DRAWS. Printing used to write the
+          letter as one run of plain text, so the date and place — which the
+          preview sets against the right margin, where a letter puts them —
+          came out ranged left. The document on screen and the document that
+          comes out of the printer were laid out differently, and the printed
+          one was the wrong one. */
+       .dateline { white-space: pre-wrap; text-align: right; margin-bottom: 2px; }
+       .body     { white-space: pre-wrap; }
      </style></head><body></body></html>`);
-  w.document.body.textContent = view.letter_text;
+  // Split exactly as `drawLetter` splits it, so there is one rule about what
+  // counts as the opening block and not a second copy here to drift from it.
+  {
+    const lines = String(view.letter_text ?? "").split("\n");
+    const head = openingBlock(lines);
+    if (head > 0) {
+      const top = w.document.createElement("div");
+      top.className = "dateline";
+      top.textContent = lines.slice(0, head).join("\n");
+      w.document.body.appendChild(top);
+    }
+    const body = w.document.createElement("div");
+    body.className = "body";
+    body.textContent = lines.slice(head).join("\n");
+    w.document.body.appendChild(body);
+  }
   w.document.close();
   w.focus();
   await w.document.fonts.ready;
