@@ -1560,7 +1560,68 @@ header.app{gap:24px}
 
 /* Manual voice typing lives entirely beside the existing composer. */
 #micInline{color:var(--blue)}
-#micInline.dictating{color:var(--bad);background:var(--bad-soft);border-color:#e6bbb6;box-shadow:0 0 0 3px rgb(182 64 58 / 9%)}
+/* THE MICROPHONE HAS TO BE FOUND BEFORE IT CAN BE USED.
+   Reported from real feedback: citizens were not noticing it was there. A
+   19px outline in the corner of a text box reads as decoration next to a
+   filled Send button, so people typed because they did not know they could
+   speak.
+   It glows now, and keeps glowing gently until it is used. In the service's
+   own teal rather than the neon of the reference — this sits on a government
+   form, beside an emblem, and a gaming-console mic would undercut the thing
+   it is trying to make trustworthy. The brightness is the point, not the
+   palette. */
+#micInline{position:relative;overflow:visible}
+#micInline:not(:disabled):not(.dictating){
+  color:var(--blue);
+  /* FILLED, not an outline. A halo alone was still a thin teal mark on white
+     sitting next to a solid Send button — the eye goes to the filled thing.
+     A tinted disc gives it a body to be seen at a glance; the glow then says
+     it is offering something rather than merely existing. */
+  background:var(--blue-soft);
+  /* A defined edge. The tint alone is nearly white, so on a white composer
+     the control still had no outline of its own to be seen by. */
+  box-shadow:inset 0 0 0 1.5px rgb(8 126 131 / 45%);
+  animation:mic-halo 2.8s ease-in-out infinite;
+}
+@keyframes mic-halo{
+  0%,100%{box-shadow:inset 0 0 0 2px rgb(8 126 131 / 60%),0 0 0 2px rgb(8 126 131 / 22%),0 0 14px 3px rgb(8 126 131 / 55%)}
+  50%{box-shadow:inset 0 0 0 2px rgb(8 126 131 / 95%),0 0 0 9px rgb(8 126 131 / 16%),0 0 34px 11px rgb(8 126 131 / 95%)}
+}
+/* A ring that travels outward, so the glow reads as ALIVE rather than as a
+   coloured border. One ring idle, two while listening. */
+#micInline::after{
+  content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+  border:2.5px solid rgb(8 126 131 / 85%);opacity:0;
+}
+#micInline:not(:disabled):not(.dictating)::after{animation:mic-ring 2.8s ease-out infinite}
+@keyframes mic-ring{
+  0%{transform:scale(.9);opacity:.95}
+  70%{transform:scale(1.85);opacity:0}
+  100%{transform:scale(1.85);opacity:0}
+}
+#micInline:hover:not(:disabled){box-shadow:0 0 0 4px rgb(8 126 131 / 10%),0 0 18px 4px rgb(8 126 131 / 45%)}
+
+/* LISTENING. Louder than the resting glow, and red, because stopping matters
+   more than starting once it is running. */
+#micInline.dictating{color:var(--bad);background:var(--bad-soft);border-color:#e6bbb6;animation:mic-live 1.15s ease-in-out infinite}
+@keyframes mic-live{
+  0%,100%{box-shadow:inset 0 0 0 2px rgb(182 64 58 / 70%),0 0 0 3px rgb(182 64 58 / 24%),0 0 16px 4px rgb(182 64 58 / 60%)}
+  50%{box-shadow:inset 0 0 0 2px rgb(182 64 58 / 100%),0 0 0 11px rgb(182 64 58 / 14%),0 0 38px 13px rgb(182 64 58 / 100%)}
+}
+#micInline.dictating::after{border-color:rgb(182 64 58 / 95%);animation:mic-ring 1.15s ease-out infinite}
+#micInline.dictating::before{
+  content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+  border:2.5px solid rgb(182 64 58 / 75%);
+  animation:mic-ring 1.15s ease-out .55s infinite;
+}
+
+/* Anyone who has asked for less motion gets the glow, standing still. It is
+   still far brighter than the outline it replaced. */
+@media(prefers-reduced-motion:reduce){
+  #micInline:not(:disabled):not(.dictating){animation:none;box-shadow:0 0 0 4px rgb(8 126 131 / 9%),0 0 14px 2px rgb(8 126 131 / 38%)}
+  #micInline.dictating{animation:none;box-shadow:0 0 0 5px rgb(182 64 58 / 10%),0 0 18px 4px rgb(182 64 58 / 55%)}
+  #micInline::after,#micInline::before{animation:none;opacity:0}
+}
 /* The mark grows while it is listening. At 19px the only thing telling a
    citizen that dictation is running was a colour change, which is easy to
    miss on a phone held at arm's length and invisible to anyone who does not
@@ -1568,6 +1629,12 @@ header.app{gap:24px}
    colour. Nothing else about the button moves: the button keeps its box, so
    the composer does not reflow when dictation starts. */
 #micInline svg{transition:width var(--step),height var(--step)}
+/* A BOLDER MARK. The mic is drawn at 1.7px, which at 19px renders as a thin
+   pale outline however saturated the colour is — the stroke is simply too
+   fine to carry it. Thickening it is what actually makes the icon read,
+   rather than adding yet more glow around a faint drawing. */
+#micInline svg [stroke]{stroke-width:2.2}
+#micInline.dictating svg [stroke]{stroke-width:2}
 #micInline.dictating svg{width:25px;height:25px}
 #micInline:disabled{opacity:.45;cursor:not-allowed}
 .dictation-status{margin:7px 2px 0;font-size:11px;color:var(--muted);line-height:1.5}
