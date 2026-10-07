@@ -34,16 +34,37 @@ from ..config import Settings, get_settings
 
 log = logging.getLogger(__name__)
 
-TAMIL = re.compile("[" + chr(0x0B80) + "-" + chr(0x0BFF) + "]")
-DEVANAGARI = re.compile("[" + chr(0x0900) + "-" + chr(0x097F) + "]")
-LATIN_WORD = re.compile(r"[A-Za-z]{3}")
+from ..domain import languages
+from ..domain.languages import (  # noqa: F401
+    DEVANAGARI,
+    LATIN_WORD,
+    MALAYALAM,
+    TAMIL,
+    TELUGU,
+)
 
 # The languages a petition can be produced in, and what the translator
 # calls them. Adding one here is the whole change: every code below is
 # looked up, never derived from "whichever one it is not".
-SARVAM_CODE = {"en": "en-IN", "ta": "ta-IN", "hi": "hi-IN"}
-SCRIPTS = {"ta": TAMIL, "hi": DEVANAGARI, "en": LATIN_WORD}
+SARVAM_CODE = {"en": "en-IN", "ta": "ta-IN", "ml": "ml-IN",
+               "te": "te-IN", "hi": "hi-IN"}
+SCRIPTS = {"ta": TAMIL, "ml": MALAYALAM, "te": TELUGU,
+           "hi": DEVANAGARI, "en": LATIN_WORD}
 LANGUAGES = tuple(SARVAM_CODE)
+
+# Every language script_of() can name has to be one this translator can ask
+# for. Break that and a Malayalam document is announced to the provider as
+# en-IN and comes back translated out of the language it was already in.
+assert set(SCRIPTS) == set(SARVAM_CODE)
+
+#: What the citizen is actually shown in the "read this in another language"
+#: menu. A subset of SARVAM_CODE, and deliberately a smaller one while a
+#: language is being brought up: the translator learning Malayalam and the menu
+#: offering Malayalam are two different decisions, and the second one should
+#: wait until a Malayalam document has been produced and read end to end.
+OFFERED: tuple[str, ...] = ("en", "ta", "hi")
+
+assert set(OFFERED) <= set(SARVAM_CODE)
 
 
 def script_of(text: str) -> str:
@@ -53,12 +74,7 @@ def script_of(text: str) -> str:
     routinely carries a Latin word — a place name, an initial, a reference
     number — while a genuinely English line carries neither.
     """
-    value = str(text or "")
-    if TAMIL.search(value):
-        return "ta"
-    if DEVANAGARI.search(value):
-        return "hi"
-    return "en"
+    return languages.script_of(str(text or "")) or "en"
 
 
 def has_letters(text: str) -> bool:
@@ -69,8 +85,7 @@ def has_letters(text: str) -> bool:
     translator.
     """
     value = str(text or "")
-    return bool(TAMIL.search(value) or DEVANAGARI.search(value)
-                or LATIN_WORD.search(value))
+    return any(pattern.search(value) for pattern in SCRIPTS.values())
 
 
 def language_of(lines: list[str], keep: frozenset[str] | set[str] = frozenset()) -> str:
@@ -153,26 +168,38 @@ class PinnedTerm:
     correct: str
 
 
-PINNED: tuple[PinnedTerm, ...] = (
-    # Place names. Koyambedu is a different city entirely.
-    PinnedTerm(re.compile(r"\bCoimbatore\b", re.I), re.compile(r"கோயம்பேடூ\S*|கோயம்பேட்டை"), "கோயம்புத்தூர்"),
-    PinnedTerm(re.compile(r"\bTamil ?Nadu\b", re.I), re.compile(r"தமிழ் நாடு"), "தமிழ்நாடு"),
-    # Meaning inversions. "Disposed" in Indian administrative English means
-    # completed or settled — never rejected.
-    PinnedTerm(re.compile(r"\bdispos(?:e|ed|al|ing)\b", re.I), re.compile(r"நிராகரிக்கப்பட்ட\S*"), "தீர்வு காணப்பட்டன"),
-    PinnedTerm(re.compile(r"\bpending\b", re.I), re.compile(r"நிராகரிக்கப்பட்ட\S*"), "நிலுவையில் உள்ளன"),
-    # A certificate that says "rejected" where the citizen asked for "issued"
-    # is worse than an untranslated line.
-    PinnedTerm(re.compile(r"\bissued?\b", re.I), re.compile(r"நிராகரிக்கப்பட்ட\S*"), "வழங்கப்பட்டது"),
-)
+PINNED: dict[str, tuple[PinnedTerm, ...]] = {
+    "ta": (
+        # Place names. Koyambedu is a different city entirely.
+        PinnedTerm(re.compile(r"\bCoimbatore\b", re.I), re.compile(r"கோயம்பேடூ\S*|கோயம்பேட்டை"), "கோயம்புத்தூர்"),
+        PinnedTerm(re.compile(r"\bTamil ?Nadu\b", re.I), re.compile(r"தமிழ் நாடு"), "தமிழ்நாடு"),
+        # Meaning inversions. "Disposed" in Indian administrative English means
+        # completed or settled — never rejected.
+        PinnedTerm(re.compile(r"\bdispos(?:e|ed|al|ing)\b", re.I), re.compile(r"நிராகரிக்கப்பட்ட\S*"), "தீர்வு காணப்பட்டன"),
+        PinnedTerm(re.compile(r"\bpending\b", re.I), re.compile(r"நிராகரிக்கப்பட்ட\S*"), "நிலுவையில் உள்ளன"),
+        # A certificate that says "rejected" where the citizen asked for "issued"
+        # is worse than an untranslated line.
+        PinnedTerm(re.compile(r"\bissued?\b", re.I), re.compile(r"நிராகரிக்கப்பட்ட\S*"), "வழங்கப்பட்டது"),
+    ),
+    # Malayalam, Telugu and Hindi start with nothing pinned, which is
+    # exactly today's behaviour for them. Every term above earned its
+    # place because a real translation got that specific word wrong on a
+    # real petition — not because somebody imagined the model might slip.
+    # A Tamil replacement reaching a Hindi document would be worse than
+    # the error it was meant to repair.
+    "ml": (),
+    "te": (),
+    "hi": (),
+}
 
 
 def apply_pinned(source: str, translated: str, target: str) -> str:
     """Repair known-bad output, using the source line to decide what was meant."""
-    if target != "ta" or not translated:
+    terms = PINNED.get(target)
+    if not terms or not translated:
         return translated
     out = translated
-    for term in PINNED:
+    for term in terms:
         if term.source.search(source) and term.wrong.search(out):
             out = term.wrong.sub(term.correct, out)
     return out
@@ -335,7 +362,7 @@ async def _translate_via_worker(
     )
 
     request = "".join(
-        _json.dumps({"id": bid, "source": "en" if target == "ta" else "ta",
+        _json.dumps({"id": bid, "source": language_of([t for _, t in batch]),
                      "target": target, "texts": [t for _, t in batch]}) + "\n"
         for bid, batch in enumerate(batches)
     )

@@ -40,6 +40,8 @@ from ..services import (
     tts,
 )
 from ..services.officer_store import require_citizen_session
+from ..domain.languages import english_name
+from ..services.translate import OFFERED
 from ..services.render import pdf_status
 from ..services.speech_text import readable_sections, redact_for_speech, speech_for
 from ..services.translate import language_of, translate_lines
@@ -695,13 +697,14 @@ async def edit_document(session_id: str, body: EditRequest,
 
 # Named in English for the history, which an officer reads as often as a
 # citizen does. The menu names each language in its own script.
-_LANGUAGE_NAMES = {"en": "English", "ta": "Tamil", "hi": "Hindi"}
+_LANGUAGE_NAMES = {code: english_name(code) for code in OFFERED}
+_LANGUAGE_PATTERN = "^(" + "|".join(OFFERED) + ")$"
 
 
 class TranslateRequest(BaseModel):
     """Which language the citizen wants to read their petition in."""
 
-    language: str = Field(pattern="^(en|ta|hi)$")
+    language: str = Field(pattern=_LANGUAGE_PATTERN)
     expected_version: int | None = Field(default=None, ge=0)
 
 

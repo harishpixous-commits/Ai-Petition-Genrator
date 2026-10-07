@@ -35,6 +35,7 @@ from typing import Any
 
 from . import clock
 from .spoken_numbers import spoken_cardinal
+from .languages import TAMIL_RANGE
 
 # --------------------------------------------------------------------------- #
 # Result type
@@ -374,7 +375,7 @@ def validate_email(raw: str) -> FieldResult:
 
 # Tamil block, Latin letters, and the punctuation that appears inside real
 # Indian names: "K. Ravi Kumar", "D'Souza", "Abdul-Rahman".
-_NAME_RE = re.compile(r"^[஀-௿ A-Za-z.'\-]+$")
+_NAME_RE = re.compile(r"^[" + TAMIL_RANGE + r" A-Za-z.'\-]+$")
 
 
 def validate_person_name(raw: str) -> FieldResult:
@@ -559,7 +560,7 @@ def _parse_date(raw: str) -> date | None:
 
     for table, pattern in (
         (_EN_MONTHS, r"\b(\d{1,2})\s*(?:st|nd|rd|th)?\s+([A-Za-z]{3,9})\.?\s+(\d{4})\b"),
-        (_TA_MONTHS, r"\b(\d{1,2})\s+([஀-௿]+)\s+(\d{4})\b"),
+        (_TA_MONTHS, r"\b(\d{1,2})\s+([" + TAMIL_RANGE + r"]+)\s+(\d{4})\b"),
     ):
         m = re.search(pattern, s)
         if not m:

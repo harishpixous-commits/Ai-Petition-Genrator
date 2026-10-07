@@ -760,16 +760,25 @@ class TestTheTranslateControl:
 
         assert pdf < menu < docx, "the translate control moved out from between the downloads"
 
-    def test_it_offers_exactly_the_languages_the_service_can_produce(self):
+    def test_it_never_offers_a_language_the_translator_cannot_produce(self):
         """A menu that offers a language the translator has no code for gives
-        the citizen a button that can only fail."""
+        the citizen a button that can only fail.
+
+        One-way on purpose. This used to demand the two sets be EQUAL, which
+        meant teaching the translator a new language turned the suite red until
+        the menu was edited — and editing the menu is precisely what hands a
+        citizen a button for a language nothing else supports yet. Capability
+        is allowed to run ahead of what is offered; the reverse is the fault.
+        """
         import re
 
-        from app.services.translate import SARVAM_CODE
+        from app.services.translate import OFFERED, SARVAM_CODE
 
         offered = set(re.findall(r'data-language="(\w+)"', self._read("index.html")))
-        assert offered == set(SARVAM_CODE), (
-            f"the menu offers {offered}, the translator knows {set(SARVAM_CODE)}")
+        assert offered == set(OFFERED), (
+            f"the menu shows {offered}, but OFFERED says {set(OFFERED)}")
+        assert set(OFFERED) <= set(SARVAM_CODE), (
+            f"offering {set(OFFERED) - set(SARVAM_CODE)}, which the translator cannot produce")
 
     def test_each_language_is_named_in_its_own_script(self):
         """Somebody looking for Tamil is looking for the word written in Tamil.

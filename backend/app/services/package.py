@@ -34,6 +34,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
+from ..domain.languages import TAMIL
 
 log = logging.getLogger(__name__)
 
@@ -209,7 +210,7 @@ def _index_page(document, placed: list[Placed], *, title: str, font: str,
 
     written = " ".join([title, held_separately]
                        + [e.label + e.filename for e in placed])
-    tamil = any("\u0b80" <= ch <= "\u0bff" for ch in written)
+    tamil = bool(TAMIL.search(written))
     face = TAMIL_FONT if tamil else LATIN_FONT
 
     rows = []

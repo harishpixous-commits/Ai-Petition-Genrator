@@ -17,6 +17,7 @@ import pytest
 from fastapi import FastAPI
 
 from app.api.rest import router
+from app.services import translate
 from app.graph.state import new_state
 from app.graph.workflow import Workflow
 from app.services import translate as translator
@@ -298,3 +299,77 @@ class TestTheHistorySaysWhatHappened:
         history = (await api.get(f"/api/sessions/{session_id}/versions")).json()
 
         assert history["versions"][-1]["source"] == "Manual"
+
+
+# --------------------------------------------------------------------------- #
+# Five languages
+# --------------------------------------------------------------------------- #
+
+# Real words, as escapes, so no encoding between here and the runner can
+# quietly change what is being asserted.
+_SAMPLES = {
+    "ta": "\u0BAA\u0BC1\u0BA4\u0BBF\u0BAF \u0BAE\u0BA9\u0BC1",
+    "ml": "\u0D2A\u0D41\u0D24\u0D3F\u0D2F \u0D2A\u0D30\u0D3E\u0D24\u0D3F",
+    "te": "\u0C15\u0C4A\u0C24\u0C4D\u0C24 \u0C35\u0C3F\u0C28\u0C24\u0C3F",
+    "hi": "\u0928\u0908 \u092A\u094D\u0930\u093E\u0930\u094D\u0925\u0928\u093E",
+    "en": "a new petition",
+}
+
+
+class TestTheTranslatorKnowsFiveLanguages:
+    def test_every_script_it_can_name_is_one_it_can_ask_for(self):
+        """The invariant that keeps a document in the language it is already in.
+
+        `language_of` feeds its answer straight to SARVAM_CODE. The moment
+        script_of can return a code SARVAM_CODE has no entry for, that document
+        is announced to the provider as en-IN and translated out of itself.
+        """
+        assert set(translate.SCRIPTS) == set(translate.SARVAM_CODE)
+        for code, sample in _SAMPLES.items():
+            assert translate.script_of(sample) == code
+            assert translate.script_of(sample) in translate.SARVAM_CODE
+
+    @pytest.mark.parametrize("code", ["ta", "ml", "te", "hi", "en"])
+    def test_a_finished_document_is_not_sent_back_to_the_translator(self, code):
+        """The infinite loop this group exists to prevent.
+
+        Before Malayalam and Telugu were added to the script table, a finished
+        Malayalam letter carried no script the translator recognised. It was
+        saved only by `has_letters` returning False — remove that accident on
+        its own and every line comes back "not yet Malayalam", for ever.
+        """
+        lines = [_SAMPLES[code], _SAMPLES[code]]
+        assert translate.needs_translation(lines, code) is False
+
+    @pytest.mark.parametrize("code", ["ta", "ml", "te", "hi"])
+    def test_text_in_any_of_these_scripts_counts_as_translatable(self, code):
+        assert translate.has_letters(_SAMPLES[code]) is True
+
+    def test_something_with_no_language_is_still_left_alone(self):
+        for noise in ("", "   ", "9344174752", "AP/2026/00a1b2", "12.09.2026"):
+            assert translate.has_letters(noise) is False
+
+
+class TestPinnedRepairsStayInTheirOwnLanguage:
+    def test_tamil_still_has_its_repairs(self):
+        assert len(translate.PINNED["ta"]) == 5
+
+    @pytest.mark.parametrize("target", ["ml", "te", "hi"])
+    def test_a_tamil_repair_never_reaches_another_language(self, target):
+        """Every pinned replacement is a Tamil string.
+
+        The old guard was `if target != "ta": return`. Reading that as "this
+        gate is two-language, widen it" would splice Tamil words into a Hindi
+        petition — a worse fault than the mistranslation it repairs.
+        """
+        source = "The certificate was issued in Coimbatore, Tamil Nadu."
+        for term in translate.PINNED["ta"]:
+            out = translate.apply_pinned(source, term.correct, target)
+            assert out == term.correct, "a Tamil repair was applied to " + target
+
+    @pytest.mark.parametrize("target", ["ml", "te", "hi"])
+    def test_nothing_is_pinned_for_a_language_nobody_has_checked(self, target):
+        assert translate.PINNED[target] == ()
+
+    def test_every_language_the_translator_serves_has_an_entry(self):
+        assert set(translate.PINNED) == set(translate.SARVAM_CODE) - {"en"}

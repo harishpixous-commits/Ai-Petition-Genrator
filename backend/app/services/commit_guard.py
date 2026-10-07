@@ -36,11 +36,11 @@ import re
 from dataclasses import dataclass, field
 from enum import StrEnum
 
+from ..domain.languages import TAMIL
 from ..domain.phrasing import Language
 
 log = logging.getLogger(__name__)
 
-TAMIL = re.compile(r"[஀-௿]")
 LATIN = re.compile(r"[A-Za-z]")
 
 

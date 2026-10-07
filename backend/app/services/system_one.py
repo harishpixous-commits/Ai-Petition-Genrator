@@ -42,6 +42,7 @@ import logging
 import re
 from dataclasses import dataclass, field
 from typing import Any
+from ..domain.languages import TAMIL as _TAMIL
 
 log = logging.getLogger(__name__)
 
@@ -211,7 +212,6 @@ _WORD = re.compile(r"[^\W\d_]+", re.UNICODE)
 # drinking water, and the sentence was classified from the other noun in
 # it. Dropping the mark leaves குடிநீர, a prefix of both forms.
 _VIRAMA = "்"
-_TAMIL = re.compile(r"[஀-௿]")
 
 # --------------------------------------------------------------------------- #
 # Romanised Tamil

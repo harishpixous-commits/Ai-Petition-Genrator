@@ -78,6 +78,7 @@ from ..logging_setup import timed
 from ..services import render as render_service
 from ..services.llm import chat_json, enhance
 from ..services.translate import translate_lines
+from ..domain.languages import TAMIL as _TAMIL
 from .state import LetterState, turn
 
 log = logging.getLogger(__name__)
@@ -131,7 +132,6 @@ _QUESTION = re.compile(
     r"|என்ன|ஏன்|எப்படி|எப்போது|எங்கே|யார்|எதை",
     re.I,
 )
-_TAMIL = re.compile(r"[஀-௿]")
 
 # What a citizen says when a recorded value is WRONG, as opposed to what they
 # say when supplying a new one. Matched against the whole captured tail, so

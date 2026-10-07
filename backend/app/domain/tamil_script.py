@@ -34,6 +34,8 @@ from __future__ import annotations
 
 import re
 
+from .languages import TAMIL
+
 # --------------------------------------------------------------------------- #
 # What is known, and therefore safe
 # --------------------------------------------------------------------------- #
@@ -211,7 +213,6 @@ def _transliterate_word(word: str) -> str:
 
 # --------------------------------------------------------------------------- #
 
-TAMIL = re.compile("[஀-௿]")
 _LATIN_WORD = re.compile(r"[A-Za-z]+")
 # A token is a run of letters, a run of anything else, so numbers and
 # punctuation come through untouched and in place.

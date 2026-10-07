@@ -26,6 +26,7 @@ from ..domain.fields import SENSITIVE_TYPES, SPEAK_NEVER_TYPES
 from ..domain.phrasing import Language
 from ..domain.templates import LetterTemplate
 from .mask import mask_for_display, mask_pii
+from ..domain.languages import TAMIL_RANGE
 
 # Digits, in groups or not, long enough to be an identifier. Deliberately
 # broad: a number that turns out to be harmless read aloud costs nothing,
@@ -322,8 +323,8 @@ def readable_sections(letter_text: str, max_chars: int = 420) -> list[str]:
 # announcing nothing, and two of them in a row — "Mobile number: Aadhaar
 # number:" — sounds like the service lost the data rather than withheld it.
 _EMPTY_LABEL = re.compile(
-    r"(?:[A-Z][A-Za-z ]{2,24}|[஀-௿][஀-௿ ]{2,24}?)\s*:\s*"
-    r"(?=$|[A-Z஀-௿][A-Za-z஀-௿ ]{2,24}\s*:|[,.])"
+    r"(?:[A-Z][A-Za-z ]{2,24}|[" + TAMIL_RANGE + r"][" + TAMIL_RANGE + r" ]{2,24}?)\s*:\s*"
+    r"(?=$|[A-Z" + TAMIL_RANGE + r"][A-Za-z" + TAMIL_RANGE + r" ]{2,24}\s*:|[,.])"
 )
 
 

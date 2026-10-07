@@ -32,6 +32,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from typing import Literal
+from .languages import TAMIL_RANGE
 
 Language = Literal["en", "ta"]
 Intent = Literal["confirm", "retry", "replace"]
@@ -158,7 +159,7 @@ def _normalise(text: str) -> str:
     """Lowercase, strip punctuation, collapse spaces. Tamil is untouched by
     the case fold and has no apostrophes to lose."""
     lowered = _APOSTROPHE.sub("", str(text or "").lower())
-    cleaned = re.sub(r"[^\w\s஀-௿]+", " ", lowered)
+    cleaned = re.sub(r"[^\w\s" + TAMIL_RANGE + r"]+", " ", lowered)
     return re.sub(r"\s+", " ", cleaned).strip()
 
 
