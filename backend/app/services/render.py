@@ -30,6 +30,7 @@ from docx.oxml.ns import qn
 from docx.shared import Pt, RGBColor, Twips
 
 from ..config import Settings, get_settings
+from ..domain import languages
 from ..domain.emblem import Placement
 from . import enclosures as enclosure_service
 
@@ -225,8 +226,22 @@ def classify(line: str, index: int, total: int) -> str:
 # --------------------------------------------------------------------------- #
 
 
+def _face_for(text: str, default: str) -> str:
+    """The font family this particular text needs.
+
+    Chosen by the script actually present, never by the session language: a
+    petition in one language routinely carries the citizen's own words in
+    another, and their name and address stay in whatever script they typed.
+    Falls back to the configured family, so English runs and anything this
+    service does not recognise behave exactly as before.
+    """
+    code = languages.script_of(str(text or ""))
+    return languages.spec(code).font_family if code else default
+
+
 def _style_run(run, font: str, size: int = 11, *, bold: bool = False,
                italic: bool = False, color: str | None = None) -> None:
+    font = _face_for(run.text, font)
     run.font.name = font
     run.font.size = Pt(size)
     run.bold = bold

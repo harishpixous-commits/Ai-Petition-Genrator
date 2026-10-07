@@ -36,7 +36,8 @@ import re
 from dataclasses import dataclass, field
 from enum import StrEnum
 
-from ..domain.languages import TAMIL
+from ..domain import languages
+from ..domain.languages import TAMIL  # noqa: F401
 from ..domain.phrasing import Language
 
 log = logging.getLogger(__name__)
@@ -323,14 +324,15 @@ class SpeechCommitGuard:
         must still pass, so this only rejects a transcript with NO character of
         the expected script at all AND nothing that could be a name.
         """
-        if language != "ta":
-            # An English session accepts Latin, and accepts Tamil too: a
-            # citizen answering in Tamil is answering, and the workflow keeps
-            # their words verbatim either way.
-            return bool(LATIN.search(text) or TAMIL.search(text) or
+        wanted = languages.BY_CODE.get(language)
+        if wanted is None or wanted.script is None:
+            # An English session accepts Latin, and accepts any script this
+            # service knows too: a citizen answering in their own language is
+            # answering, and the workflow keeps their words verbatim either way.
+            return bool(LATIN.search(text) or languages.has_indic(text) or
                         any(ch.isdigit() for ch in text))
-        if TAMIL.search(text):
+        if wanted.script.search(text):
             return True
-        # No Tamil at all. Allowed only if it is plausibly a name, an address
-        # or a number said in English — not a bare filler word.
+        # None of the expected script. Allowed only if it is plausibly a name,
+        # an address or a number said in English — not a bare filler word.
         return bool(any(ch.isdigit() for ch in text) or len(text.split()) >= 2)

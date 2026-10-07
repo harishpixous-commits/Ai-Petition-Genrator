@@ -49,14 +49,46 @@ AttachmentKind = Literal[
 # itself, not in the code that builds it, so a department can change the wording
 # of an enclosure line without touching Python.
 KIND_LABELS: dict[str, dict[str, str]] = {
-    "aadhaar": {"en": "Copy of Aadhaar card", "ta": "ஆதார் அட்டை நகல்"},
-    "address_proof": {"en": "Copy of proof of residence", "ta": "வசிப்பிடச் சான்று நகல்"},
-    "previous_petition": {"en": "Copy of earlier petition", "ta": "முந்தைய மனு நகல்"},
-    "acknowledgement": {"en": "Acknowledgement receipt", "ta": "ஒப்புகைச் சீட்டு"},
-    "notice": {"en": "Copy of notice received", "ta": "பெறப்பட்ட அறிவிப்பு நகல்"},
-    "response": {"en": "Copy of reply received", "ta": "பெறப்பட்ட பதில் நகல்"},
-    "photo": {"en": "Photograph", "ta": "புகைப்படம்"},
-    "other": {"en": "Supporting document", "ta": "துணை ஆவணம்"},
+    "aadhaar": {"en": "Copy of Aadhaar card", "ta": "ஆதார் அட்டை நகல்",
+        "ml": "ആധാർ കാർഡിന്റെ പകർപ്പ്",
+        "te": "ఆధార్ కార్డు ప్రతి",
+        "hi": "आधार कार्ड की प्रति",
+    },
+    "address_proof": {"en": "Copy of proof of residence", "ta": "வசிப்பிடச் சான்று நகல்",
+        "ml": "താമസ രേഖയുടെ പകർപ്പ്",
+        "te": "నివాస ధ్రువీకరణ ప్రతి",
+        "hi": "निवास प्रमाण की प्रति",
+    },
+    "previous_petition": {"en": "Copy of earlier petition", "ta": "முந்தைய மனு நகல்",
+        "ml": "മുൻ പരാതിയുടെ പകർപ്പ്",
+        "te": "గత విన్నపం ప్రతి",
+        "hi": "पूर्व आवेदन की प्रति",
+    },
+    "acknowledgement": {"en": "Acknowledgement receipt", "ta": "ஒப்புகைச் சீட்டு",
+        "ml": "ഒപ്പുകൈപ്പറ്റ് രസീത്",
+        "te": "రసీదు",
+        "hi": "पावती रसीद",
+    },
+    "notice": {"en": "Copy of notice received", "ta": "பெறப்பட்ட அறிவிப்பு நகல்",
+        "ml": "ലഭിച്ച അറിയിപ്പിന്റെ പകർപ്പ്",
+        "te": "అందిన నోటీసు ప్రతి",
+        "hi": "प्राप्त सूचना की प्रति",
+    },
+    "response": {"en": "Copy of reply received", "ta": "பெறப்பட்ட பதில் நகல்",
+        "ml": "ലഭിച്ച മറുപടിയുടെ പകർപ്പ്",
+        "te": "అందిన సమాధానం ప్రతి",
+        "hi": "प्राप्त उत्तर की प्रति",
+    },
+    "photo": {"en": "Photograph", "ta": "புகைப்படம்",
+        "ml": "ഫോട്ടോ",
+        "te": "ఛాయాచిత్రం",
+        "hi": "छायाचित्र",
+    },
+    "other": {"en": "Supporting document", "ta": "துணை ஆவணம்",
+        "ml": "അനുബന്ധ രേഖ",
+        "te": "ఆధార పత్రం",
+        "hi": "सहायक दस्तावेज़",
+    },
 }
 
 # The question itself, asked once, after the grievance is on the record.
@@ -65,6 +97,10 @@ OFFER: dict[str, str] = {
            "or continue with these details?"),
     "ta": ("இந்த மனுவுடன் ஏதேனும் இணைப்புகளைச் சேர்க்க விரும்புகிறீர்களா? "
            "அல்லது தற்போது வழங்கியுள்ள விவரங்களுடன் மனுவைத் தயாரிக்கலாமா?"),
+
+    "ml": "ഈ പരാതിയോടൊപ്പം അനുബന്ധ രേഖകൾ ചേർക്കണോ, അതോ ഈ വിവരങ്ങളുമായി തുടരണോ?",
+    "te": "ఈ విన్నపానికి ఆధార పత్రాలు జత చేయాలా, లేదా ఈ వివరాలతో కొనసాగాలా?",
+    "hi": "क्या आप इस आवेदन के साथ सहायक दस्तावेज़ जोड़ना चाहेंगे, या इन्हीं विवरणों के साथ आगे बढ़ें?",
 }
 
 # Asked instead of OFFER once at least one file is already attached: the
@@ -75,11 +111,23 @@ MORE_OR_CONTINUE: dict[str, str] = {
            "these details?"),
     "ta": ("அது இணைக்கப்பட்டது. மேலும் ஏதேனும் சேர்க்க வேண்டுமா, அல்லது இந்த "
            "விவரங்களுடன் தொடரலாமா?"),
+
+    "ml": "അത് ചേർത്തു. മറ്റൊന്ന് ചേർക്കണോ, അതോ ഈ വിവരങ്ങളുമായി തുടരണോ?",
+    "te": "అది జత చేయబడింది. మరొకటి జత చేయాలా, లేదా ఈ వివరాలతో కొనసాగాలా?",
+    "hi": "वह जुड़ गया। क्या एक और जोड़ना है, या इन्हीं विवरणों के साथ आगे बढ़ें?",
 }
 
-ADD_LABEL: dict[str, str] = {"en": "Add Attachments", "ta": "இணைப்புகளைச் சேர்"}
+ADD_LABEL: dict[str, str] = {"en": "Add Attachments", "ta": "இணைப்புகளைச் சேர்",
+    "ml": "രേഖകൾ ചേർക്കുക",
+    "te": "పత్రాలు జత చేయండి",
+    "hi": "दस्तावेज़ जोड़ें",
+}
 CONTINUE_LABEL: dict[str, str] = {
-    "en": "Continue with These Details", "ta": "இந்த விவரங்களுடன் தொடரவும்"}
+    "en": "Continue with These Details", "ta": "இந்த விவரங்களுடன் தொடரவும்",
+    "ml": "ഈ വിവരങ്ങളുമായി തുടരുക",
+    "te": "ఈ వివరాలతో కొనసాగండి",
+    "hi": "इन्हीं विवरणों के साथ आगे बढ़ें",
+}
 
 # Said above the suggestion list so nobody reads it as a requirement. A document
 # is only called for when a retrieved OFFICIAL source says so — see
@@ -89,6 +137,10 @@ SUGGESTION_NOTE: dict[str, str] = {
            "official document says so."),
     "ta": ("இவை பரிந்துரைகள் மட்டுமே. அதிகாரப்பூர்வ ஆவணம் கோரினால் தவிர "
            "எதுவும் கட்டாயமில்லை."),
+
+    "ml": "ഇവ നിർദ്ദേശങ്ങൾ മാത്രമാണ്. ഔദ്യോഗിക രേഖ ആവശ്യപ്പെടുന്നില്ലെങ്കിൽ ഇവയൊന്നും നിർബന്ധമല്ല.",
+    "te": "ఇవి సూచనలు మాత్రమే. అధికారిక పత్రం కోరితే తప్ప వీటిలో ఏదీ తప్పనిసరి కాదు.",
+    "hi": "ये केवल सुझाव हैं। जब तक कोई सरकारी दस्तावेज़ न कहे, इनमें से कुछ भी अनिवार्य नहीं है।",
 }
 
 MAX_ATTACHMENTS = 10

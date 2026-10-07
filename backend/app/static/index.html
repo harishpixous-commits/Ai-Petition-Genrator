@@ -10,7 +10,7 @@
 <link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
-<a class="skip-link" href="#mainContent" id="skipLink">Skip to content</a>
+<a class="skip-link" href="#mainContent" id="skipLink" data-i18n="skipToContent">Skip to content</a>
 
 <header class="app">
   <a class="brand" href="#home" data-route="home" aria-label="Citizen Petition Assistant home">
@@ -36,6 +36,9 @@
     <select class="lang" id="lang">
       <option value="en">English</option>
       <option value="ta">தமிழ்</option>
+      <option value="ml">മലയാളം</option>
+      <option value="te">తెలుగు</option>
+      <option value="hi">हिन्दी</option>
     </select>
     <button class="hbtn primary" id="new" type="button">
       <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span class="txt" id="newText">New Petition</span>
@@ -44,7 +47,7 @@
          counter: everything to the left of it is theirs, and this is the
          staff door. Putting it first put the one control they must not press
          at the head of the row. -->
-    <a class="hbtn officer-login-link" href="/officer/login" aria-label="Officer Login" title="Officer Login"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="8" r="4" stroke="currentColor" stroke-width="1.7"/><path d="M4 21v-2a8 8 0 0 1 16 0v2" stroke="currentColor" stroke-width="1.7"/></svg><span class="txt">Officer Login</span></a>
+    <a class="hbtn officer-login-link" href="/officer/login" aria-label="Officer Login" title="Officer Login"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="8" r="4" stroke="currentColor" stroke-width="1.7"/><path d="M4 21v-2a8 8 0 0 1 16 0v2" stroke="currentColor" stroke-width="1.7"/></svg><span class="txt" data-i18n="officerLogin">Officer Login</span></a>
   </div>
 </header>
 
@@ -327,6 +330,8 @@
             <li role="none"><button class="translate-option" type="button" role="menuitem" data-language="en"><span class="tick" aria-hidden="true">&#10003;</span>English</button></li>
             <li role="none"><button class="translate-option" type="button" role="menuitem" data-language="ta"><span class="tick" aria-hidden="true">&#10003;</span>&#2980;&#2990;&#3007;&#2996;&#3021;</button></li>
             <li role="none"><button class="translate-option" type="button" role="menuitem" data-language="hi"><span class="tick" aria-hidden="true">&#10003;</span>&#2361;&#2367;&#2344;&#2381;&#2342;&#2368;</button></li>
+            <li role="none"><button class="translate-option" type="button" role="menuitem" data-language="ml"><span class="tick" aria-hidden="true">&#10003;</span>മലയാളം</button></li>
+            <li role="none"><button class="translate-option" type="button" role="menuitem" data-language="te"><span class="tick" aria-hidden="true">&#10003;</span>తెలుగు</button></li>
           </ul>
         </div>
         <a class="btn off" id="docx" download></a>
@@ -494,7 +499,7 @@
      petition never loses the one they are writing. -->
 <footer class="site-footer">
   <a class="built-by" href="https://pixoustech.com/" target="_blank" rel="noopener noreferrer">
-    <span id="builtByText">Developed by</span>
+    <span id="builtByText" data-i18n="builtBy">Developed by</span>
     <!-- The DISPLAYED size, not the file's. These attributes reserve the right
          box before the image arrives, and they are what the browser falls back
          to if the stylesheet is ever missing or stale — which is the

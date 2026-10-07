@@ -44,7 +44,7 @@ async def list_petitions(
     department: str = Query(default="", max_length=240),
     category: str = Query(default="", max_length=240),
     status: str = Query(default="", max_length=40),
-    language: Literal["", "en", "ta"] = "",
+    language: str = Query(default="", max_length=8),
     sort: Literal["newest", "oldest", "updated"] = "newest",
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),

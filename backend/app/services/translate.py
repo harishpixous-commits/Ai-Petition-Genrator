@@ -62,7 +62,7 @@ assert set(SCRIPTS) == set(SARVAM_CODE)
 #: language is being brought up: the translator learning Malayalam and the menu
 #: offering Malayalam are two different decisions, and the second one should
 #: wait until a Malayalam document has been produced and read end to end.
-OFFERED: tuple[str, ...] = ("en", "ta", "hi")
+OFFERED: tuple[str, ...] = ("en", "ta", "ml", "te", "hi")
 
 assert set(OFFERED) <= set(SARVAM_CODE)
 

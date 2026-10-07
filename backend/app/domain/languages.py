@@ -120,7 +120,7 @@ KNOWN: tuple[str, ...] = tuple(BY_CODE)
 #: gate in front of every path that still answers in English when it does not
 #: recognise a code, and it is the single easiest line in the service to change
 #: for a demo and regret in an office.
-SUPPORTED: tuple[str, ...] = ("en", "ta")
+SUPPORTED: tuple[str, ...] = ("en", "ta", "ml", "te", "hi")
 
 DEFAULT = "en"
 

@@ -37,6 +37,8 @@ from ..config import Settings, get_settings
 
 log = logging.getLogger(__name__)
 
+from ..domain import languages
+
 
 @dataclass
 class Transcript:
@@ -147,7 +149,7 @@ def status(settings: Settings | None = None) -> dict:
         "egress": True,
         "sample_rate": s.asr_sample_rate,
         "max_seconds": s.asr_max_seconds,
-        "languages": ["ta", "en"] if primary in _TAMIL else ["en"],
+        "languages": list(supported_by(primary)),
         # What happened the last time a citizen actually pressed the
         # microphone. Absent means nothing has failed since startup.
         "last_failure": dict(_last_failure) or None,
@@ -253,9 +255,31 @@ def _wav(pcm: bytes, sample_rate: int) -> bytes:
     return buffer.getvalue()
 
 
+#: Which languages each provider can actually transcribe, of the ones this
+#: service knows about. A provider left out of a language does not fail for
+#: it — it returns confident English, which is worse — so this table is what
+#: keeps a language from being offered through a provider that cannot hear
+#: it. Both the router and the health payload read it, so they cannot
+#: disagree about what the microphone will do.
+SUPPORTS: dict[str, tuple[str, ...]] = {
+    "sarvam": ("en", "ta", "ml", "te", "hi"),
+    "groq": ("en", "ta", "ml", "te", "hi"),       # Whisper large-v3
+    "deepgram": ("en", "ta"),                      # as configured today
+    "assemblyai": ("en",),                         # English-only model
+}
+
+
+def supported_by(provider: str) -> tuple[str, ...]:
+    """The languages this provider can serve AND this service offers."""
+    able = SUPPORTS.get(provider, ("en",))
+    return tuple(code for code in languages.SUPPORTED if code in able)
+
+
 def sarvam_locale(language: str) -> str:
     """The session's language, as Sarvam names it."""
-    return {"ta": "ta-IN", "en": "en-IN", "hi": "hi-IN"}.get(language, "en-IN")
+    if language in SUPPORTS["sarvam"]:
+        return languages.spec(language).bcp47
+    return "en-IN"
 
 
 async def _sarvam_stt(client, *, key: str, audio: bytes, model: str, language: str,
@@ -314,7 +338,8 @@ async def _groq_stt(client, *, key: str, audio: bytes, model: str, language: str
         "https://api.groq.com/openai/v1/audio/transcriptions",
         headers={"Authorization": f"Bearer {key}"},
         files={"file": ("dictation.wav", audio, "audio/wav")},
-        data={"model": model, "language": "ta" if language == "ta" else "en",
+        data={"model": model,
+              "language": language if language in SUPPORTS["groq"] else "en",
               "response_format": "verbose_json"},
         timeout=timeout,
     )
@@ -485,7 +510,7 @@ async def open_stream(language: str, settings: Settings | None = None) -> _Adapt
         query = urlencode(
             {
                 "model": s.deepgram_model,
-                "language": "ta" if language == "ta" else "en" if language == "en" else "multi",
+                "language": language if language in SUPPORTS["deepgram"] else "multi",
                 "encoding": "linear16",
                 "sample_rate": str(s.asr_sample_rate),
                 "channels": "1",

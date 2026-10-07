@@ -17,6 +17,7 @@ from urllib.parse import quote
 
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
+from ..domain import languages
 from ..domain.templates import the_template
 from .mask import mask_pii
 
@@ -78,7 +79,8 @@ def _metadata(state: dict, session_id: str, checkpoint_time: str = "") -> dict:
         # said they were finished with it.
         "submitted_at": state.get("submitted_at"),
         "status": state.get("status") or "collecting",
-        "language": state.get("language") if state.get("language") in ("en", "ta") else "en",
+        "language": (state.get("language")
+                     if state.get("language") in languages.SUPPORTED else "en"),
         "version": _version(state, document),
         "document": ({
             "docx_url": f"/api/sessions/{session_path}/document.docx",

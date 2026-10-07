@@ -25,6 +25,8 @@ from .speech_text import redact_for_speech
 
 log = logging.getLogger(__name__)
 
+from .asr import sarvam_locale
+
 # Sarvam rejects long inputs; the replies this service produces are short, but a
 # confirmation read-back can run long and must be split rather than truncated.
 _CHUNK = 450
@@ -113,7 +115,7 @@ def request_for(language: str, settings: Settings | None = None) -> dict:
     """
     s = settings or get_settings()
     return {
-        "target_language_code": "ta-IN" if language == "ta" else "en-IN",
+        "target_language_code": sarvam_locale(language),
         "model": s.sarvam_tts_model,
         "speaker": (s.sarvam_tts_speaker or "").strip().lower(),
         "pace": clamped_pace(s.sarvam_tts_pace),

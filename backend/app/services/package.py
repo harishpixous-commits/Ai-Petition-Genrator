@@ -34,7 +34,8 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from ..domain.languages import TAMIL
+from ..domain import languages
+from ..domain.languages import TAMIL  # noqa: F401
 
 log = logging.getLogger(__name__)
 
@@ -51,6 +52,17 @@ IMAGE_DPI = 200                  # for rasterising a page that has no other rout
 _FONTS = Path(__file__).resolve().parents[1] / "assets" / "fonts"
 TAMIL_FONT = _FONTS / "NotoSansTamil-Regular.ttf"
 LATIN_FONT = _FONTS / "NotoSans-Regular.ttf"
+
+#: One face per script, chosen by what the page actually says. Ordered, and
+#: Latin last, because a title is routinely Tamil with an English word in it and
+#: the Indic face is the one that has to win. Devanagari is deliberately absent
+#: — NotoSans already carries it, and the index page renders Hindi correctly
+#: today; adding an entry would change a result that is already right.
+SCRIPT_FONTS = (
+    ("ta", TAMIL_FONT),
+    ("ml", _FONTS / "NotoSansMalayalam-Regular.ttf"),
+    ("te", _FONTS / "NotoSansTelugu-Regular.ttf"),
+)
 
 IMAGE_SUFFIXES = frozenset({".jpg", ".jpeg", ".png", ".webp", ".heic", ".bmp", ".tif", ".tiff"})
 TEXT_SUFFIXES = frozenset({".txt", ".csv", ".md", ".html"})
@@ -210,8 +222,8 @@ def _index_page(document, placed: list[Placed], *, title: str, font: str,
 
     written = " ".join([title, held_separately]
                        + [e.label + e.filename for e in placed])
-    tamil = bool(TAMIL.search(written))
-    face = TAMIL_FONT if tamil else LATIN_FONT
+    found = languages.script_of(written)
+    face = next((f for code, f in SCRIPT_FONTS if code == found), LATIN_FONT)
 
     rows = []
     for entry in placed:

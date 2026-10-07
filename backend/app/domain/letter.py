@@ -56,10 +56,26 @@ SIGN_GAP = 2
 # `render.py` classifies lines by these same words, so a change here needs the
 # matching pattern there.
 LABELS: dict[str, dict[str, str]] = {
-    "from":       {"en": "From,",               "ta": "அனுப்புநர்,"},
-    "to":         {"en": "To,",                 "ta": "பெறுநர்,"},
-    "salutation": {"en": "Respected Sir / Madam,", "ta": "மதிப்பிற்குரிய ஐயா / அம்மா,"},
-    "subject":    {"en": "Subject",             "ta": "பொருள்"},
+    "from":       {"en": "From,",               "ta": "அனுப்புநர்,",
+        "ml": "അയയ്ക്കുന്നയാൾ,",
+        "te": "పంపేవారు,",
+        "hi": "प्रेषक,",
+    },
+    "to":         {"en": "To,",                 "ta": "பெறுநர்,",
+        "ml": "സ്വീകരിക്കുന്നയാൾ,",
+        "te": "స్వీకరించేవారు,",
+        "hi": "सेवा में,",
+    },
+    "salutation": {"en": "Respected Sir / Madam,", "ta": "மதிப்பிற்குரிய ஐயா / அம்மா,",
+        "ml": "ബഹുമാനപ്പെട്ട സർ / മാഡം,",
+        "te": "గౌరవనీయులైన సర్ / మేడమ్,",
+        "hi": "माननीय महोदय / महोदया,",
+    },
+    "subject":    {"en": "Subject",             "ta": "பொருள்",
+        "ml": "വിഷയം",
+        "te": "విషయం",
+        "hi": "विषय",
+    },
     # "Thanking you," — the closing a petition to a Collectorate carries.
     # It was "Thank you!" until the format was reviewed: an exclamation mark
     # is the wrong register for a document an officer files, and it is the
@@ -68,28 +84,68 @@ LABELS: dict[str, dict[str, str]] = {
     # `render.py` and `revisions.py` both match this line by its opening
     # words, and `speech_text.py` breaks the read-aloud on it. All three were
     # updated with it; changing it again means changing them again.
-    "thanks":     {"en": "Thanking you,",       "ta": "நன்றி,"},
+    "thanks":     {"en": "Thanking you,",       "ta": "நன்றி,",
+        "ml": "നന്ദിയോടെ,",
+        "te": "ధన్యవాదములతో,",
+        "hi": "धन्यवाद सहित,",
+    },
     # The DEFAULT sign-off. `petition.yaml` overrides it through `closing`,
     # which is where the prescribed format belongs.
-    "signoff":    {"en": "Yours faithfully,",   "ta": "இப்படிக்கு,"},
-    "date":       {"en": "Date",                "ta": "நாள்"},
-    "place":      {"en": "Place",               "ta": "இடம்"},
-    "enclosures": {"en": "Enclosures",          "ta": "இணைப்புகள்"},
-    "note":       {"en": "Note",                "ta": "குறிப்பு"},
+    "signoff":    {"en": "Yours faithfully,",   "ta": "இப்படிக்கு,",
+        "ml": "വിശ്വസ്തതയോടെ,",
+        "te": "విధేయుడు,",
+        "hi": "भवदीय,",
+    },
+    "date":       {"en": "Date",                "ta": "நாள்",
+        "ml": "തീയതി",
+        "te": "తేదీ",
+        "hi": "दिनांक",
+    },
+    "place":      {"en": "Place",               "ta": "இடம்",
+        "ml": "സ്ഥലം",
+        "te": "స్థలం",
+        "hi": "स्थान",
+    },
+    "enclosures": {"en": "Enclosures",          "ta": "இணைப்புகள்",
+        "ml": "അനുബന്ധങ്ങൾ",
+        "te": "జతపరచినవి",
+        "hi": "संलग्नक",
+    },
+    "note":       {"en": "Note",                "ta": "குறிப்பு",
+        "ml": "കുറിപ്പ്",
+        "te": "గమనిక",
+        "hi": "टिप्पणी",
+    },
     # The caption above each attached file, on its own page after the letter.
-    "enclosure_page": {"en": "Enclosure", "ta": "இணைப்பு"},
+    "enclosure_page": {"en": "Enclosure", "ta": "இணைப்பு",
+        "ml": "അനുബന്ധം",
+        "te": "జతపత్రం",
+        "hi": "संलग्नक",
+    },
     # The contents page before them, when there is more than one. An officer
     # holding six scans should see what is there without leafing through.
-    "enclosure_index": {"en": "Supporting documents", "ta": "ஆதார ஆவணங்கள்"},
+    "enclosure_index": {"en": "Supporting documents", "ta": "ஆதார ஆவணங்கள்",
+        "ml": "അനുബന്ധ രേഖകൾ",
+        "te": "ఆధార పత్రాలు",
+        "hi": "सहायक दस्तावेज़",
+    },
     # Printed small under that caption. A reproduction is not the original, and
     # an officer comparing the two should be told which they are holding.
     "enclosure_note": {
         "en": "Reproduced from the document submitted by the petitioner.",
         "ta": "மனுதாரர் சமர்ப்பித்த ஆவணத்திலிருந்து நகலெடுக்கப்பட்டது.",
+    
+        "ml": "പരാതിക്കാരൻ സമർപ്പിച്ച രേഖയിൽ നിന്ന് പകർത്തിയത്.",
+        "te": "విన్నపదారు సమర్పించిన పత్రం నుండి తీసుకోబడింది.",
+        "hi": "आवेदक द्वारा प्रस्तुत दस्तावेज़ से प्रतिलिपित।",
     },
     # "…தொடர்பாக." closes a Tamil subject line. English subjects do not take a
     # suffix, so it is empty there rather than translated into something odd.
-    "subject_suffix": {"en": "", "ta": " தொடர்பாக."},
+    "subject_suffix": {"en": "", "ta": " தொடர்பாக.",
+        "ml": "",
+        "te": "",
+        "hi": "",
+    },
 }
 
 

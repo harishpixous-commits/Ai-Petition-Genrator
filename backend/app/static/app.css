@@ -2,6 +2,12 @@
 @font-face{font-family:"Noto Sans App";src:url("/assets/fonts/NotoSans-Bold.ttf") format("truetype");font-weight:700;font-display:swap}
 @font-face{font-family:"Noto Sans Tamil";src:url("/assets/fonts/NotoSansTamil-Regular.ttf") format("truetype");font-weight:400;font-display:swap}
 @font-face{font-family:"Noto Sans Tamil";src:url("/assets/fonts/NotoSansTamil-Bold.ttf") format("truetype");font-weight:700;font-display:swap}
+@font-face{font-family:"Noto Sans Malayalam";src:url("/assets/fonts/NotoSansMalayalam-Regular.ttf") format("truetype");font-weight:400;font-display:swap}
+@font-face{font-family:"Noto Sans Malayalam";src:url("/assets/fonts/NotoSansMalayalam-Bold.ttf") format("truetype");font-weight:700;font-display:swap}
+@font-face{font-family:"Noto Sans Telugu";src:url("/assets/fonts/NotoSansTelugu-Regular.ttf") format("truetype");font-weight:400;font-display:swap}
+@font-face{font-family:"Noto Sans Telugu";src:url("/assets/fonts/NotoSansTelugu-Bold.ttf") format("truetype");font-weight:700;font-display:swap}
+@font-face{font-family:"Noto Sans Devanagari";src:url("/assets/fonts/NotoSansDevanagari-Regular.ttf") format("truetype");font-weight:400;font-display:swap}
+@font-face{font-family:"Noto Sans Devanagari";src:url("/assets/fonts/NotoSansDevanagari-Bold.ttf") format("truetype");font-weight:700;font-display:swap}
 
 :root {
   --navy:#183b43; --navy-dark:#102e35; --blue:#087e83; --blue-soft:#eaf6f4;
@@ -29,6 +35,9 @@
 html{min-height:100%;scroll-behavior:smooth;scroll-padding-top:96px}
 body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.6 "Noto Sans App","Noto Sans Tamil","Segoe UI",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
 :lang(ta),[lang="ta"]{font-family:"Noto Sans Tamil","Noto Sans App","Nirmala UI",system-ui,sans-serif}
+:lang(ml),[lang="ml"]{font-family:"Noto Sans Malayalam","Noto Sans App","Nirmala UI",system-ui,sans-serif}
+:lang(te),[lang="te"]{font-family:"Noto Sans Telugu","Noto Sans App","Nirmala UI",system-ui,sans-serif}
+:lang(hi),[lang="hi"]{font-family:"Noto Sans Devanagari","Noto Sans App","Nirmala UI",system-ui,sans-serif}
 :focus-visible{outline:3px solid #5db1b5;outline-offset:3px;border-radius:var(--r-sm)}
 button,select,input,textarea{font:inherit;color:inherit}
 button{cursor:pointer}

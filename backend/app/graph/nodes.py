@@ -78,7 +78,8 @@ from ..logging_setup import timed
 from ..services import render as render_service
 from ..services.llm import chat_json, enhance
 from ..services.translate import translate_lines
-from ..domain.languages import TAMIL as _TAMIL
+from ..domain import languages
+from ..domain.languages import TAMIL as _TAMIL  # noqa: F401
 from .state import LetterState, turn
 
 log = logging.getLogger(__name__)
@@ -143,8 +144,21 @@ _COMPLAINT = re.compile(
     re.I)
 
 
-def _detect_language(text: str) -> str:
-    return "ta" if _TAMIL.search(str(text or "")) else "en"
+def _detect_language(text: str) -> str | None:
+    """Which language the citizen is writing in, or None if the script is silent.
+
+    NONE IS NOT ENGLISH, and that difference is the whole point. A phone
+    number, a door number or a name typed in Latin letters carries no script
+    at all. Reading that as "this person wants English" is how a citizen who
+    chose Malayalam loses their choice on the turn they type their mobile
+    number.
+
+    Only a language the service actually serves is returned. Recognising a
+    script the rest of the service cannot yet handle would move the session
+    somewhere nothing else can follow it.
+    """
+    found = languages.script_of(str(text or ""))
+    return found if found and languages.is_supported(found) else None
 
 
 # --------------------------------------------------------------------------- #
@@ -186,7 +200,12 @@ async def understand(state: LetterState) -> dict[str, Any]:
     # because one Tamil place name appeared in an English sentence would be
     # worse than staying put.
     if not state.get("turns"):
-        language = _detect_language(text)
+        # Only when the script actually says something. A citizen who picked
+        # a language and then typed their name in Latin letters has not
+        # changed their mind about the language.
+        detected = _detect_language(text)
+        if detected:
+            language = detected
 
     base: dict[str, Any] = {
         **BLANK_TURN,
@@ -851,7 +870,7 @@ async def _rephrase(spec, language: str, error: dict | None) -> str | None:
                 "Do not ask for anything other than the field named. Do not add requirements."
             ),
             user=(
-                f"Language: {'Tamil' if language == 'ta' else 'English'}\n"
+                f"Language: {languages.english_name(language)}\n"
                 f"Field: {spec.label_for('en')} (type: {spec.type})\n"
                 f"Question as currently worded: {spec.prompt_for(language)}\n"
                 f"Why the last answer was rejected: {(error or {}).get('code') or 'not understood'}"
@@ -890,7 +909,7 @@ async def _answer_question(state: LetterState, template: LetterTemplate, languag
                 "Two sentences at most. Answer in the requested language."
             ),
             user=(
-                f"Language: {'Tamil' if language == 'ta' else 'English'}\n"
+                f"Language: {languages.english_name(language)}\n"
                 f"Form: {template.label_for(language)}\n"
                 f"Office: {template.text_for('addressee', language)}, "
                 f"{template.text_for('department', language)}\n"
@@ -1178,7 +1197,7 @@ async def compose(state: LetterState) -> dict[str, Any]:
             ),
             user=(
                 f"Language for all four fields: "
-                f"{'Tamil' if language == 'ta' else 'English'}\n"
+                f"{languages.english_name(language)}\n"
                 f"Petition type: {template.label_for('en')}\n"
                 f"Addressed to: {template.text_for('addressee', 'en')}, "
                 f"{template.text_for('department', 'en')}\n"
@@ -1435,9 +1454,22 @@ def _read_composition(payload: dict, language: str, grounding: str = "") -> Comp
             return None
         # A Tamil petition with an English paragraph in it is worse than the
         # standard Tamil wording, and the reverse is equally true.
-        if language == "ta" and not _TAMIL.search(value):
-            return None
-        if language == "en" and _TAMIL.search(value):
+        #
+        # THE TWO HALVES ARE NOT SYMMETRIC, and both are deliberate. A
+        # language with a script of its own must actually be written in it.
+        # English is defined by the ABSENCE of another script rather than by
+        # the presence of Latin, because requiring Latin would throw away a
+        # composition that is correct but short.
+        wanted = languages.BY_CODE.get(language)
+        if wanted is not None and wanted.script is not None:
+            if not wanted.script.search(value):
+                return None
+        intruder = next((row.code for row in languages.LANGUAGES
+                         if row.script is not None and row.code != language
+                         and row.script.search(value)), None)
+        if intruder:
+            log.warning("compose.wrong_script",
+                        extra={"field": key, "wanted": language, "found": intruder})
             return None
         if grounding and not _numbers_are_grounded(value, grounding):
             log.warning("compose.ungrounded_number", extra={"field": key})

@@ -44,17 +44,78 @@ def wired_keys() -> list[str]:
     return sorted(set(re.findall(r'data-i18n="([A-Za-z0-9_]+)"', page())))
 
 
-def table(language: str) -> dict[str, str]:
-    """The `en` or `ta` block of NAV, as a plain dict.
+#: The start of a language block inside NAV — two spaces, a code, a brace.
+#: Inner keys are indented four, so this matches only the language blocks.
+_BLOCK = re.compile(r"\n  [A-Za-z0-9_]+: \{")
 
-    Parsed rather than executed: this is a test, and running the page's
-    JavaScript to read a lookup table would need a browser to prove
-    something that is true of the text.
+
+def _nav_body() -> str:
+    """Just the NAV object literal, from its opening brace to its closing one.
+
+    Everything here is bounded by this. The last language block has no block
+    after it to stop at, so without this it runs to the end of the file and
+    picks up every other `key: "value"` pair in navigation.js.
     """
     js = navigation()
+    start = js.index("const NAV = {")
+    return js[start:js.index("\n};", start)]
+
+
+def languages_in_nav() -> list[str]:
+    """Every language block NAV actually carries, in file order."""
+    return [m.group(0).strip().rstrip(": {") for m in _BLOCK.finditer(_nav_body())]
+
+
+def table(language: str) -> dict[str, str]:
+    """One language's block of NAV, as a plain dict.
+
+    Parsed rather than executed: this is a test, and running the page's
+    JavaScript to read a lookup table would need a browser to prove something
+    that is true of the text.
+
+    SLICED TO THE NEXT BLOCK, not to the end of the file. It used to stop at
+    end-of-file for the last language, which was right while there were two and
+    silently wrong the moment a third was appended: `dict()` keeps the LAST
+    value for a repeated key, so asking for Tamil returned the newer language's
+    strings and every assertion still passed.
+    """
+    js = _nav_body()
     start = js.index(f"  {language}: {{")
-    end = js.index("  ta: {") if language == "en" else len(js)
+    following = _BLOCK.search(js, start + 1)
+    end = following.start() if following else len(js)
     return dict(_ENTRY.findall(js[start:end]))
+
+
+def test_each_language_block_is_parsed_separately():
+    """The guard on the slicing above.
+
+    If two languages ever parse to the same strings, the parser has run one
+    block into the next and every other check here is comparing a language
+    with itself.
+    """
+    blocks = languages_in_nav()
+    assert "en" in blocks and "ta" in blocks, blocks
+    seen: dict[str, str] = {}
+    for code in blocks:
+        rows = table(code)
+        assert rows, f"{code} parsed to nothing"
+        fingerprint = repr(sorted(rows.items()))
+        clash = seen.get(fingerprint)
+        assert clash is None, f"{code} parsed to the same strings as {clash}"
+        seen[fingerprint] = code
+
+
+def test_every_language_carries_every_key():
+    """A key missing from one language shows that line in English.
+
+    Also catches the slicing fault directly: a block that runs into whatever
+    follows it comes back with MORE keys than the table has, not fewer.
+    """
+    expected = set(table("en"))
+    for code in languages_in_nav():
+        rows = set(table(code))
+        assert rows == expected, (
+            f"{code}: missing {sorted(expected - rows)}, unexpected {sorted(rows - expected)}")
 
 
 def test_the_page_has_translatable_text_at_all():

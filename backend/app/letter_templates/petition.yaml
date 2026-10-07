@@ -28,18 +28,30 @@ label:
   en: Citizen Petition
   ta: குடிமகன் மனு
 
+  ml: പൗര പരാതി
+  te: పౌర విన్నపం
+  hi: नागरिक आवेदन
 department:
   en: District Collectorate
   ta: மாவட்ட ஆட்சியர் அலுவலகம்
 
+  ml: ജില്ലാ കളക്ടറേറ്റ്
+  te: జిల్లా కలెక్టరేట్
+  hi: जिला कलेक्ट्रेट
 addressee:
   en: The District Collector
   ta: மாவட்ட ஆட்சியர் அவர்கள்
 
+  ml: ജില്ലാ കളക്ടർ അവർകൾ
+  te: జిల్లా కలెక్టరు గారు
+  hi: जिला कलेक्टर महोदय
 subject:
   en: Petition seeking redressal of a grievance
   ta: குறை தீர்க்கக் கோரி மனு
 
+  ml: പരാതി പരിഹാരം തേടിയുള്ള നിവേദനം
+  te: సమస్య పరిష్కారం కోరుతూ విన్నపం
+  hi: शिकायत के निवारण हेतु आवेदन
 # The sign-off, printed above the signature space. This is now what the
 # document actually uses — until the format was reviewed nothing read it, and
 # the Tamil letter printed "இப்படிக்கு," from a hard-coded default while this
@@ -50,6 +62,9 @@ subject:
 # letter to a government office. Change it here to change the document.
 closing:
   en: Yours faithfully,
+  ml: വിശ്വസ്തതയോടെ,
+  te: విధేయుడు,
+  hi: भवदीय,
   ta: இப்படிக்கு,
 
 # Handed to the model as the purpose of the form, so that the subject line and
@@ -74,9 +89,12 @@ fields:
     aliases:
       en: [name, my name, full name]
       ta: [பெயர், என் பெயர், எனது பெயர், பெயரை, பேர்]
-    label: {en: Name of petitioner, ta: மனுதாரர் பெயர்}
+      ml: [പേര്, എന്റെ പേര്, പൂർണ്ണ നാമം]
+      te: [పేరు, నా పేరు, పూర్తి పేరు]
+      hi: [नाम, मेरा नाम, पूरा नाम]
+    label: {en: Name of petitioner, ta: மனுதாரர் பெயர், ml: പരാതിക്കാരന്റെ പേര്, te: విన్నపదారు పేరు, hi: आवेदक का नाम}
     # The form column says "Name of petitioner"; a sentence says "your name".
-    speech_label: {en: name, ta: பெயர்}
+    speech_label: {en: name, ta: பெயர், ml: പേര്, te: పేరు, hi: नाम}
     prompt:
       en: >-
         Hello. I will ask you a few details so your petition can be prepared.
@@ -85,43 +103,64 @@ fields:
         வணக்கம். உங்கள் மனுவை பதிவு செய்ய சில தகவல்களை கேட்கிறேன்.
         முதலில் உங்கள் பெயரை சொல்லுங்கள்.
 
+      ml: നമസ്കാരം. താങ്കളുടെ പരാതി തയ്യാറാക്കാൻ ഏതാനും വിവരങ്ങൾ ചോദിക്കട്ടെ. ആദ്യം, താങ്കളുടെ പേര് പറയുക.
+      te: నమస్కారం. మీ విన్నపం తయారు చేయడానికి కొన్ని వివరాలు అడుగుతాను. ముందుగా, మీ పేరు చెప్పండి.
+      hi: नमस्ते। आपका आवेदन तैयार करने के लिए मैं कुछ विवरण पूछूँगा। सबसे पहले, कृपया अपना नाम बताएँ।
   - name: age
     type: age
     required: true
     aliases:
       en: [age, my age, years old]
       ta: [வயது, என் வயது, வயதை, வயசு, வயசை]
-    label: {en: Age, ta: வயது}
+      ml: [വയസ്സ്, എന്റെ വയസ്സ്, പ്രായം]
+      te: [వయస్సు, నా వయస్సు, ఏళ్ళు]
+      hi: [आयु, मेरी आयु, उम्र]
+    label: {en: Age, ta: வயது, ml: വയസ്സ്, te: వయస్సు, hi: आयु}
     prompt:
       en: Thank you. Please tell me your age.
       ta: நன்றி. உங்கள் வயதை சொல்லுங்கள்.
 
+      ml: നന്ദി. താങ്കളുടെ വയസ്സ് പറയുക.
+      te: ధన్యవాదాలు. మీ వయస్సు చెప్పండి.
+      hi: धन्यवाद। कृपया अपनी आयु बताएँ।
   - name: mobile
     type: mobile
     required: true
     aliases:
       en: [mobile, phone, phone number, mobile number, contact number]
       ta: [கைபேசி, கைபேசி எண், கைபேசி எண்ணை, தொலைபேசி, போன், மொபைல், தொடர்பு எண்]
-    label: {en: Mobile number, ta: கைபேசி எண்}
+      ml: [മൊബൈൽ, ഫോൺ, ഫോൺ നമ്പർ, മൊബൈൽ നമ്പർ, ബന്ധപ്പെടാനുള്ള നമ്പർ]
+      te: [మొబైల్, ఫోన్, ఫోన్ నంబర్, మొబైల్ నంబర్, సంప్రదింపు నంబర్]
+      hi: [मोबाइल, फ़ोन, फ़ोन नंबर, मोबाइल नंबर, संपर्क नंबर]
+    label: {en: Mobile number, ta: கைபேசி எண், ml: മൊബൈൽ നമ്പർ, te: మొబైల్ సంఖ్య, hi: मोबाइल नंबर}
     # The document says "கைபேசி எண்", which is the formal word. The spoken
     # conversation says "மொபைல் எண்", which is what the question asks for —
     # one conversation should not use two words for the same thing.
-    speech_label: {en: mobile number, ta: மொபைல் எண்}
+    speech_label: {en: mobile number, ta: மொபைல் எண், ml: മൊബൈൽ നമ്പർ, te: మొబైల్ సంఖ్య, hi: मोबाइल नंबर}
     prompt:
       en: Right. Next, please tell me your contact mobile number.
       ta: சரி. அடுத்து உங்கள் தொடர்பு மொபைல் எண்ணை சொல்லுங்கள்.
 
+      ml: ശരി. ഇനി, താങ്കളെ ബന്ധപ്പെടാനുള്ള മൊബൈൽ നമ്പർ പറയുക.
+      te: సరే. ఇప్పుడు, మిమ్మల్ని సంప్రదించడానికి మొబైల్ సంఖ్య చెప్పండి.
+      hi: ठीक है। अब कृपया अपना संपर्क मोबाइल नंबर बताएँ।
   - name: address
     type: address
     required: true
     aliases:
       en: [address, my address, house, place]
       ta: [முகவரி, என் முகவரி, முகவரியை, வீடு, விலாசம்]
-    label: {en: Address, ta: முகவரி}
+      ml: [വിലാസം, എന്റെ വിലാസം, വീട്, സ്ഥലം]
+      te: [చిరునామా, నా చిరునామా, ఇల్లు, స్థలం]
+      hi: [पता, मेरा पता, घर, स्थान]
+    label: {en: Address, ta: முகவரி, ml: വിലാസം, te: చిరునామా, hi: पता}
     prompt:
       en: Thank you. Now please tell me your full address.
       ta: நன்றி. இப்போது உங்கள் முழு முகவரியை சொல்லுங்கள்.
 
+      ml: നന്ദി. ഇനി താങ്കളുടെ പൂർണ്ണ വിലാസം പറയുക.
+      te: ధన్యవాదాలు. ఇప్పుడు మీ పూర్తి చిరునామా చెప్పండి.
+      hi: धन्यवाद। अब कृपया अपना पूरा पता बताएँ।
   # The whole substance of the petition. Free text, deliberately: a grievance
   # that has to fit a dropdown is a grievance that has been changed. It is
   # reproduced verbatim in the document and is never summarised or rephrased.
@@ -131,7 +170,10 @@ fields:
     aliases:
       en: [grievance, complaint, problem, issue, matter]
       ta: [குறை, குறையை, புகார், புகாரை, பிரச்சனை, பிரச்சினை, விவகாரம்]
-    label: {en: Grievance, ta: குறை}
+      ml: [പരാതി, ആവലാതി, പ്രശ്നം, വിഷയം, കാര്യം]
+      te: [సమస్య, ఫిర్యాదు, ఇబ్బంది, విషయం, వ్యవహారం]
+      hi: [शिकायत, समस्या, परेशानी, विषय, मामला]
+    label: {en: Grievance, ta: குறை, ml: പരാതി, te: సమస్య, hi: शिकायत}
     prompt:
       en: >-
         Thank you. Now please describe your grievance fully. Tell me what the
@@ -142,6 +184,9 @@ fields:
         ஏற்பட்டுள்ளது, எப்போது தொடங்கியது, இதற்கு முன்பு ஏதேனும் மனு அல்லது
         புகார் அளித்திருந்தால் அதையும் சொல்லலாம்.
 
+      ml: നന്ദി. ഇനി താങ്കളുടെ പരാതി പൂർണ്ണമായി വിവരിക്കുക. പ്രശ്നം എന്താണ്, എപ്പോൾ തുടങ്ങി, ഇതിനെക്കുറിച്ച് മുമ്പ് എന്തെങ്കിലും പരാതി നൽകിയിട്ടുണ്ടോ എന്നും പറയുക.
+      te: ధన్యవాదాలు. ఇప్పుడు మీ సమస్యను పూర్తిగా వివరించండి. సమస్య ఏమిటి, ఎప్పుడు మొదలైంది, దీని గురించి గతంలో ఏదైనా విన్నపం ఇచ్చారా అన్నది కూడా చెప్పండి.
+      hi: धन्यवाद। अब कृपया अपनी शिकायत पूरी तरह बताएँ। समस्या क्या है, कब से है, और क्या इस विषय में पहले कोई आवेदन या शिकायत दी है — यह भी बताएँ।
 # Printed on the petition so a receiving office can tell what should have
 # arrived with it. Both lists are edited here, never in code.
 enclosures:
@@ -151,3 +196,6 @@ enclosures:
   ta:
     - வசிப்பிடச் சான்று நகல், இருப்பின்
     - இந்த விவகாரம் தொடர்பாக ஏற்கனவே அளித்த மனு அல்லது ஒப்புகைச் சீட்டு நகல்கள்
+  ml: ['താമസ രേഖയുടെ പകർപ്പ്, ലഭ്യമെങ്കിൽ', ഈ വിഷയത്തിൽ മുമ്പ് നൽകിയ പരാതിയുടെയോ ഒപ്പുകൈപ്പറ്റിന്റെയോ പകർപ്പുകൾ]
+  te: ['నివాస ధ్రువీకరణ ప్రతి, అందుబాటులో ఉంటే', ఈ విషయంలో గతంలో ఇచ్చిన విన్నపం లేదా రసీదు ప్రతులు]
+  hi: ['निवास प्रमाण की प्रति, यदि उपलब्ध हो', इस विषय में पहले दिए गए आवेदन या पावती की प्रतियाँ]

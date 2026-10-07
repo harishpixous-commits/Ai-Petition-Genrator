@@ -40,6 +40,7 @@ from ..services import (
     tts,
 )
 from ..services.officer_store import require_citizen_session
+from ..domain import languages
 from ..domain.languages import english_name
 from ..services.translate import OFFERED
 from ..services.render import pdf_status
@@ -58,7 +59,8 @@ router = APIRouter(prefix="/api", dependencies=[Depends(require_citizen_session)
 
 
 class StartRequest(BaseModel):
-    language: str = Field(default="en", pattern="^(en|ta)$")
+    language: str = Field(default=languages.DEFAULT,
+                          pattern="^(" + "|".join(languages.SUPPORTED) + ")$")
     # An opening statement is optional: the citizen may just say "hello" and be
     # asked the first question, or may open with their name already in it.
     text: str = Field(default="", max_length=MAX_FREE_TEXT)
