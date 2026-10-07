@@ -238,3 +238,91 @@ async def test_acknowledgements_come_from_the_same_set(api):
     assert draft not in known
     for ack in acks:
         assert ack["petition_id"] in known, ack
+
+
+@pytest.fixture
+async def before_any_officer_exists(graph, tmp_path, monkeypatch):
+    """The state every deployment is in until somebody runs create_officer.
+
+    The live service was still in it on 5 October 2026, which is how this got
+    noticed: `/api/petitions` answered an anonymous caller with 31 petitions,
+    petitioner names included, and handed over the session id of each one.
+    """
+    settings = get_settings().model_copy(update={"data_dir": tmp_path})
+    monkeypatch.setattr(store, "get_settings", lambda: settings)
+    app = FastAPI()
+    for router in (officer.router, catalog.router, rest.router):
+        app.include_router(router)
+    workflow = Workflow(graph, None)
+    app.state.workflow = workflow
+
+    async def seed(session_id, name, reference):
+        await workflow._compiled.aupdate_state(
+            workflow.config(session_id),
+            {
+                **new_state(session_id),
+                "status": "ready",
+                "confirmed": True,
+                "fields": {"applicant_name": name, "grievance": "A broken pipe.",
+                           "address": "Some Street"},
+                "letter_text": "Subject: A broken pipe",
+                "document": {"reference": reference, "docx": "missing.docx"},
+                "verification": {"ok": True},
+            },
+            as_node="verify",
+        )
+
+    stranger = str(uuid.uuid4())
+    await seed(stranger, "Somebody Else", "CP-STRANGER-1")
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        yield client, stranger, seed
+
+
+class TestTheCatalogueNeverWidensToEverybody:
+    """Listing and deleting are scoped to the calling browser at all times.
+
+    Before an officer account exists `citizen_scope` answers "do not restrict",
+    which is deliberate and still true for opening a petition by an id the
+    caller already holds. Applied to the catalogue it meant any caller could
+    enumerate every petition on the service and then delete all of them, which
+    takes the checkpoints, the documents and the attachments with no undo.
+    """
+
+    async def test_a_stranger_is_shown_nothing(self, before_any_officer_exists):
+        client, _, _ = before_any_officer_exists
+        body = (await client.get("/api/petitions")).json()
+        assert body["items"] == []
+        assert body["total"] == 0
+
+    async def test_a_stranger_cannot_delete_what_it_cannot_see(self, before_any_officer_exists):
+        client, stranger, _ = before_any_officer_exists
+        response = await client.post("/api/petitions/delete", json={"session_ids": [stranger]})
+        assert response.status_code == 403
+
+    async def test_a_browser_still_gets_its_own_petition_back(self, before_any_officer_exists):
+        client, stranger, seed = before_any_officer_exists
+        mine = (await client.post("/api/sessions", json={"language": "en"})).json()["session_id"]
+        await seed(mine, "Test Citizen", "CP-MINE-1")
+        rows = (await client.get("/api/petitions")).json()["items"]
+        assert [row["session_id"] for row in rows] == [mine]
+        assert stranger not in {row["session_id"] for row in rows}
+
+    async def test_a_browser_may_delete_its_own(self, before_any_officer_exists):
+        client, _, seed = before_any_officer_exists
+        mine = (await client.post("/api/sessions", json={"language": "en"})).json()["session_id"]
+        await seed(mine, "Test Citizen", "CP-MINE-2")
+        response = await client.post("/api/petitions/delete", json={"session_ids": [mine]})
+        assert response.status_code == 200
+
+    async def test_opening_a_petition_by_id_is_left_alone(self, before_any_officer_exists):
+        """Deliberately NOT closed here.
+
+        Session recording shipped on 23 September 2026 and the oldest petitions
+        on the live service are older than that, so they belong to no browser.
+        Closing this door too would lock their owners out of their own
+        bookmarks; provisioning the first officer is what closes it.
+        """
+        client, stranger, _ = before_any_officer_exists
+        assert (await client.get(f"/api/sessions/{stranger}")).status_code == 200

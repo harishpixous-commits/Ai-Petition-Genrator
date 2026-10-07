@@ -20,6 +20,34 @@ from app.config import Settings
 from app.graph.state import new_state
 from app.graph.workflow import Workflow
 from app.services.removal import remove_sessions
+from app.services import officer_store
+
+
+# The browser these tests are. Every seeded petition is recorded against it,
+# because listing and deleting are scoped to the browser that created the
+# petition — a client owning nothing is a stranger and is shown nothing.
+BROWSER = "test-browser"
+
+
+@pytest.fixture(autouse=True)
+def _isolate_the_officer_database(tmp_path, monkeypatch):
+    """Keep these tests off the real officer database.
+
+    `owned_sessions` reads officer.sqlite, so without this every run would
+    read and write the data directory of whoever is running the suite.
+    """
+    settings = Settings(data_dir=tmp_path)
+    settings.ensure_dirs()
+    monkeypatch.setattr(officer_store, "get_settings", lambda: settings)
+    return settings
+
+
+def _owned_by_this_browser(session_id: str) -> None:
+    with officer_store.database() as db:
+        db.execute(
+            "INSERT OR IGNORE INTO citizen_sessions VALUES(?,?)",
+            (session_id, officer_store.digest(BROWSER)),
+        )
 
 
 def _id() -> str:
@@ -63,11 +91,13 @@ async def api(workflow):
     app.state.workflow = workflow
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://test",
+        cookies={"petition_citizen": BROWSER},
     ) as client:
         yield client
 
 
 async def _persist(workflow, session_id, patch):
+    _owned_by_this_browser(session_id)
     await workflow._compiled.aupdate_state(
         workflow.config(session_id), patch, as_node="verify")
 
@@ -148,13 +178,20 @@ class TestTheDeletionIsReal:
 
 
 class TestItSaysWhatActuallyHappened:
-    async def test_an_id_that_names_nothing_is_reported_as_unknown(self, api):
-        response = await api.post(
-            "/api/petitions/delete", json={"session_ids": [_id()]})
-        body = response.json()
-        assert response.status_code == 200
-        assert body["deleted"] == [] and body["count"] == 0
-        assert len(body["unknown"]) == 1
+    async def test_an_id_this_browser_never_owned_is_refused(self, api):
+        """Deliberately changed when the catalogue stopped widening.
+
+        This used to answer 200 and report the id as unknown — for ANY id,
+        owned or not. That is an existence oracle: a caller could ask about
+        session ids it had never seen and learn which of them were real, which
+        is the same leak as listing every petition on the service.
+
+        Honest reporting is not lost. A petition the browser DID create and has
+        already deleted is still reported as unknown rather than as a second
+        success, which is what the test below holds.
+        """
+        response = await api.post("/api/petitions/delete", json={"session_ids": [_id()]})
+        assert response.status_code == 403
 
     async def test_a_deleted_petition_cannot_be_deleted_twice_as_a_success(
         self, api, workflow, store,

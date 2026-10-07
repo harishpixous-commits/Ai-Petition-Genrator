@@ -96,16 +96,49 @@ def login(username, password, host):
     return token, None
 
 
-def citizen_scope(request):
-    """Office mode stops the public catalogue revealing other browsers' session IDs."""
+def owned_sessions(request):
+    """The petitions THIS browser created. Never a wildcard.
+
+    Kept apart from `citizen_scope` because listing and deleting ask a
+    different question from opening a petition whose id you already hold.
+
+    Before any officer account exists `citizen_scope` deliberately answers
+    "do not restrict", so that a single-machine deployment keeps working.
+    Applied to the catalogue, that meant an anonymous caller could list every
+    petition on the service, open each one using the session id the listing
+    handed over, and then delete the lot — `remove_sessions` takes the
+    checkpoints, the generated documents and the attachments, and there is no
+    undo. Measured against the live service on 5 October 2026: 31 petitions,
+    petitioner names included.
+
+    So these two uses never widen. A browser lists and deletes its own work,
+    whether or not the office has been set up yet.
+    """
     with database() as db:
-        if not db.execute("SELECT 1 FROM officers LIMIT 1").fetchone():
-            return None  # Preserve existing single-machine deployments until provisioned.
         owner = digest(request.cookies.get("petition_citizen", ""))
         return {
             r["session_id"]
             for r in db.execute("SELECT session_id FROM citizen_sessions WHERE owner=?", (owner,))
         }
+
+
+def citizen_scope(request):
+    """Office mode stops the public catalogue revealing other browsers' session IDs.
+
+    `None` still means "do not restrict", and is still the answer before an
+    officer account exists — but now only for opening a petition by an id the
+    caller already has. Session recording shipped on 23 September 2026 and the
+    oldest petitions on the live service predate it, so those sessions are
+    recorded against no browser at all; closing this too would lock their
+    owners out of their own bookmarks. Provisioning the first officer closes
+    it, as it always has.
+
+    For listing and for deleting, use `owned_sessions`.
+    """
+    with database() as db:
+        if not db.execute("SELECT 1 FROM officers LIMIT 1").fetchone():
+            return None  # Preserve existing single-machine deployments until provisioned.
+    return owned_sessions(request)
 
 
 def require_citizen_session(request: Request):

@@ -13,6 +13,34 @@ from app.config import Settings
 from app.graph.state import new_state
 from app.graph.workflow import Workflow, workflow_lifespan
 from app.services.petition_catalog import PetitionCatalog
+from app.services import officer_store
+
+
+# The browser these tests are. Every seeded petition is recorded against it,
+# because listing and deleting are scoped to the browser that created the
+# petition — a client owning nothing is a stranger and is shown nothing.
+BROWSER = "test-browser"
+
+
+@pytest.fixture(autouse=True)
+def _isolate_the_officer_database(tmp_path, monkeypatch):
+    """Keep these tests off the real officer database.
+
+    `owned_sessions` reads officer.sqlite, so without this every run would
+    read and write the data directory of whoever is running the suite.
+    """
+    settings = Settings(data_dir=tmp_path)
+    settings.ensure_dirs()
+    monkeypatch.setattr(officer_store, "get_settings", lambda: settings)
+    return settings
+
+
+def _owned_by_this_browser(session_id: str) -> None:
+    with officer_store.database() as db:
+        db.execute(
+            "INSERT OR IGNORE INTO citizen_sessions VALUES(?,?)",
+            (session_id, officer_store.digest(BROWSER)),
+        )
 
 
 def _saved(session_id: str, *, name: str = "Ravi Kumar", language: str = "en",
@@ -49,6 +77,7 @@ async def catalog_api(catalog_workflow):
     app.state.workflow = catalog_workflow
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://test",
+        cookies={"petition_citizen": BROWSER},
     ) as client:
         yield client
 
@@ -60,6 +89,7 @@ async def _list(client, **params):
 
 
 async def _persist(workflow, session_id, patch):
+    _owned_by_this_browser(session_id)
     # Simulate durable node checkpoints without generating files: explicitly
     # identify the node because this fixture never executes a graph turn.
     await workflow._compiled.aupdate_state(workflow.config(session_id), patch, as_node="verify")
