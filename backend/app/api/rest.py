@@ -13,6 +13,7 @@ spoken sessions identical.
 from __future__ import annotations
 
 import logging
+from datetime import UTC, datetime
 import uuid
 from pathlib import Path
 
@@ -51,6 +52,10 @@ from .views import session_view
 log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", dependencies=[Depends(require_citizen_session)])
+
+#: Stamped once, when this module is imported, which is when the process read
+#: the code it is going to serve.
+STARTED_AT = datetime.now(UTC).isoformat(timespec="seconds")
 
 
 # --------------------------------------------------------------------------- #
@@ -204,6 +209,13 @@ async def health() -> dict:
         # is a question with an answer. Not a secret: it is the same sha the
         # repository shows publicly.
         "build": settings.build_sha or "unknown",
+        # WHEN THIS PROCESS LOADED ITS CODE. `build` is written at container
+        # build time and is empty anywhere else, which left a development
+        # server with no way to say how old it was — and one of them served a
+        # fortnight-old build for a fortnight while the page in front of it
+        # was read fresh from disk on every request. Every symptom pointed at
+        # the new code; the process was simply older than it.
+        "started_at": STARTED_AT,
         "language_model": {
             "available": language_status["available"],
             "provider": language_status.get("provider"),
