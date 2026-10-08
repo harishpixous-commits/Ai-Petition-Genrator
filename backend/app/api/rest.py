@@ -216,6 +216,11 @@ async def health() -> dict:
         # was read fresh from disk on every request. Every symptom pointed at
         # the new code; the process was simply older than it.
         "started_at": STARTED_AT,
+        # Per provider: how many keys are configured, and how many are
+        # currently resting because they answered out of quota. Without this,
+        # "are my keys working?" could only be answered by watching the
+        # service degrade.
+        "api_keys": llm.key_health(settings),
         "language_model": {
             "available": language_status["available"],
             "provider": language_status.get("provider"),
@@ -748,13 +753,38 @@ async def translate_document(session_id: str, body: TranslateRequest,
 
         target = body.language
         keep = verbatim_lines(state.get("fields") or {})
-        lines = text.split("\n")
-        source = language_of(lines, keep)
-        log.info("session.translate", extra={"source": source, "target": target})
+        version = int(state.get("document_version") or 0)
+
+        # THE ORIGIN: the petition as the service last WROTE it, which is what
+        # every translation is made from. Translating whatever happens to be on
+        # screen is what turned one citizen's "Place: theni" into "Location:
+        # Honey" and the label "From," into "Since the beginning," after four
+        # languages — each step translating the step before it.
+        #
+        # The origin is replaced when the document version moves for any reason
+        # other than a translation, because that means the service wrote a new
+        # letter: a composition, a revision, or the citizen's own hand edit.
+        origin = state.get("translation_origin") or {}
+        if origin.get("version") != version or not str(origin.get("text") or "").strip():
+            origin = {
+                "text": text,
+                "language": language_of(text.split("\n"), keep),
+                "version": version,
+            }
+
+        source = str(origin["language"])
+        log.info("session.translate", extra={"source": source, "target": target,
+                                             "showing": language_of(text.split("\n"), keep)})
+
         if source == target:
-            # Nothing to do, and nothing pretended: no new version, no
-            # re-render, and the same document handed straight back.
-            return session_view(state)
+            # Home again. The ORIGINAL words are handed back rather than
+            # translated home, so a citizen who reads their petition in another
+            # language and returns gets what they approved, to the character.
+            if text.strip() == str(origin["text"]).strip():
+                return session_view(state)
+            return await _restore_origin(request, session_id, origin, body.expected_version)
+
+        lines = str(origin["text"]).split("\n")
 
         try:
             result = await translate_lines(lines, target, keep=keep, source=source)
@@ -765,7 +795,7 @@ async def translate_document(session_id: str, body: TranslateRequest,
                      "Your petition has not been changed.") from None
 
         translated = "\n".join(result.lines)
-        if translated.strip() == text.strip():
+        if translated.strip() == str(origin["text"]).strip():
             raise HTTPException(
                 503, "The petition could not be translated. It has not been changed.")
 
@@ -781,7 +811,39 @@ async def translate_document(session_id: str, body: TranslateRequest,
                              "summary": f"Translated into {_LANGUAGE_NAMES[target]}"}},
             guard=_version_guard(body.expected_version, ready=True, text=translated),
         )
-        return session_view(outcome)
+        # The origin does not change because of a translation — only its
+        # version does, so the next translation still starts from the letter
+        # the service wrote rather than from this one.
+        await _workflow(request).update(
+            session_id,
+            {"translation_origin": {**origin,
+                                    "version": int(outcome.get("document_version") or 0)}},
+        )
+        return session_view({**outcome, "translation_origin": origin})
+
+
+async def _restore_origin(request: Request, session_id: str, origin: dict,
+                          expected_version: int | None) -> dict:
+    """Put the petition back into the language it was written in.
+
+    Not a translation home: the stored original, exactly as it was approved.
+    """
+    outcome = await _workflow(request).invoke(
+        session_id,
+        {"utterance": "", "intent": "edit_text", "understood_by": "form",
+         "_extracted": {}, "_corrections": {}, "_correction_target": None,
+         "_revision": None, "_emblem": None, "_skip_understand": True,
+         "_edited_text": str(origin["text"]),
+         "_edit_label": {"source": "Translation",
+                         "summary": f"Restored the original {_LANGUAGE_NAMES.get(origin['language'], origin['language'])}"}},
+        guard=_version_guard(expected_version, ready=True, text=str(origin["text"])),
+    )
+    await _workflow(request).update(
+        session_id,
+        {"translation_origin": {**origin,
+                                "version": int(outcome.get("document_version") or 0)}},
+    )
+    return session_view(outcome)
 
 
 @router.post("/sessions/{session_id}/revise")

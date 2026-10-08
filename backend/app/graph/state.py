@@ -121,6 +121,12 @@ class LetterState(TypedDict, total=False):
     attachments_done: bool
 
     letter_text: str | None
+    # The petition as the service last WROTE it, and the language it wrote it
+    # in. Every translation is made from this, never from whatever translation
+    # is currently on screen — four successive translations once turned a
+    # citizen's town into another word and a structural label into a sentence.
+    # Replaced whenever the letter is rewritten for any other reason.
+    translation_origin: dict[str, Any] | None
     # The citizen edited the text of the petition by hand. Recorded on the
     # session because an officer reading it is entitled to know that the wording
     # is the citizen's own rather than the form's — and because verification

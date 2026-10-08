@@ -192,6 +192,31 @@ def _revive_key(key: str) -> None:
     _KEY_COOLDOWN.pop(key, None)
 
 
+def key_health(settings: Settings | None = None) -> dict[str, dict[str, int]]:
+    """How many keys each provider has, and how many are out of quota.
+
+    For the operator screen and /api/health. "My keys are exhausted" was a
+    guess before this: the probe tried one key and reported a provider count,
+    so nine spent keys and one good one were indistinguishable from ten good
+    ones — until the tenth went too and the service quietly fell back to the
+    standard wording.
+    """
+    s = settings or get_settings()
+    now = time.monotonic()
+    out: dict[str, dict[str, int]] = {}
+    for provider in ("anthropic", "openrouter", "groq", "gemini"):
+        keys = _keys_for(provider, s)
+        if not keys:
+            continue
+        resting = sum(1 for k in keys if _KEY_COOLDOWN.get(k, 0.0) > now)
+        out[provider] = {
+            "configured": len(keys),
+            "resting": resting,
+            "ready": len(keys) - resting,
+        }
+    return out
+
+
 def _usable_keys(keys: tuple[str, ...]) -> tuple[str, ...]:
     """Keys not currently cooling down, in order.
 
@@ -625,6 +650,18 @@ async def enhance(coro_factory, fallback):
         return fallback
 
 
+def _probe_key(keys) -> str:
+    """The key the router would reach for next, not always the first one.
+
+    Probing key zero while the router is skipping it reports a provider as
+    unreachable when it is serving every request without trouble.
+    """
+    pool = tuple(keys or ())
+    if not pool:
+        return ""
+    return _usable_keys(pool)[0]
+
+
 async def available(settings: Settings | None = None) -> dict[str, Any]:
     """Health probe across the configured chain. Used by `/api/health`."""
     s = settings or get_settings()
@@ -643,13 +680,13 @@ async def available(settings: Settings | None = None) -> dict[str, Any]:
                                                   "anthropic-version": "2023-06-01"})
                 elif provider == "openrouter":
                     r = await client.get("https://openrouter.ai/api/v1/key",
-                                         headers={"Authorization": f"Bearer {s.openrouter_key_list[0]}"})
+                                         headers={"Authorization": f"Bearer {_probe_key(s.openrouter_key_list)}"})
                 elif provider == "groq":
                     r = await client.get("https://api.groq.com/openai/v1/models",
-                                         headers={"Authorization": f"Bearer {s.groq_key_list[0]}"})
+                                         headers={"Authorization": f"Bearer {_probe_key(s.groq_key_list)}"})
                 elif provider == "gemini":
                     r = await client.get(f"{s.gemini_base_url}/models",
-                                         params={"key": s.gemini_key_list[0]})
+                                         params={"key": _probe_key(s.gemini_key_list)})
                 else:
                     r = await client.get(f"{s.ollama_url}/api/tags", timeout=3.0)
                     if r.status_code < 400:

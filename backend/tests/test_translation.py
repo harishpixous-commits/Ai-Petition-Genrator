@@ -373,3 +373,82 @@ class TestPinnedRepairsStayInTheirOwnLanguage:
 
     def test_every_language_the_translator_serves_has_an_entry(self):
         assert set(translate.PINNED) == set(translate.SARVAM_CODE) - {"en"}
+
+
+class TestATranslationIsNeverMadeFromATranslation:
+    """A citizen read their petition in four languages and got back a ruin.
+
+    Each translation was made from whatever was on screen, so the fourth was a
+    translation of a translation of a translation. Measured on a real petition:
+
+        Place: theni              ->  Location: Honey
+        From,                     ->  Since the beginning,
+        "the supply of water has  ->  "with the water they have become
+         become insufficient"          a mirage"
+
+    Their town became another word and a structural label — one that
+    `render.py` matches on to rebuild the document — became a sentence.
+    """
+
+    @staticmethod
+    def _marking(tag):
+        """A translator that marks every line it touches, so compounding shows.
+
+        A line translated twice carries two marks. That is the whole fault,
+        made countable.
+        """
+        async def translate(lines, target, settings=None, keep=frozenset(), source=None):
+            return translator.TranslationResult(
+                lines=[line if (not line.strip() or line in keep or line.strip() in keep)
+                       else f"{tag}{line}"
+                       for line in lines],
+                engine="test")
+        return translate
+
+    async def test_each_language_is_translated_from_the_original(
+        self, api, workflow, monkeypatch,
+    ):
+        monkeypatch.setattr("app.api.rest.translate_lines", self._marking("<>"))
+        session_id = _id()
+        await _persist(workflow, session_id, _ready(session_id))
+
+        letters = []
+        for target in ("ta", "hi"):
+            response = await api.post(f"/api/sessions/{session_id}/translate",
+                                      json={"language": target})
+            assert response.status_code == 200, response.text
+            letters.append(response.json()["letter_text"])
+
+        for letter in letters:
+            worst = max((line.count("<>") for line in letter.split("\n")), default=0)
+            assert worst == 1, (
+                f"a line was translated {worst} times — the second translation "
+                f"was made from the first instead of from the original")
+
+    async def test_going_back_returns_the_original_exactly(
+        self, api, workflow, monkeypatch,
+    ):
+        """Reading a petition in another language and coming home is a VIEW.
+
+        A citizen who returns to the language they approved should get the
+        words they approved, to the character — not a translation of a
+        translation that happens to be in the right language.
+        """
+        monkeypatch.setattr("app.api.rest.translate_lines", self._marking("<>"))
+        session_id = _id()
+        await _persist(workflow, session_id, _ready(session_id))
+
+        before = (await api.get(f"/api/sessions/{session_id}")).json()["letter_text"]
+
+        for target in ("ta", "hi", "ta"):
+            assert (await api.post(f"/api/sessions/{session_id}/translate",
+                                   json={"language": target})).status_code == 200
+
+        home = await api.post(f"/api/sessions/{session_id}/translate",
+                              json={"language": "en"})
+        assert home.status_code == 200, home.text
+        after = home.json()["letter_text"]
+
+        assert after.strip() == before.strip(), (
+            "coming back to the original language did not return the original text")
+        assert "<>" not in after, "the restored petition still carries translation marks"
