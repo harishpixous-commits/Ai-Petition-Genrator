@@ -35,7 +35,7 @@ from typing import Any
 
 from . import clock
 from .spoken_numbers import spoken_cardinal
-from .languages import TAMIL_RANGE
+from .languages import INDIC_RANGES, TAMIL_RANGE
 
 # --------------------------------------------------------------------------- #
 # Result type
@@ -373,9 +373,14 @@ def validate_email(raw: str) -> FieldResult:
 # People and places
 # --------------------------------------------------------------------------- #
 
-# Tamil block, Latin letters, and the punctuation that appears inside real
-# Indian names: "K. Ravi Kumar", "D'Souza", "Abdul-Rahman".
-_NAME_RE = re.compile(r"^[" + TAMIL_RANGE + r" A-Za-z.'\-]+$")
+# Every script this service serves, Latin letters, and the punctuation that
+# appears inside real Indian names: "K. Ravi Kumar", "D'Souza",
+# "Abdul-Rahman".
+#
+# This was the Tamil block alone, which refused a Malayalam name outright
+# and left the interview stuck on its first question for ever — every
+# answer after it was read as another attempt at the name.
+_NAME_RE = re.compile(r"^[" + INDIC_RANGES + r" A-Za-z.'\-]+$")
 
 
 def validate_person_name(raw: str) -> FieldResult:
@@ -615,12 +620,22 @@ def validate_dob(raw: str) -> FieldResult:
 
 _YES = re.compile(
     r"\b(yes|yeah|yep|yup|correct|right|true|done|issued|received|i did|i have|ok|okay)\b"
-    r"|ஆம்|ஆமா|ஆமாம்|சரி|இருக்கு|உள்ளது|வழங்கப்பட்ட|கிடைத்த|செய்தேன்",
+    r"|ஆம்|ஆமா|ஆமாம்|சரி|இருக்கு|உள்ளது|வழங்கப்பட்ட|கிடைத்த|செய்தேன்"
+    # Malayalam, Telugu, Hindi: yes / right / okay / I have it.
+    r"|അതെ|ഉവ്വ്|ശരി|ഓകെ|ഉണ്ട്|കിട്ടി"
+    r"|అవును|సరే|సరి|ఓకే|ఉంది|వచ్చింది"
+    r"|हाँ|हां|सही|ठीक|ओके|मिला|है",
     re.I,
 )
 _NO = re.compile(
     r"\b(no|nope|not|never|didn'?t|haven'?t|nothing|pending|wrong|incorrect|false)\b"
-    r"|இல்ல|இல்லை|வேண்டாம்|தவறு|வழங்கப்படவில்லை|கிடைக்கவில்லை|செய்யவில்லை|நிலுவை",
+    r"|இல்ல|இல்லை|வேண்டாம்|தவறு|வழங்கப்படவில்லை|கிடைக்கவில்லை|செய்யவில்லை|நிலுவை"
+    # Malayalam, Telugu, Hindi: no / do not want / wrong / not right.
+    # "ശരിയല്ല" and "సరికాదు" contain the agreement word; a tie on offset
+    # is resolved in favour of the negative, which is what makes that safe.
+    r"|ഇല്ല|വേണ്ട|തെറ്റ|ശരിയല്ല|ഒന്നുമില്ല"
+    r"|లేదు|వద్దు|తప్పు|సరికాదు|ఏమీ లేదు"
+    r"|नहीं|नही|गलत|ग़लत|कुछ नहीं",
     re.I,
 )
 

@@ -1685,8 +1685,17 @@ async function api(path, options = {}) {
     lastApiStatus = r.status;
     if (!r.ok) {
       const body = await r.json().catch(() => ({}));
+      // A STRING is a sentence this service wrote, in the citizen's language,
+      // about something they can act on. An ARRAY is Pydantic listing which
+      // field failed which rule — addressed to a programmer, always in
+      // English, naming regular expressions, and describing a fault the
+      // citizen did not cause and cannot fix. It belongs in the console.
+      const schemaFault = Array.isArray(body.detail);
+      if (schemaFault) {
+        console.error("request rejected by the API schema", body.detail);
+      }
       const message = typeof body.detail === "string" ? body.detail
-        : Array.isArray(body.detail) ? body.detail.map(e => e.msg).join(". ") : X().genericError;
+        : X().genericError;
       // "Not Found" is what the framework says when a ROUTE is missing, and
       // it means nothing to a citizen. Anything else is a sentence this
       // service wrote on purpose and is worth showing.

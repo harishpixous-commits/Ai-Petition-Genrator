@@ -32,7 +32,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from typing import Literal
-from .languages import TAMIL_RANGE
+from .languages import INDIC_RANGES
 
 Language = Literal["en", "ta"]
 Intent = Literal["confirm", "retry", "replace"]
@@ -88,6 +88,49 @@ _AGREE_TA = (
     # "ஓகே" — okay. "இதுதான்" — this is it. "உறுதி" — confirm.
     "ஓகே", "இதுதான்", "அதுதான்",
     "உறுதி", "பரவாயில்ல",
+)
+
+# Malayalam, Telugu and Hindi. Stems where the suffix varies, written the same
+# way as the Tamil lists above.
+_REFUSE_ML = (
+    # "ഇല്ല" — no / not. "വേണ്ട" — do not want. "തെറ്റ്" — wrong.
+    # "ശരിയല്ല" — not right, and longer than the agreement word "ശരി", so it
+    # is found first for the same reason the Tamil pair is ordered that way.
+    "ഇല്ല", "വേണ്ട", "തെറ്റ", "ശരിയല്ല",
+    # "വീണ്ടും" — again. "മാറ്റ" — to change.
+    "വീണ്ടും", "മാറ്റ",
+)
+_REFUSE_TE = (
+    # "లేదు" — no. "వద్దు" — do not want. "తప్పు" — wrong.
+    # "సరికాదు" — not right, longer than "సరి" and tested before it.
+    "లేదు", "వద్దు", "తప్పు", "సరికాదు",
+    # "మళ్ళీ" — again, both spellings. "మార్చ" — to change.
+    "మళ్ళీ", "మళ్ళి", "మార్చ",
+)
+_REFUSE_HI = (
+    # "नहीं" — no; "नही" is the commoner spelling without the nasal mark.
+    "नहीं", "नही",
+    # "गलत" — wrong, in both spellings. "दोबारा" — again. "बदल" — to change.
+    "गलत", "ग़लत", "दोबारा", "बदल",
+)
+
+_AGREE_ML = (
+    # "അതെ" — yes. "ഉവ്വ്" — yes, spoken. "ശരി" — right / all right.
+    "അതെ", "ഉവ്വ്", "ശരി",
+    # "ഓകെ" — okay. "തുടര" — to continue.
+    "ഓകെ", "തുടര",
+)
+_AGREE_TE = (
+    # "అవును" — yes. "సరే" / "సరి" — all right.
+    "అవును", "సరే", "సరి",
+    # "ఓకే" — okay. "కొనసాగ" — to continue.
+    "ఓకే", "కొనసాగ",
+)
+_AGREE_HI = (
+    # "हाँ" / "हां" — yes. "सही" — correct. "ठीक" — all right.
+    "हाँ", "हां", "सही", "ठीक",
+    # "ओके" — okay. "जारी" — carry on.
+    "ओके", "जारी",
 )
 
 # Words that carry no decision and should not count as a replacement when
@@ -159,7 +202,12 @@ def _normalise(text: str) -> str:
     """Lowercase, strip punctuation, collapse spaces. Tamil is untouched by
     the case fold and has no apostrophes to lose."""
     lowered = _APOSTROPHE.sub("", str(text or "").lower())
-    cleaned = re.sub(r"[^\w\s" + TAMIL_RANGE + r"]+", " ", lowered)
+    # INDIC_RANGES, not `\w`. Python's `\w` does not match Indic combining
+    # marks — a virama is category Mn, a vowel sign is Mc — so without the
+    # ranges spliced in, every one of these languages comes out of here
+    # mutilated and matches nothing. Tamil only worked because its range
+    # was named explicitly.
+    cleaned = re.sub(r"[^\w\s" + INDIC_RANGES + r"]+", " ", lowered)
     return re.sub(r"\s+", " ", cleaned).strip()
 
 
@@ -214,7 +262,7 @@ def _residue(text: str) -> str:
     supplied for five days" into "water has not been supplied five days" —
     a grievance with a word missing, printed on a government form.
     """
-    rest = _strip(text, _REFUSE_EN + _REFUSE_TA + _AGREE_EN + _AGREE_TA)
+    rest = _strip(text, _REFUSE + _AGREE)
     kept = [w for w in _normalise(rest).split() if w not in _FILLER]
     return " ".join(kept).strip()
 
@@ -229,7 +277,12 @@ _LEAD_IN = ("it is", "its", "it's", "that is", "thats", "that's", "i said",
 # with a dangling "to".
 _ASCII_LEAD = tuple(sorted({*_REFUSE_EN, *_AGREE_EN, *_LEAD_IN},
                            key=len, reverse=True))
-_TAMIL_LEAD = tuple(sorted({*_REFUSE_TA, *_AGREE_TA}, key=len, reverse=True))
+# Every non-Latin lead-in, not only the Tamil ones: a Malayalam citizen
+# answering "no, it is 24 Gandhi Road" needs exactly the same treatment.
+_TAMIL_LEAD = tuple(sorted(
+    {*_REFUSE_TA, *_AGREE_TA, *_REFUSE_ML, *_AGREE_ML,
+     *_REFUSE_TE, *_AGREE_TE, *_REFUSE_HI, *_AGREE_HI},
+    key=len, reverse=True))
 
 
 def _as_answer(original: str) -> str:
@@ -277,7 +330,7 @@ def is_refusal(text: str, language: Language = "en") -> bool:
     misheard phrase returns, and escaping on it would throw the complaint
     away every time a word was not found.
     """
-    return _present(_normalise(text), _REFUSE_EN + _REFUSE_TA)
+    return _present(_normalise(text), _REFUSE)
 
 
 def read(text: str, language: Language = "en") -> Reading:
@@ -295,8 +348,8 @@ def read(text: str, language: Language = "en") -> Reading:
     # Both languages' tables are consulted whatever the session language: a
     # citizen answering a Tamil question with "ok" is not a mistake, and
     # code-switching mid-sentence is ordinary here.
-    refuses = _present(spoken, _REFUSE_EN + _REFUSE_TA)
-    agrees = _present(spoken, _AGREE_EN + _AGREE_TA)
+    refuses = _present(spoken, _REFUSE)
+    agrees = _present(spoken, _AGREE)
     rest = _residue(spoken)
 
     # Anything substantial left over is the answer itself. "no, it is twelve
@@ -353,6 +406,25 @@ _DONE_TA = (
     "போதும்",
 )
 
+_DONE_ML = (
+    # "കഴിഞ്ഞു" — it is finished. "തീർന്നു" — it has ended.
+    "കഴിഞ്ഞ", "തീർന്ന",
+    # "അത്രമാത്രം" — that is all. "മതി" — enough.
+    "അത്രമാത്രം", "മതി",
+)
+_DONE_TE = (
+    # "అయిపోయింది" — it is finished. "ముగిసింది" — it has ended.
+    "అయిపో", "ముగిస",
+    # "అంతే" — that is all. "చాలు" — enough.
+    "అంతే", "చాలు",
+)
+_DONE_HI = (
+    # "समाप्त" — finished. "हो गया" — it is done. "बस" — enough / that is all.
+    # Deliberately NOT "और कुछ नहीं": it carries "नहीं", which is a refusal
+    # word, and the two tables are read by different questions.
+    "समाप्त", "हो गया", "बस इतना", "बस",
+)
+
 # "There is more." Checked when the citizen is asked to confirm, so that
 # continuing is not read as correcting.
 _MORE_EN = (
@@ -375,6 +447,31 @@ _MORE_TA = (
     "இன்னொரு",
 )
 
+_MORE_ML = (
+    # "ഒന്നുകൂടി" — one more. "കൂടുതൽ" — more. "ചേർക്ക" — to add.
+    "ഒന്നുകൂടി", "കൂടുതൽ", "ചേർക്ക",
+    # "മറന്നു" — having forgotten.
+    "മറന്ന",
+)
+_MORE_TE = (
+    # "ఇంకొకటి" — one more. "ఇంకా" — still / more. "చేర్చ" — to add.
+    "ఇంకొకటి", "ఇంకా", "చేర్చ",
+    # "మర్చిపోయాను" — I forgot.
+    "మర్చిపో",
+)
+_MORE_HI = (
+    # "एक और" — one more. "और भी" — more besides. "जोड़" — to add.
+    "एक और", "और भी", "जोड़",
+    # "भूल गया" — I forgot.
+    "भूल गया",
+)
+
+# Every language under one name each. The code below reads only these.
+_REFUSE = _REFUSE_EN + _REFUSE_TA + _REFUSE_ML + _REFUSE_TE + _REFUSE_HI
+_AGREE = _AGREE_EN + _AGREE_TA + _AGREE_ML + _AGREE_TE + _AGREE_HI
+_DONE = _DONE_EN + _DONE_TA + _DONE_ML + _DONE_TE + _DONE_HI
+_MORE = _MORE_EN + _MORE_TA + _MORE_ML + _MORE_TE + _MORE_HI
+
 
 def finished(text: str, language: Language = "en") -> bool:
     """Did the citizen just say they have said everything?
@@ -390,12 +487,12 @@ def finished(text: str, language: Language = "en") -> bool:
     spoken = _normalise(text)
     if not spoken:
         return False
-    if not _present(spoken, _DONE_EN + _DONE_TA):
+    if not _present(spoken, _DONE):
         return False
     # Agreement words come out too. "okay, finished" and "yes that's all" are
     # endings with a politeness on the front, and counting the politeness as
     # content would keep the microphone open after the citizen had stopped.
-    rest = _strip(spoken, _DONE_EN + _DONE_TA + _AGREE_EN + _AGREE_TA)
+    rest = _strip(spoken, _DONE + _AGREE)
     kept = [w for w in _normalise(rest).split() if w not in _FILLER]
     return not kept
 
@@ -420,7 +517,7 @@ def wants_more(text: str, language: Language = "en") -> bool:
     # stop, and "more" appears in it.
     if finished(spoken, language):
         return False
-    return _present(spoken, _MORE_EN + _MORE_TA)
+    return _present(spoken, _MORE)
 
 
 def continuation(text: str, language: Language = "en") -> str | None:
@@ -441,6 +538,6 @@ def continuation(text: str, language: Language = "en") -> str | None:
     if not wants_more(text, language):
         return None
     spoken = _normalise(text)
-    rest = _strip(spoken, _MORE_EN + _MORE_TA + _AGREE_EN + _AGREE_TA)
+    rest = _strip(spoken, _MORE + _AGREE)
     kept = [w for w in _normalise(rest).split() if w not in _FILLER]
     return str(text).strip() if kept else ""

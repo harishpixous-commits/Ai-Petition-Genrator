@@ -296,13 +296,24 @@ _WANTS_TO_ATTACH = re.compile(
     r"photo\w*|aadhaar|receipt\w*|slip\w*|proof|certificate\w*|"
     r"petition\s+copy|i\s+have)\b"
     r"|இணைப்|இணைக்க|சேர்க்க|ஆவணம்|ஆவணங்கள|நகல்|புகைப்படம்|ஆதார்|ரசீது|"
-    r"சான்று|என்னிடம்\s*உள்ளது",
+    r"சான்று|என்னிடம்\s*உள்ளது"
+    # Malayalam, Telugu, Hindi: add / document / copy / photo / Aadhaar /
+    # receipt / certificate / I have one.
+    r"|ചേർക്ക|രേഖ|പകർപ്പ്|ഫോട്ടോ|ആധാർ|രസീത|സർട്ടിഫിക്കറ്റ്|എന്റെ കൈയിൽ"
+    r"|చేర్చ|పత్రం|పత్రాలు|ప్రతి|ఫోటో|ఆధార్|రసీదు|ధ్రువీకరణ|నా దగ్గర"
+    r"|जोड़|दस्तावेज़|दस्तावेज|प्रति|फ़ोटो|फोटो|आधार|रसीद|प्रमाण|मेरे पास",
     re.I)
 
 _WANTS_TO_CONTINUE = re.compile(
     r"\b(continue|proceed|carry on|go ahead|no need|nothing|none|no more|"
     r"that'?s all|thats all|skip|without|generate|finish|done)\b"
-    r"|தொடர|தொடரவும்|போதும்|வேண்டாம்|இல்லை|ஏதுமில்லை|முடிக்க|தயாரி",
+    r"|தொடர|தொடரவும்|போதும்|வேண்டாம்|இல்லை|ஏதுமில்லை|முடிக்க|தயாரி"
+    # Malayalam, Telugu, Hindi: continue / enough / nothing / no / do not
+    # want / go ahead. This is the branch a citizen takes when they have
+    # nothing to attach, which is most of them.
+    r"|തുടര|മതി|ഒന്നുമില്ല|ഇല്ല|വേണ്ട|മുന്നോട്ട്"
+    r"|కొనసాగ|చాలు|ఏమీ లేదు|లేదు|వద్దు|ముందుకు"
+    r"|जारी|आगे|बस|कुछ नहीं|नहीं|नही|नहीं चाहिए",
     re.I)
 
 
