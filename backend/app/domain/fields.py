@@ -454,11 +454,24 @@ def validate_text(raw: str) -> FieldResult:
 
 
 def validate_district(raw: str) -> FieldResult:
+    """A district, in the spelling the state uses where it is recognised.
+
+    DELIBERATELY NOT A WHITELIST. A citizen who names a district this service
+    has not heard of — a neighbouring state's, a new one, a spelling nobody
+    listed — is telling the truth about where they live, and refusing them
+    because a table is short is the wrong answer. The list canonicalises what
+    it knows and gets out of the way otherwise.
+    """
+    from .districts import canonical
+
     s = clean_text(raw)
     if not s:
         return FieldResult.bad("district.empty")
     if len(s) > 60 or re.search(r"\d", s):
         return FieldResult.bad("district.format")
+    known = canonical(s)
+    if known:
+        return FieldResult.good(known)
     return FieldResult.good(s.title() if s.isascii() else s)
 
 

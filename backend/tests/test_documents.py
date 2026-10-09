@@ -748,14 +748,31 @@ class TestTheDateAndPlaceAtTheTop:
         assert not [line for line in tail if line.startswith(("Date:", "Place:"))]
 
     def test_a_place_that_cannot_be_derived_is_left_out_rather_than_guessed(self):
-        """A wrong town on a petition is worse than a missing one. The citizen
-        was never asked for the place separately, so it comes from the address
-        they did give, and only when that address has parts to take it from."""
-        lines = self._letter(fields={"address": "theni"}).splitlines()
+        """A wrong town on a petition is worse than a missing one.
+
+        The citizen is never asked for the place separately, so it is read off
+        the address they did give — and only when a piece of that address is a
+        town this service recognises. An address of streets and landmarks puts
+        nothing on the line.
+
+        This used to be tested with the address "theni", which was left out
+        because it carried no comma rather than because nothing in it was a
+        place. A bare town is now recognised, and printing it is not a guess —
+        it is the only thing the address says.
+        """
+        lines = self._letter(
+            fields={"address": "80/33 perumal kovil street"}).splitlines()
 
         assert lines[0].startswith("Date:")
         assert not lines[1].startswith("Place:"), lines[1]
         assert lines[1] == ""
+
+    def test_an_address_that_is_only_a_town_still_names_it(self):
+        """Nothing is being guessed: it is the whole of what they wrote."""
+        lines = self._letter(fields={"address": "theni"}).splitlines()
+
+        assert lines[1].startswith("Place:"), lines[1]
+        assert "theni" in lines[1]
 
     def test_the_tamil_letter_carries_tamil_labels_at_the_top(self):
         from app.domain.letter import LABELS

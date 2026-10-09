@@ -341,13 +341,38 @@ def derive_place(address: str) -> str:
     did give. "12 காந்தி தெரு, பீளமேடு, கோயம்புத்தூர் - 641004" yields
     "கோயம்புத்தூர்".
 
-    Returns "" when the address has no comma to work from. An empty place line
-    is omitted entirely rather than guessed at: a wrong town on a petition is
-    worse than a missing one, and the citizen can write it in by hand.
+    THE LAST PIECE IS NOT RELIABLY THE TOWN. Splitting on commas and keeping
+    the end is right for the address above and wrong for most others, because
+    a citizen writes the pieces in whatever order they think of them:
+
+        80/33, perumal kovil street        ->  Place: perumal kovil street
+        14 North Street, near the temple   ->  Place: near the temple
+        5 Main Road, opposite bus stand    ->  Place: opposite bus stand
+        Door No 7, 2nd Cross               ->  Place: 2nd Cross
+        ... theni, tamil nadu              ->  Place: tamil nadu
+
+    So the pieces are read from the end until one is a place that exists. The
+    state falls through — "Place: Tamil Nadu" is not where a petition was
+    signed — and the town behind it is found.
+
+    Returns "" when no piece is a place this service recognises. An empty place
+    line is omitted entirely rather than guessed at: a wrong town on a petition
+    is worse than a missing one, and the citizen can write it in by hand.
+
+    The piece is returned EXACTLY as they typed it. The list is there to
+    recognise a town, not to correct anybody's spelling of their own.
     """
+    from .districts import is_place, without_suffix
+
     trimmed = _TRAILING_PIN.sub("", str(address or "").strip())
     parts = [p.strip() for p in trimmed.split(",") if p.strip()]
-    return parts[-1] if len(parts) > 1 else ""
+    for part in reversed(parts):
+        if is_place(part):
+            # "Theni Dist" is a town with a label after it, the same way
+            # "Chennai 600002" is a town with a pin after it — and the pin is
+            # already stripped a few lines above for exactly this reason.
+            return without_suffix(part)
+    return ""
 
 
 def _sender_block(
