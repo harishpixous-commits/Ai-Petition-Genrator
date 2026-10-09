@@ -272,9 +272,64 @@ _RULES = re.compile(
 _GO = re.compile(
     r"\bG\.?\s*O\.?\s*(?:\(?(?:Ms|Rt|D|P|2D|3D)\)?\.?\s*)?(?:No\.?\s*)?(\d+[A-Za-z]?)",
     re.IGNORECASE)
+# `\s*` and not `\s+` before "Department": a scanned Government Order
+# renders "Municipal Administration &Water Supply (M.A.5)Department" with
+# no space at all, and requiring one made the issuing office invisible.
 _DEPARTMENT = re.compile(
-    r"\b([A-Z][A-Za-z&().,'\-]*(?:\s+[A-Z&(][A-Za-z&().,'\-]*){0,5}\s+Department)\b")
+    r"\b([A-Z][A-Za-z0-9&().,'\-]*(?:[ \t]+(?:and|of|for|the)(?![A-Za-z])|[ \t]+[A-Z&(][A-Za-z0-9&().,'\-]*){0,6}[ \t]*Department)\b")
 _DATE = re.compile(r"\b(\d{1,2})[./-](\d{1,2})[./-](\d{4})\b")
+
+# EVERY GOVERNMENT ORDER OPENS BY CITING OLDER ONES, under "Read:" or "Read
+# Again:", and each entry names a department and a date:
+#
+#     Supply (Election) Department, dated 14.07.2006.
+#     Na.Ka.No.2371/2006/T.P.2. dated 26.7.2006
+#
+# Those are the orders being acted on, not this one. A line that attaches a
+# date to a name this way is a citation, and the issuing office is never read
+# off it.
+_CITATION_LINE = re.compile(r"[.,]\s*dated\b", re.IGNORECASE)
+
+# The tail of an order, listing who gets a copy: "The Finance Department,
+# Chennai-9". Also not the issuing office.
+_DISTRIBUTION_LINE = re.compile(r"\bChennai\s*-\s*\d|^\s*(?:To|Copy to)\b",
+                                re.IGNORECASE | re.MULTILINE)
+
+
+def _line_around(text: str, position: int) -> str:
+    """The whole line `position` falls on."""
+    start = text.rfind("\n", 0, position) + 1
+    end = text.find("\n", position)
+    return text[start:] if end < 0 else text[start:end]
+
+
+def _issuing_department(head: str, order_line: str = "") -> str | None:
+    """The office that issued this order, or None when it cannot be told.
+
+    None rather than a guess. A petition addressed to the wrong department is
+    a wasted journey to a government office, and this field is read by an
+    officer who has no way to check it.
+
+    THE ORDER LINE WINS. Many Government Orders print the whole header on one
+    line —
+
+        G.O. (Ms) No. 145, Revenue and Disaster Management Department,
+        dated 03.07.2021
+
+    — which carries ", dated" exactly as a citation does. Judged on that alone
+    the document's own header is thrown away, so the line holding this order's
+    number is trusted first and the citation test is applied only to the rest.
+    """
+    if order_line:
+        if match := _DEPARTMENT.search(order_line):
+            return match.group(1)
+
+    for match in _DEPARTMENT.finditer(head):
+        line = _line_around(head, match.start())
+        if _CITATION_LINE.search(line) or _DISTRIBUTION_LINE.search(line):
+            continue
+        return match.group(1)
+    return None
 
 # The first line of a section, in the shapes government documents use.
 _SECTION = re.compile(
@@ -296,13 +351,29 @@ def detect_metadata(text: str, limit: int = 6000) -> dict[str, Any]:
         found["act_name"] = " ".join(match.group(1).split())
     if match := _RULES.search(head):
         found["rule_name"] = " ".join(match.group(1).split())
-    if match := _GO.search(head):
-        found["government_order_number"] = match.group(1)
+    go = _GO.search(head)
+    if go:
+        found["government_order_number"] = go.group(1)
         found["document_type"] = "government_order"
-    if match := _DEPARTMENT.search(head):
-        found["department"] = " ".join(match.group(1).split())
-    if match := _DATE.search(head):
-        day, month, year = match.groups()
+
+    order_line = _line_around(head, go.start()) if go else ""
+    if department := _issuing_department(head, order_line):
+        found["department"] = " ".join(department.split())
+
+    # THE DATE OF THIS ORDER, which on a Government Order is printed beside its
+    # number. Taking the first date in the document instead reads the date of
+    # the older order it cites — measured on G.O.(Ms) No.208 of 2010, which was
+    # being recorded as 2006. Where the G.O. line carries no readable date the
+    # field is left out; a scan that mangled it ("Dated:O~.09.2010") is not a
+    # reason to publish a date from somewhere else.
+    if go:
+        date_match = _DATE.search(order_line)
+    else:
+        date_match = next(
+            (m for m in _DATE.finditer(head)
+             if not _CITATION_LINE.search(_line_around(head, m.start()))), None)
+    if date_match:
+        day, month, year = date_match.groups()
         try:
             found["date"] = f"{int(year):04d}-{int(month):02d}-{int(day):02d}"
         except ValueError:
