@@ -159,3 +159,44 @@ class TestTheDocumentUsesIt:
         stored = "Harish"
         display_value("person_name", stored, language)
         assert stored == "Harish"
+
+
+@pytest.mark.parametrize("language", ["ml", "te", "hi"])
+class TestTwoEntriesThatPrintedTheWrongWord:
+    """Both were in the first version of the tables, both found by review, and
+    both confirmed by running them rather than by reading the data."""
+
+    def test_a_name_with_ny_in_it_keeps_all_its_letters(self, language):
+        """"ny" was mapped to ഞ / ఞ / ञ — ONE consonant — so the y vanished.
+
+        "dhanya" came out with a letter missing. Dhanya, Punya, Ananya and
+        Sanya are ordinary names, and somebody whose name is printed a letter
+        short on a government petition is the only person who will notice.
+        """
+        for latin in ("dhanya", "punya", "ananya", "sanya"):
+            out = for_language(latin, language)
+            # The conjunct keeps n and y as two letters joined by the virama,
+            # so the rendering is longer than the single-letter version was.
+            assert len(out) >= 4, f"{language}: {latin} -> {out!r} is too short to be whole"
+            assert SCRIPTS[language].consonants["n"] in out, (
+                f"{language}: {latin} -> {out!r} lost its n")
+            assert SCRIPTS[language].consonants["y"] in out, (
+                f"{language}: {latin} -> {out!r} lost its y")
+
+    def test_st_is_not_read_as_street(self, language):
+        """In an Indian address "St" is Saint at least as often as Street.
+
+        St Thomas Church, St Mary's School, St Joseph's Hospital — churches,
+        schools and hospitals are the landmarks an address is built around.
+        The table turned "St Thomas Church" into "Street Thomas Church". One
+        token cannot tell the two apart, so rule 1 gives the tie to leaving it
+        alone.
+        """
+        out = for_language("St Thomas Church", language)
+        assert SCRIPTS[language].address_words["street"] not in out, (
+            f"{language}: {out!r} reads as 'Street Thomas Church'")
+
+    def test_the_spelled_out_word_still_works(self, language):
+        """Removing "st" must not have taken "street" with it."""
+        out = for_language("main street", language)
+        assert SCRIPTS[language].address_words["street"] in out, out

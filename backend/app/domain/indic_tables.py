@@ -21,12 +21,23 @@ from __future__ import annotations
 
 from .indic_script import PATTERNS, Script, register
 
+
+# TWO KINDS OF ENTRY ARE DELIBERATELY ABSENT, and both were here once.
+#
+# "ny" as a single letter. ഞ / ఞ / ञ carry one sound, so the y was swallowed
+# and "dhanya" came out with a letter missing. Left out, n and y form the
+# conjunct they should.
+#
+# "st" as street. In an Indian address St is Saint at least as often —
+# St Thomas Church, St Mary's School — and one token cannot tell them apart.
+# Rule 1 gives the tie to leaving it alone: "St" in Latin is untidy, "Street
+# Thomas Church" is wrong.
 # --------------------------------------------------------------------------- #
 # Malayalam
 # --------------------------------------------------------------------------- #
 
 _ML_CONSONANTS = {
-    "kh": "ഖ", "gh": "ഘ", "ng": "ങ", "ch": "ച", "jn": "ഞ", "ny": "ഞ",
+    "kh": "ഖ", "gh": "ഘ", "ng": "ങ", "ch": "ച", "jn": "ഞ",
     "th": "ത", "dh": "ധ", "ph": "ഫ", "bh": "ഭ", "sh": "ഷ", "zh": "ഴ",
     "ks": "ക്ഷ",
     "k": "ക", "g": "ഗ", "c": "ച", "j": "ജ", "t": "ട", "d": "ദ", "n": "ന",
@@ -55,14 +66,14 @@ _ML_PLACES = {
     "salem": "സേലം", "erode": "ഈറോഡ്", "theni": "തേനി",
     "tirunelveli": "തിരുനെൽവേലി", "vellore": "വെല്ലൂർ",
     "thanjavur": "തഞ്ചാവൂർ", "tanjore": "തഞ്ചാവൂർ",
-    "dindigul": "ദിണ്ടിഗൽ", "karur": "കരൂർ", "namakkal": "നാമക്കൽ",
+    "karur": "കരൂർ", "namakkal": "നാമക്കൽ",
     "tiruppur": "തിരുപ്പൂർ", "cuddalore": "കടലൂർ",
     "kanyakumari": "കന്യാകുമാരി", "nagercoil": "നാഗർകോവിൽ",
     "tamil nadu": "തമിഴ്നാട്", "tamilnadu": "തമിഴ്നാട്",
     "kerala": "കേരളം", "india": "ഇന്ത്യ",
 }
 _ML_ADDRESS = {
-    "street": "തെരുവ്", "st": "തെരുവ്", "road": "റോഡ്", "rd": "റോഡ്",
+    "street": "തെരുവ്", "road": "റോഡ്", "rd": "റോഡ്",
     "main": "മെയിൻ", "cross": "ക്രോസ്", "nagar": "നഗർ", "colony": "കോളനി",
     "village": "ഗ്രാമം", "town": "പട്ടണം", "district": "ജില്ല",
     "taluk": "താലൂക്ക്", "post": "പോസ്റ്റ്", "near": "അടുത്ത്",
@@ -92,7 +103,7 @@ _ML_NAMES = {
 # --------------------------------------------------------------------------- #
 
 _TE_CONSONANTS = {
-    "kh": "ఖ", "gh": "ఘ", "ng": "ఙ", "ch": "చ", "jn": "ఞ", "ny": "ఞ",
+    "kh": "ఖ", "gh": "ఘ", "ng": "ఙ", "ch": "చ", "jn": "ఞ",
     "th": "త", "dh": "ధ", "ph": "ఫ", "bh": "భ", "sh": "ష", "zh": "ళ",
     "ks": "క్ష",
     "k": "క", "g": "గ", "c": "చ", "j": "జ", "t": "ట", "d": "ద", "n": "న",
@@ -115,7 +126,7 @@ _TE_PLACES = {
     "trichy": "తిరుచ్చి", "salem": "సేలం", "erode": "ఈరోడ్",
     "theni": "తేని", "tirunelveli": "తిరునెల్వేలి",
     "vellore": "వెల్లూరు", "thanjavur": "తంజావూరు",
-    "dindigul": "దిండిగల్", "karur": "కరూరు", "namakkal": "నామక్కల్",
+    "karur": "కరూరు", "namakkal": "నామక్కల్",
     "tiruppur": "తిరుప్పూరు", "cuddalore": "కడలూరు",
     "kanyakumari": "కన్యాకుమారి", "nagercoil": "నాగర్‌కోవిల్",
     "tamil nadu": "తమిళనాడు", "tamilnadu": "తమిళనాడు",
@@ -123,7 +134,7 @@ _TE_PLACES = {
     "hyderabad": "హైదరాబాద్", "india": "భారతదేశం",
 }
 _TE_ADDRESS = {
-    "street": "వీధి", "st": "వీధి", "road": "రోడ్డు", "rd": "రోడ్డు",
+    "street": "వీధి", "road": "రోడ్డు", "rd": "రోడ్డు",
     "main": "ప్రధాన", "cross": "క్రాస్", "nagar": "నగర్",
     "colony": "కాలనీ", "village": "గ్రామం", "town": "పట్టణం",
     "district": "జిల్లా", "taluk": "తాలూకా", "post": "పోస్ట్",
@@ -158,7 +169,7 @@ _TE_NAMES = {
 # thing rule 1 forbids.
 
 _HI_CONSONANTS = {
-    "kh": "ख", "gh": "घ", "ng": "ङ", "ch": "च", "jn": "ज्ञ", "ny": "ञ",
+    "kh": "ख", "gh": "घ", "ng": "ङ", "ch": "च", "jn": "ज्ञ",
     "th": "त", "dh": "ध", "ph": "फ", "bh": "भ", "sh": "श", "zh": "झ",
     "ks": "क्ष",
     "k": "क", "g": "ग", "c": "च", "j": "ज", "t": "ट", "d": "द", "n": "न",
@@ -181,14 +192,14 @@ _HI_PLACES = {
     "trichy": "त्रिची", "salem": "सेलम", "erode": "ईरोड",
     "theni": "तेनी", "tirunelveli": "तिरुनेलवेली",
     "vellore": "वेल्लोर", "thanjavur": "तंजावुर",
-    "dindigul": "दिंडीगुल", "karur": "करूर", "namakkal": "नामक्कल",
+    "karur": "करूर", "namakkal": "नामक्कल",
     "tiruppur": "तिरुप्पुर", "cuddalore": "कडलूर",
     "kanyakumari": "कन्याकुमारी", "nagercoil": "नागरकोइल",
     "tamil nadu": "तमिलनाडु", "tamilnadu": "तमिलनाडु",
     "delhi": "दिल्ली", "india": "भारत",
 }
 _HI_ADDRESS = {
-    "street": "गली", "st": "गली", "road": "रोड", "rd": "रोड",
+    "street": "गली", "road": "रोड", "rd": "रोड",
     "main": "मुख्य", "cross": "क्रॉस", "nagar": "नगर",
     "colony": "कॉलोनी", "village": "गाँव", "town": "कस्बा",
     "district": "जिला", "taluk": "तालुका", "post": "पोस्ट",
