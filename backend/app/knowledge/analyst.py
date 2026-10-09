@@ -64,6 +64,21 @@ _STRICT_FIELDS = frozenset({
     "responsible_authority", "department", "processing_hierarchy",
     "jurisdiction",
 })
+# Fields where even the strict check's fallback is too generous: the value has
+# to appear as a CONTIGUOUS phrase, not as words gathered from across the
+# passages.
+#
+# The fallback exists because an Act is cited with a trailing year or a
+# bracketed qualifier the passage writes differently, and insisting on an exact
+# string would drop real citations. A LOCAL BODY has no such variation — and
+# the cost of the fallback was measured: a passage reading "Oddanchatram Town
+# Panchayat ... classified as a Second Grade Municipality" grounded the body
+# "Oddanchatram Municipality", which is not a body that exists. Both words were
+# present, in different sentences, meaning different things.
+#
+# A citizen acts on this field by travelling to an office. An assembled name
+# sends them to one that is not there.
+_VERBATIM_FIELDS = frozenset({"jurisdiction"})
 # Fields checked by content-word overlap instead.
 _PROSE_FIELDS = frozenset({
     "required_documents", "processing_steps", "transfer_process",
@@ -197,12 +212,20 @@ def _haystack(chunks: list[Chunk]) -> str:
     return normalise(" \n ".join(parts))
 
 
-def grounded(value: str, chunks: list[Chunk], strict: bool) -> bool:
-    """Is this statement actually in the cited passages?"""
+def grounded(value: str, chunks: list[Chunk], strict: bool,
+             verbatim: bool = False) -> bool:
+    """Is this statement actually in the cited passages?
+
+    `verbatim` turns off the strict check's word-set fallback, so only a
+    contiguous match counts. See `_VERBATIM_FIELDS` for why one field needs it.
+    """
     candidate = normalise(value)
     if not candidate or not chunks:
         return False
     hay = _haystack(chunks)
+
+    if verbatim:
+        return candidate in hay
 
     if strict:
         if candidate in hay:
@@ -379,7 +402,8 @@ class Analyst:
                 if not cited:
                     log.info("knowledge.dropped_uncited", extra={"field": field})
                     continue
-                if not grounded(draft.value, cited, strict=strict):
+                if not grounded(draft.value, cited, strict=strict,
+                                verbatim=field in _VERBATIM_FIELDS):
                     log.info("knowledge.dropped_ungrounded",
                              extra={"field": field, "strict": strict,
                                     "value": draft.value[:80]})
