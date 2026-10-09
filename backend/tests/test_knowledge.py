@@ -800,6 +800,74 @@ _GRIEVANCES = {
 }
 
 
+def _semantic_embedder():
+    """A real multilingual embedder, or None when this run has not opted in.
+
+    The suite runs with no egress at all (`conftest.py` sets ALLOW_EXTERNAL_AI
+    false), because a department machine with no outbound network is the
+    deployment this service has to survive. Cross-language retrieval is the one
+    property that cannot be shown that way: matching a Malayalam grievance to an
+    English Act needs an embedder that understands both, and the hashed bag of
+    words used everywhere else understands nothing, by design.
+
+    So reaching the network is OPT-IN and SCOPED. Setting
+    PETITION_LIVE_EMBEDDINGS=1 with a Gemini key makes these four tests — and
+    nothing else in the suite — talk to an embedding endpoint. The global flag
+    is deliberately left alone: flipping it would let every other test reach the
+    network too, which is the opposite of what conftest is for.
+    """
+    import os
+
+    if os.environ.get("PETITION_LIVE_EMBEDDINGS") != "1":
+        return None
+
+    from app.config import get_settings
+    from app.knowledge.embeddings import GeminiEmbeddings
+
+    settings = get_settings()
+    if not settings.gemini_key_list:
+        return None
+    return GeminiEmbeddings(settings,
+                            dimension=settings.knowledge_embedding_dimension)
+
+
+@pytest.fixture
+async def semantic_corpus(tmp_path):
+    """The same two documents, embedded by the provider that will query them.
+
+    THIS IS A SEPARATE CORPUS ON PURPOSE. The ordinary `corpus` fixture embeds
+    with LocalEmbeddings at 256 dimensions; a Gemini query vector has 1536.
+    Pointing a semantic query at that corpus compares two unrelated coordinate
+    spaces, so what a cross-language test needs is a different corpus, not the
+    same one asked a different question.
+    """
+    from app.config import get_settings
+
+    provider = _semantic_embedder()
+    if provider is None:
+        pytest.skip(
+            "no semantic embedder — set PETITION_LIVE_EMBEDDINGS=1 with a "
+            "Gemini key to run this. A hashed bag of words cannot match across "
+            "languages, and asserting that it does would be asserting a lie.")
+
+    act = tmp_path / "encroachment-act.txt"
+    act.write_text(ENCROACHMENT, encoding="utf-8")
+    water = tmp_path / "water-guidelines.txt"
+    water.write_text(WATER, encoding="utf-8")
+
+    store = KnowledgeStore(tmp_path / "semantic.sqlite",
+                           dimension=provider.dimension, provider=provider.name)
+    ingestor = Ingestor(store=store, provider=provider, settings=get_settings())
+    await ingestor.ingest(act, metadata={"authority": "official",
+                                         "department": "Revenue Department",
+                                         "document_type": "act",
+                                         "provenance": TEST_PROVENANCE})
+    await ingestor.ingest(water, metadata={"authority": "departmental",
+                                           "document_type": "guideline",
+                                           "provenance": TEST_PROVENANCE})
+    return store, provider
+
+
 class TestAQueryInAnyLanguage:
     """A citizen writes their grievance in their own language; the corpus is
     whatever the department has indexed, which is mostly English.
@@ -812,8 +880,9 @@ class TestAQueryInAnyLanguage:
     and a test asserting it would be asserting a lie.
 
     So this is split. The first two run always and hold the properties that do
-    not need semantics. The third holds the real behaviour and skips, loudly,
-    unless a semantic embedder is configured — which is what a deployment has.
+    not need semantics. The third holds the real behaviour and runs against a
+    real embedder whenever PETITION_LIVE_EMBEDDINGS=1 — which is what CI does
+    wherever the key secret exists, and what a deployment always has.
     """
 
     @pytest.mark.parametrize("language", sorted(_GRIEVANCES))
@@ -841,27 +910,24 @@ class TestAQueryInAnyLanguage:
         assert found.query
 
     @pytest.mark.parametrize("language", ["ta", "ml", "te", "hi"])
-    async def test_a_grievance_finds_an_english_document(self, corpus, language):
+    async def test_a_grievance_finds_an_english_document(
+            self, semantic_corpus, language):
         """THE REAL PROPERTY, and the one a deployment depends on.
 
-        Verified by hand against the configured Gemini embedder: a grievance in
-        each of the four non-English languages retrieved the correct passage
-        from an English Government Order. This runs it in CI wherever a
-        semantic embedder is configured, and skips rather than passing
-        vacuously where one is not.
+        A citizen complains about drinking water in Tamil, Malayalam, Telugu or
+        Hindi; the only document the department has indexed is an English one.
+        The right passage has to come back anyway, or the analysis panel is
+        empty for four of the five languages this service offers.
+
+        Note what is NOT asserted: a ranking, a score, or a number of chunks.
+        The property is that the correct document is reached — the water
+        guidelines rather than the encroachment Act — which is what makes the
+        difference between a useful panel and a misleading one.
         """
         from app.config import get_settings
-        from app.knowledge.embeddings import build
 
-        settings = get_settings()
-        provider = build(settings)
-        if not getattr(provider, "semantic", False):
-            pytest.skip(
-                "no semantic embedder configured — a hashed bag of words "
-                "cannot match across languages, and asserting that it does "
-                "would be asserting a lie")
-
-        found = await Retriever(corpus, provider, settings).search(
+        store, provider = semantic_corpus
+        found = await Retriever(store, provider, get_settings()).search(
             _GRIEVANCES[language])
         assert not found.empty, f"{language}: found nothing in an English corpus"
         assert any("Water Supply" in c.document_title for c in found.chunks), (
