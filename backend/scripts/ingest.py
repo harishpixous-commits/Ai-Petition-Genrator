@@ -51,7 +51,8 @@ from app.knowledge.ingest import Ingestor, collect  # noqa: E402
 from app.knowledge.store import KnowledgeStore  # noqa: E402
 
 DOCUMENT_TYPES = ("act", "rule", "government_order", "circular", "guideline",
-                  "procedure", "faq", "webpage", "other")
+                  "procedure", "faq", "webpage", "local_body_directory",
+                  "other")
 
 
 def _build() -> tuple[Ingestor, KnowledgeStore]:

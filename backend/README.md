@@ -685,6 +685,41 @@ whether it answers, fails or times out.
 **It ships empty, and it stays that way until you load real documents.** Until
 then the analysis panel is simply absent. Nothing is invented to fill it.
 
+### Which office, not just which department
+
+A petition goes to a BODY, and which body depends on where the citizen lives:
+a corporation, a municipality, a town panchayat or a village panchayat, each
+with a different officer. `local_body_directory` is a document type for exactly
+that, so a department's own directory is indexed as the official record it is
+rather than as "other", and the `jurisdiction` finding names the body with a
+citation back to it.
+
+```bash
+python scripts/ingest.py add "docs/theni-local-bodies.pdf"     --type local_body_directory --official     --provenance "Directorate of Town Panchayats, downloaded 2026-10-09"
+```
+
+**No list of local bodies ships with this service, deliberately.** Tamil Nadu
+has something over twelve thousand village panchayats; a list written from
+general knowledge would be wrong in ways nobody could check, and a confident
+wrong answer about which office to walk to is the exact failure this layer
+exists to prevent. `jurisdiction` is checked as strictly as an Act or a
+Government Order number: the body has to be named in a retrieved passage or the
+field is dropped.
+
+### Grievances in the other four languages
+
+A citizen writes in Tamil, Malayalam, Telugu or Hindi; the corpus is mostly
+English. Retrieval crosses that gap through the embeddings, not through
+translation — verified against the configured Gemini embedder, where a
+grievance in each of the four retrieved the right passage from an English
+Government Order.
+
+This needs a SEMANTIC embedder. With `ALLOW_EXTERNAL_AI=false` the service
+falls back to a hashed bag of words, which has no semantics and cannot match
+across languages — the lexical half still works within one language. The test
+for this skips rather than passing vacuously when no semantic embedder is
+configured, and says so.
+
 ```bash
 # 1. Read it first. Indexes nothing. Shows the metadata the file yields, so a
 #    wrong Act name is caught before it is on fifty documents.

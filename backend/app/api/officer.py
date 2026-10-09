@@ -107,6 +107,7 @@ def grounded(analysis):
         return result
     for key in (
         "department",
+        "jurisdiction",
         "responsible_authority",
         "petition_category",
         "applicable_acts",

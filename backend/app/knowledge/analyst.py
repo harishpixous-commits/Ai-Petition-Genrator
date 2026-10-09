@@ -62,6 +62,7 @@ log = logging.getLogger(__name__)
 _STRICT_FIELDS = frozenset({
     "applicable_acts", "applicable_rules", "government_orders",
     "responsible_authority", "department", "processing_hierarchy",
+    "jurisdiction",
 })
 # Fields checked by content-word overlap instead.
 _PROSE_FIELDS = frozenset({
@@ -75,7 +76,7 @@ _LIST_FIELDS = (
 )
 _SINGLE_FIELDS = (
     "department", "petition_category", "responsible_authority",
-    "transfer_process", "closure_process",
+    "transfer_process", "closure_process", "jurisdiction",
 )
 
 # Share of a prose finding's meaningful words that must come from its citation,
@@ -110,6 +111,10 @@ Rules, in order of importance:
    them. Do not expand abbreviations, correct spellings or reformat numbers.
 4. Do not infer. "Revenue Department handles land" is not in the excerpts unless
    an excerpt says it.
+5. "jurisdiction" is the LOCAL BODY whose area covers the citizen's address — a
+   corporation, municipality, town panchayat or village panchayat — and only
+   when an excerpt names it for that place. Do not work it out from the name of
+   a town. If no excerpt covers that address, leave it out.
 5. If the excerpts are about something else entirely, return nothing.
 
 If you need a different search to answer, put up to three short search phrases
@@ -125,6 +130,9 @@ _SCHEMA = {
             "value": {"type": "string"}, "cites": {"type": "array",
                                                    "items": {"type": "integer"}}}},
         "responsible_authority": {"type": "object", "properties": {
+            "value": {"type": "string"}, "cites": {"type": "array",
+                                                   "items": {"type": "integer"}}}},
+        "jurisdiction": {"type": "object", "properties": {
             "value": {"type": "string"}, "cites": {"type": "array",
                                                    "items": {"type": "integer"}}}},
         "transfer_process": {"type": "object", "properties": {

@@ -25,7 +25,15 @@ UNVERIFIED_TA = ("கிடைக்கக்கூடிய அறிவுத�
 
 DocumentType = Literal[
     "act", "rule", "government_order", "circular", "guideline",
-    "procedure", "faq", "webpage", "other",
+    "procedure", "faq", "webpage",
+    # A department's own list of its local bodies — corporations,
+    # municipalities, town panchayats, village panchayats — and which area each
+    # one covers. Named as its own type so it is ranked as the official record
+    # it is rather than as "other", and so an officer can see that a
+    # jurisdiction came from the directory rather than from an Act that
+    # happened to mention a town.
+    "local_body_directory",
+    "other",
 ]
 
 # Where something came from, and how much weight it carries. An official
@@ -116,6 +124,12 @@ class PetitionAnalysis(BaseModel):
     applicable_rules: list[Finding] = Field(default_factory=list)
     government_orders: list[Finding] = Field(default_factory=list)
     responsible_authority: Finding | None = None
+    # WHICH LOCAL BODY COVERS THE CITIZEN'S ADDRESS, and therefore which office
+    # the petition belongs to — a corporation, a municipality, a town panchayat
+    # or a village panchayat. Strict, like an Act or a GO number: the value has
+    # to appear in a retrieved passage or it is dropped. A guessed department
+    # wastes a journey; a guessed local body wastes it in a different town.
+    jurisdiction: Finding | None = None
     processing_hierarchy: list[Finding] = Field(default_factory=list)
     required_documents: list[Finding] = Field(default_factory=list)
     processing_steps: list[Finding] = Field(default_factory=list)

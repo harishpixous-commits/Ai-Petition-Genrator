@@ -684,3 +684,185 @@ def test_extract_refuses_a_file_type_it_cannot_read(tmp_path):
 
     with pytest.raises(ValueError, match="Unsupported file type"):
         extract(path)
+
+
+class TestALocalBodyDirectoryIsAFirstClassDocument:
+    """A petition goes to a BODY, and which body depends on where somebody
+    lives: a corporation, a municipality, a town panchayat or a village
+    panchayat, each with a different officer.
+
+    No list of them is shipped with this service and that is deliberate. Tamil
+    Nadu has something over twelve thousand village panchayats; a list written
+    from general knowledge would be wrong in ways nobody could check, and a
+    confident wrong answer about which office to walk to is the exact failure
+    this layer exists to prevent. The department ingests its own directory and
+    every answer then carries a citation back to it.
+    """
+
+    def test_the_type_can_be_chosen_when_indexing(self):
+        """Indexed as "other" it would rank beside a blog post."""
+        import typing
+
+        from app.knowledge.schema import DocumentType
+
+        assert "local_body_directory" in typing.get_args(DocumentType)
+
+    def test_the_command_line_offers_it(self):
+        import importlib.util
+        from pathlib import Path
+
+        path = Path(__file__).resolve().parent.parent / "scripts" / "ingest.py"
+        source = path.read_text(encoding="utf-8")
+        assert "local_body_directory" in source, (
+            "a type the schema accepts but the CLI cannot pass is unreachable")
+
+    async def test_a_directory_is_indexed_and_found(self, tmp_path, ingestor, retriever):
+        directory = tmp_path / "ulb-directory.md"
+        directory.write_text(
+            "## Local bodies, Theni District\n\n"
+            "Theni Allinagaram Municipality covers the Theni and Allinagaram "
+            "town areas. The Commissioner, Theni Allinagaram Municipality is "
+            "the officer for grievances arising within those limits.\n\n"
+            "Bodinayakanur Municipality covers the Bodinayakanur town area.\n",
+            encoding="utf-8")
+        result = await ingestor.ingest(
+            directory,
+            metadata={"document_type": "local_body_directory",
+                      "authority": "official", "provenance": TEST_PROVENANCE})
+        assert result.document_id
+
+        found = await retriever.search("which body covers Theni town")
+        assert not found.empty
+        assert any("Theni" in c.text for c in found.chunks)
+
+
+class TestJurisdictionCannotBeInvented:
+    """The same bar as an Act or a Government Order number.
+
+    A guessed department wastes a journey to the wrong counter. A guessed
+    local body wastes it in a different town.
+    """
+
+    @staticmethod
+    def _chunk() -> Chunk:
+        return Chunk(
+            chunk_id="c9", document_id="d9",
+            text=("Theni Allinagaram Municipality covers the Theni and "
+                  "Allinagaram town areas. The Commissioner is the officer "
+                  "for grievances arising within those limits."),
+            document_title="Local bodies, Theni District",
+            document_type="local_body_directory", authority="official")
+
+    def test_it_is_checked_strictly(self):
+        from app.knowledge.analyst import _STRICT_FIELDS
+
+        assert "jurisdiction" in _STRICT_FIELDS, (
+            "a jurisdiction checked by overlap could be paraphrased into "
+            "another town")
+
+    def test_a_body_the_directory_names_is_accepted(self):
+        assert grounded("Theni Allinagaram Municipality", [self._chunk()], strict=True)
+
+    def test_a_body_it_does_not_name_is_rejected(self):
+        assert not grounded("Periyakulam Municipality", [self._chunk()], strict=True)
+        assert not grounded("Theni Village Panchayat", [self._chunk()], strict=True)
+
+    def test_the_model_is_asked_for_it(self):
+        from app.knowledge.analyst import _SCHEMA
+
+        assert "jurisdiction" in _SCHEMA["properties"]
+
+    def test_the_officer_sees_it_only_when_it_is_grounded(self):
+        from app.api.officer import grounded as officer_grounded
+
+        source = {"document_title": "Local bodies, Theni District",
+                  "excerpt": "Theni Allinagaram Municipality covers...",
+                  "authority": "official"}
+        kept = officer_grounded({"jurisdiction": {"value": "Theni Allinagaram Municipality",
+                                                  "sources": [source]}})
+        assert kept.get("jurisdiction", {}).get("value") == "Theni Allinagaram Municipality"
+
+        dropped = officer_grounded({"jurisdiction": {"value": "Somewhere Else",
+                                                     "sources": []}})
+        assert not dropped.get("jurisdiction")
+
+
+# --------------------------------------------------------------------------- #
+# Queries in the five languages the service serves
+# --------------------------------------------------------------------------- #
+
+_GRIEVANCES = {
+    "en": "water supply interrupted for several days in my street",
+    "ta": "எங்கள் தெருவில் குடிநீர் விநியோகம் பல நாட்களாக தடைபட்டுள்ளது",
+    "ml": "ഞങ്ങളുടെ തെരുവിൽ കുടിവെള്ള വിതരണം മുടങ്ങി",
+    "te": "మా వీధిలో తాగునీటి సరఫరా ఆగిపోయింది",
+    "hi": "हमारी गली में पेयजल आपूर्ति कई दिनों से बाधित है",
+}
+
+
+class TestAQueryInAnyLanguage:
+    """A citizen writes their grievance in their own language; the corpus is
+    whatever the department has indexed, which is mostly English.
+
+    WHAT CAN AND CANNOT BE TESTED OFFLINE. Matching a Malayalam grievance to an
+    English Act needs an embedder that understands both, and the fixture here
+    uses LocalEmbeddings — a hashed bag of words with no semantics at all, by
+    design, so the suite needs no key and no network. A Malayalam query shares
+    no tokens with an English passage, so under that fixture it CANNOT match
+    and a test asserting it would be asserting a lie.
+
+    So this is split. The first two run always and hold the properties that do
+    not need semantics. The third holds the real behaviour and skips, loudly,
+    unless a semantic embedder is configured — which is what a deployment has.
+    """
+
+    @pytest.mark.parametrize("language", sorted(_GRIEVANCES))
+    def test_the_words_survive_being_pulled_out_of_the_grievance(self, language):
+        r"""`keywords()` splits on separators rather than on word characters,
+        because Python's \w drops Indic combining marks and would hand the
+        search a mutilated query."""
+        from app.knowledge.retrieve import keywords
+
+        words = keywords(_GRIEVANCES[language])
+        assert words, f"{language}: nothing survived"
+        joined = "".join(words)
+        for mark in ("\u0BCD", "\u0D4D", "\u0C4D", "\u094D"):
+            if mark in _GRIEVANCES[language]:
+                assert mark in joined, f"{language}: a virama was dropped"
+
+    @pytest.mark.parametrize("language", sorted(_GRIEVANCES))
+    async def test_a_query_in_any_script_is_handled_without_error(
+            self, retriever, language):
+        """The lexical half cannot match across languages and is not expected
+        to. What must not happen is a crash, or a query that reaches the
+        database malformed."""
+        found = await retriever.search(_GRIEVANCES[language])
+        assert found is not None
+        assert found.query
+
+    @pytest.mark.parametrize("language", ["ta", "ml", "te", "hi"])
+    async def test_a_grievance_finds_an_english_document(self, corpus, language):
+        """THE REAL PROPERTY, and the one a deployment depends on.
+
+        Verified by hand against the configured Gemini embedder: a grievance in
+        each of the four non-English languages retrieved the correct passage
+        from an English Government Order. This runs it in CI wherever a
+        semantic embedder is configured, and skips rather than passing
+        vacuously where one is not.
+        """
+        from app.config import get_settings
+        from app.knowledge.embeddings import build
+
+        settings = get_settings()
+        provider = build(settings)
+        if not getattr(provider, "semantic", False):
+            pytest.skip(
+                "no semantic embedder configured — a hashed bag of words "
+                "cannot match across languages, and asserting that it does "
+                "would be asserting a lie")
+
+        found = await Retriever(corpus, provider, settings).search(
+            _GRIEVANCES[language])
+        assert not found.empty, f"{language}: found nothing in an English corpus"
+        assert any("Water Supply" in c.document_title for c in found.chunks), (
+            f"{language}: retrieved something, but not the water document")

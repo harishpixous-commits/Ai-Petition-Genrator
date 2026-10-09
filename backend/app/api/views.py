@@ -28,18 +28,56 @@ from ..services import translate as translate_service
 # The knowledge layer's findings, in the order an officer reads them: which
 # office, under what law, then what happens next. Labels live here rather than
 # in the page so both languages come from one place.
-_ANALYSIS_SECTIONS: tuple[tuple[str, str, str], ...] = (
-    ("department", "Department", "துறை"),
-    ("petition_category", "Category", "வகை"),
-    ("responsible_authority", "Responsible authority", "பொறுப்பு அதிகாரி"),
-    ("applicable_acts", "Applicable Acts", "பொருந்தும் சட்டங்கள்"),
-    ("applicable_rules", "Applicable Rules", "பொருந்தும் விதிகள்"),
-    ("government_orders", "Government Orders", "அரசாணைகள்"),
-    ("processing_hierarchy", "Processing hierarchy", "நடைமுறை படிநிலை"),
-    ("required_documents", "Documents required", "தேவையான ஆவணங்கள்"),
-    ("processing_steps", "Processing steps", "நடைமுறைப் படிகள்"),
-    ("transfer_process", "Transfer process", "மாற்ற நடைமுறை"),
-    ("closure_process", "Closure process", "முடிவு நடைமுறை"),
+_ANALYSIS_SECTIONS: tuple[tuple[str, dict[str, str]], ...] = (
+    ("department", {
+        "en": "Department", "ta": "துறை", "ml": "വകുപ്പ്",
+        "te": "శాఖ", "hi": "विभाग"}),
+    ("petition_category", {
+        "en": "Category", "ta": "வகை", "ml": "വിഭാഗം",
+        "te": "విభాగం", "hi": "श्रेणी"}),
+    # Which local body covers the address, and therefore which office the
+    # petition belongs to. Placed next to the department because together they
+    # are the answer to "where do I take this?".
+    ("jurisdiction", {
+        "en": "Local body", "ta": "உள்ளாட்சி அமைப்பு",
+        "ml": "തദ്ദേശ സ്ഥാപനം", "te": "స్థానిక సంస్థ",
+        "hi": "स्थानीय निकाय"}),
+    ("responsible_authority", {
+        "en": "Responsible authority", "ta": "பொறுப்பு அதிகாரி",
+        "ml": "ഉത്തരവാദപ്പെട്ട അധികാരി", "te": "బాధ్యత వహించే అధికారి",
+        "hi": "उत्तरदायी प्राधिकारी"}),
+    ("applicable_acts", {
+        "en": "Applicable Acts", "ta": "பொருந்தும் சட்டங்கள்",
+        "ml": "ബാധകമായ നിയമങ്ങൾ", "te": "వర్తించే చట్టాలు",
+        "hi": "लागू अधिनियम"}),
+    ("applicable_rules", {
+        "en": "Applicable Rules", "ta": "பொருந்தும் விதிகள்",
+        "ml": "ബാധകമായ ചട്ടങ്ങൾ", "te": "వర్తించే నియమాలు",
+        "hi": "लागू नियम"}),
+    ("government_orders", {
+        "en": "Government Orders", "ta": "அரசாணைகள்",
+        "ml": "സർക്കാർ ഉത്തരവുകൾ", "te": "ప్రభుత్వ ఉత్తర్వులు",
+        "hi": "सरकारी आदेश"}),
+    ("processing_hierarchy", {
+        "en": "Processing hierarchy", "ta": "நடைமுறை படிநிலை",
+        "ml": "നടപടി ക്രമം", "te": "ప్రక్రియ క్రమం",
+        "hi": "प्रक्रिया पदानुक्रम"}),
+    ("required_documents", {
+        "en": "Documents required", "ta": "தேவையான ஆவணங்கள்",
+        "ml": "ആവശ്യമായ രേഖകൾ", "te": "అవసరమైన పత్రాలు",
+        "hi": "आवश्यक दस्तावेज़"}),
+    ("processing_steps", {
+        "en": "Processing steps", "ta": "நடைமுறைப் படிகள்",
+        "ml": "നടപടി ഘട്ടങ്ങൾ", "te": "ప్రక్రియ దశలు",
+        "hi": "प्रक्रिया के चरण"}),
+    ("transfer_process", {
+        "en": "Transfer process", "ta": "மாற்ற நடைமுறை",
+        "ml": "കൈമാറ്റ നടപടി", "te": "బదిలీ ప్రక్రియ",
+        "hi": "स्थानांतरण प्रक्रिया"}),
+    ("closure_process", {
+        "en": "Closure process", "ta": "முடிவு நடைமுறை",
+        "ml": "അവസാന നടപടി", "te": "ముగింపు ప్రక్రియ",
+        "hi": "समापन प्रक्रिया"}),
 )
 
 
@@ -66,7 +104,7 @@ def analysis_view(analysis: dict[str, Any] | None, language: str) -> dict[str, A
         return index_of[key]
 
     sections = []
-    for name, english, tamil in _ANALYSIS_SECTIONS:
+    for name, labels in _ANALYSIS_SECTIONS:
         raw = analysis.get(name)
         findings = raw if isinstance(raw, list) else ([raw] if raw else [])
         items = []
@@ -80,7 +118,7 @@ def analysis_view(analysis: dict[str, Any] | None, language: str) -> dict[str, A
         if items:
             sections.append({
                 "key": name,
-                "label": tamil if language == "ta" else english,
+                "label": labels.get(language) or labels["en"],
                 "items": items,
             })
 
