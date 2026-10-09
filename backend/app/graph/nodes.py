@@ -1504,7 +1504,8 @@ async def translate(state: LetterState) -> dict[str, Any]:
         try:
             result = await translate_lines(
                 text.split("\n"), language,
-                keep=verbatim_lines(state.get("fields") or {}),
+                keep=verbatim_lines(state.get("fields") or {},
+                                    protect_grievance=False),
             )
             carry["engine"] = result.engine
             carry["lines"] = result.translated_count

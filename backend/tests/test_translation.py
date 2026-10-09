@@ -131,7 +131,7 @@ class TestReadingTheDocumentsLanguage:
 
 
 class TestTheCitizensOwnWordsAreNeverTranslated:
-    async def test_the_grievance_name_and_address_come_through_verbatim(
+    async def test_the_name_and_address_come_through_verbatim(
         self, api, workflow, monkeypatch,
     ):
         """The translator is replaced with one that mangles EVERYTHING, so the
@@ -152,9 +152,14 @@ class TestTheCitizensOwnWordsAreNeverTranslated:
 
         assert response.status_code == 200, response.text
         letter = response.json()["letter_text"]
-        assert GRIEVANCE in letter, "the grievance was translated"
         assert NAME in letter, "the petitioner's name was translated"
         assert ADDRESS in letter, "the address was translated"
+        # The grievance IS translated now, with the rest of the letter, so the
+        # document reads as one language. The record still holds what the
+        # citizen typed; this is about the page, not the evidence.
+        assert GRIEVANCE not in letter, (
+            "the grievance was left in its original language, so the petition "
+            "is still a mixture")
 
     async def test_the_rest_of_the_letter_really_is_translated(
         self, api, workflow, monkeypatch,

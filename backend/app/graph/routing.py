@@ -107,7 +107,9 @@ def route_after_compose(state: LetterState) -> AfterCompose:
     language = state.get("language", "en")
     lines = (state.get("letter_text") or "").split("\n")
     # The citizen's own words are not evidence of the letter's language.
-    keep = verbatim_lines(state.get("fields") or {})
+    # The grievance is translated with the rest of the letter, so a
+    # complaint still in another language is a reason to translate.
+    keep = verbatim_lines(state.get("fields") or {}, protect_grievance=False)
 
     # One question, asked of the text that actually exists rather than of the
     # session's language setting. A template authored in the citizen's language,

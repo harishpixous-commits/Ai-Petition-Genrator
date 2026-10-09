@@ -280,7 +280,8 @@ def _paragraphs(text: str, indent: str = "   ") -> list[str]:
     return out
 
 
-def verbatim_lines(fields: dict[str, Any]) -> frozenset[str]:
+def verbatim_lines(fields: dict[str, Any], *,
+                   protect_grievance: bool = True) -> frozenset[str]:
     """Everything in the letter that is the citizen's own text, stripped.
 
     Three fields reach the page exactly as they were typed: the name, the
@@ -307,8 +308,21 @@ def verbatim_lines(fields: dict[str, Any]) -> frozenset[str]:
     the signature line. The callers compare both the raw line and its stripped
     form, so one entry covers all three.
     """
+    # THE TRANSLATOR PASSES protect_grievance=False.
+    #
+    # The petition is produced in one language throughout, so the complaint is
+    # translated with the rest of it. The name and the address are never in
+    # that set: they are transliterated instead — a table and a phonetic
+    # fallback, no model, no network call — because a translator asked for
+    # Coimbatore once returned the name of a locality in Chennai, and a
+    # petition naming the wrong town is not acted on.
+    #
+    # Everything else still asks for the full set. The citizen's own words are
+    # what the officer portal shows and what the record keeps.
+    wanted = CITIZEN_TEXT_FIELDS if protect_grievance else (
+        SENDER_NAME_FIELDS + SENDER_ADDRESS_FIELDS)
     out: set[str] = set()
-    for name in CITIZEN_TEXT_FIELDS:
+    for name in wanted:
         for paragraph in str(fields.get(name) or "").splitlines():
             stripped = paragraph.strip()
             if stripped:

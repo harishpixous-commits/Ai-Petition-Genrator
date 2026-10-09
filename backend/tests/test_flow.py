@@ -229,18 +229,24 @@ class TestRouteAfterCompose:
                                     "letter_text": "English text"}) == "render"
 
 
-class TestTheVerbatimGrievanceNeverTriggersTranslation:
-    """A citizen may write the complaint in either language, whatever language
-    the rest of the petition is in. That is the document working correctly.
+class TestTheLetterIsProducedInOneLanguage:
+    """The petition reads as one language, and the citizen's NAME and ADDRESS
+    are still never handed to a translator.
 
-    Before this, a Tamil complaint inside an English petition made the finished,
-    correct letter look like a half-translated one: it was routed to the
-    translator, and with no translator configured the citizen was shown
-    "no translation service was available" on a letter that needed none.
+    This class used to hold the opposite rule for the grievance: a complaint in
+    another language kept the letter out of the translator entirely. That was
+    right while the complaint was reproduced verbatim, and it is wrong now that
+    the document is meant to read as one language to the officer who acts on
+    it — an officer reading a Malayalam petition should not find the complaint
+    itself in English.
 
-    The graver half is what happened when a translator WAS configured — it was
-    handed the citizen's own words to reword, which is the one thing the
-    petition rules forbid.
+    The name and the address did NOT move. They are transliterated instead: a
+    table and a phonetic fallback, no model and no network call, because a
+    translator asked for Coimbatore once returned the name of a locality in
+    Chennai, and a petition naming the wrong town is not acted on.
+
+    What the citizen actually typed is untouched in the record, so the officer
+    portal still shows their own words.
     """
 
     TAMIL_GRIEVANCE = "தெருவிளக்கு மூன்று மாதமாக எரியவில்லை."
@@ -250,7 +256,7 @@ class TestTheVerbatimGrievanceNeverTriggersTranslation:
     def _letter(*lines: str) -> str:
         return "\n".join(lines)
 
-    def test_a_tamil_grievance_does_not_send_an_english_letter_to_the_translator(self):
+    def test_a_tamil_grievance_in_an_english_letter_is_translated(self):
         state = {
             "language": "en",
             "fields": {"grievance": self.TAMIL_GRIEVANCE},
@@ -264,9 +270,9 @@ class TestTheVerbatimGrievanceNeverTriggersTranslation:
                 "   I request you to arrange an inspection of the spot.",
             ),
         }
-        assert route_after_compose(state) == "render"
+        assert route_after_compose(state) == "translate"
 
-    def test_an_english_grievance_does_not_send_a_tamil_letter_to_the_translator(self):
+    def test_an_english_grievance_in_a_tamil_letter_is_translated(self):
         state = {
             "language": "ta",
             "fields": {"grievance": self.ENGLISH_GRIEVANCE},
@@ -280,7 +286,7 @@ class TestTheVerbatimGrievanceNeverTriggersTranslation:
                 "   உரிய நடவடிக்கை எடுக்குமாறு கேட்டுக்கொள்கிறேன்.",
             ),
         }
-        assert route_after_compose(state) == "render"
+        assert route_after_compose(state) == "translate"
 
     def test_a_genuinely_wrong_language_letter_still_translates(self):
         """The guard must not disable translation altogether: a Tamil session

@@ -750,7 +750,7 @@ async def translate_document(session_id: str, body: TranslateRequest,
             raise HTTPException(409, "There is no finished petition to translate yet.")
 
         target = body.language
-        keep = verbatim_lines(state.get("fields") or {})
+        keep = verbatim_lines(state.get("fields") or {}, protect_grievance=False)
         version = int(state.get("document_version") or 0)
 
         # THE ORIGIN: the petition as the service last WROTE it, which is what

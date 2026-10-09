@@ -775,6 +775,12 @@ def display_value(field_type: str, value: Any, language: str = "en") -> str:
     # is placed verbatim — and an English sentence spelled in Tamil letters
     # is not a Tamil sentence, it is an unreadable one.
     if field_type in ("person_name", "address"):
-        from .tamil_script import for_language
-        return for_language(str(value), language)
+        if language == "ta":
+            from .tamil_script import for_language as in_tamil
+            return in_tamil(str(value), language)
+        # Importing the tables is what registers the other scripts; the
+        # dispatcher returns the value unchanged for a language with none.
+        from . import indic_tables  # noqa: F401
+        from .indic_script import for_language as in_script
+        return in_script(str(value), language)
     return str(value)
