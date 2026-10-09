@@ -21,7 +21,6 @@ from __future__ import annotations
 
 from .indic_script import PATTERNS, Script, register
 
-
 # TWO KINDS OF ENTRY ARE DELIBERATELY ABSENT, and both were here once.
 #
 # "ny" as a single letter. ഞ / ఞ / ञ carry one sound, so the y was swallowed
