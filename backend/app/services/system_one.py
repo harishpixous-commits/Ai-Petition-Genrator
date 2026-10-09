@@ -43,7 +43,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-from ..domain.languages import TAMIL as _TAMIL
+from ..domain.languages import has_indic as _has_indic
 
 log = logging.getLogger(__name__)
 
@@ -98,9 +98,17 @@ class Decision:
 # Words
 # --------------------------------------------------------------------------- #
 #
-# Both scripts in one table per category, because a citizen at a Tamil
+# Every script in one table per category, because a citizen at a Tamil
 # counter says "தண்ணீர்" and the transcript of the same sentence from an
 # English session says "water". Neither is the primary form.
+#
+# FIVE LANGUAGES, NOT TWO. Malayalam, Telugu and Hindi were added to the
+# interview, the document and the analysis panel and never to this table. The
+# benchmark scored each of them at 0.000 — not "poorly", but every grievance
+# UNKNOWN, always — because there was not one word of any of the three here to
+# match. The words below are the ordinary ones a counter hears; they are not
+# translations of the English list, because the complaint a citizen states is
+# not a translation of the complaint somebody else stated.
 
 _CATEGORY_WORDS: dict[str, tuple[str, ...]] = {
     # THE THIRD SCRIPT. A citizen at a kiosk types "thanni varala", not
@@ -109,7 +117,8 @@ _CATEGORY_WORDS: dict[str, tuple[str, ...]] = {
     # the forms that actually get typed, spelling variants included.
     "WATER": ("water", "drinking water", "tap", "pipeline", "borewell", "bore well", "tank",
               "supply", "thanni", "thanneer", "kudineer",
-              "தண்ணீர்", "தண்ணி", "குடிநீர்", "குழாய்", "விநியோக", "தொட்டி"),
+              "தண்ணீர்", "தண்ணி", "குடிநீர்", "குழாய்", "விநியோக", "தொட்டி",
+              "വെള്ളം", "കുടിവെള്ള", "പൈപ്പ്", "ടാങ്ക്", "വിതരണ", "నీరు", "నీటి", "తాగునీ", "పైపు", "ట్యాంక్", "సరఫరా", "पानी", "पेयजल", "नल", "पाइपलाइन", "टंकी", "आपूर्ति"),
     # NEITHER "street" NOR "தெரு" IS HERE, and that is the point. Almost
     # every grievance in Tamil Nadu contains the word for street, because
     # that is where people live — "no water in our street", "the light in
@@ -119,25 +128,34 @@ _CATEGORY_WORDS: dict[str, tuple[str, ...]] = {
     # pothole.
     "ROAD": ("road", "pothole", "tar road", "damaged road", "tar", "footpath",
              "saalai", "kuzhi",
-             "சாலை", "ரோடு", "பாதை", "குழி", "நடைபாதை"),
+             "சாலை", "ரோடு", "பாதை", "குழி", "நடைபாதை",
+              "റോഡ്", "കുഴി", "നടപ്പാത", "പാത", "రహదారి", "రోడ్డు", "గుంత", "కాలిబాట", "सड़क", "गड्ढ", "मार्ग", "फुटपाथ"),
     "STREET_LIGHT": ("street light", "streetlight", "lamp", "light post",
-                     "light", "தெருவிளக்கு", "விளக்கு", "மின்விளக்கு"),
+                     "light", "தெருவிளக்கு", "விளக்கு", "மின்விளக்கு",
+              "തെരുവുവിളക്ക്", "വിളക്ക്", "వీధి దీపం", "వీధిదీపం", "దీపం", "स्ट्रीट लाइट", "स्ट्रीटलाइट", "बत्ती"),
     "SANITATION": ("garbage", "drain", "drainage", "sewage", "sewerage",
                    "toilet", "cleaning", "rubbish", "குப்பை", "கழிவு", "வடிகால்",
                    "kuppai", "saakkadai", "chakkadai",
-                   "சாக்கடை", "கழிப்பறை", "தூய்மை"),
+                   "சாக்கடை", "கழிப்பறை", "தூய்மை",
+              "മാലിന്യ", "ഓട", "മലിനജല", "ശുചിമുറി", "ശുചീകരണ", "చెత్త", "మురుగు", "కాలువ", "మరుగుదొడ్డి", "పారిశుధ్య", "कूड़ा", "कचरा", "नाली", "सीवर", "शौचालय", "सफाई"),
     "PENSION": ("pension", "old age", "widow", "oivoothiyam",
-                "ஓய்வூதிய", "முதியோர்", "விதவை"),
+                "ஓய்வூதிய", "முதியோர்", "விதவை",
+              "പെൻഷൻ", "വാർദ്ധക്യ", "വിധവ", "పింఛను", "పెన్షన్", "వృద్ధాప్య", "వితంతు", "पेंशन", "वृद्धावस्था", "विधवा"),
     "WELFARE": ("ration", "scheme", "allowance", "thogai", "urimai",
-                "ரேஷன்", "திட்டம்", "உதவித்தொகை", "நிதி", "தொகை"),
+                "ரேஷன்", "திட்டம்", "உதவித்தொகை", "நிதி", "தொகை",
+              "റേഷൻ", "പദ്ധതി", "ധനസഹായ", "ആനുകൂല്യ", "రేషన్", "పథకం", "భత్యం", "ఉపకారవేతనం", "राशन", "योजना", "भत्ता", "छात्रवृत्ति"),
     "LICENCE": ("licence", "license", "permit", "renewal", "உரிமம்",
-                "அனுமதி", "புதுப்பி"),
+                "அனுமதி", "புதுப்பி",
+              "ലൈസൻസ്", "അനുമതി", "പുതുക്ക", "లైసెన్సు", "అనుమతి", "పునరుద్ధరణ", "लाइसेंस", "अनुमति", "परमिट", "नवीनीकरण"),
     "CERTIFICATE": ("certificate", "community certificate", "income certificate",
-                    "birth certificate", "சான்றிதழ்", "சான்று"),
+                    "birth certificate", "சான்றிதழ்", "சான்று",
+              "സർട്ടിഫിക്കറ്റ്", "ജാതി സർട്ടിഫിക്കറ്റ്", "വരുമാന", "ధృవీకరణ పత్రం", "సర్టిఫికెట్", "కుల ధృవీకరణ", "प्रमाण पत्र", "प्रमाणपत्र", "जाति प्रमाण", "आय प्रमाण"),
     "PROPERTY": ("patta", "land", "encroachment", "encroach", "survey number", "title",
-                 "பட்டா", "நிலம்", "ஆக்கிரமிப்பு", "சர்வே"),
+                 "பட்டா", "நிலம்", "ஆக்கிரமிப்பு", "சர்வே",
+              "പട്ടയം", "ഭൂമി", "കൈയേറ്റം", "സർവേ", "పట్టా", "భూమి", "ఆక్రమణ", "సర్వే", "पट्टा", "भूमि", "जमीन", "अतिक्रमण"),
     "ELECTRICITY": ("electricity", "power cut", "transformer", "voltage", "power supply", "eb ",
-                    "மின்சார", "கரண்ட்", "மின்வெட்டு", "மின்மாற்றி"),
+                    "மின்சார", "கரண்ட்", "மின்வெட்டு", "மின்மாற்றி",
+              "വൈദ്യുതി", "കറന്റ്", "ട്രാൻസ്ഫോർമർ", "విద్యుత్", "కరెంటు", "ట్రాన్స్‌ఫార్మర్", "बिजली", "विद्युत", "ट्रांसफार्मर"),
 }
 
 # A document that says it is a reply from an office. Checked before the
@@ -184,7 +202,7 @@ _CERTIFICATE_WORDS = ("certificate", "certified that", "certify that",
 # speaker says street light ("street la light eriyala"), but it is also how
 # anyone says a household light. Weak, it wins when nothing else is present
 # and loses to மின்சாரம் when that is.
-_WEAK_WORDS = frozenset({"road", "சாலை", "saalai", "light", "தொட்டி"})
+_WEAK_WORDS = frozenset({"road", "சாலை", "saalai", "light", "தொட்டி",                         "റോഡ്", "రహదారి", "రోడ్డు", "सड़क"})
 
 # TWO COMPLAINTS, OR ONE COMPLAINT IN A PLACE? Weighted scoring answers
 # "sewage overflowing onto the road" correctly and then answers "both the
@@ -193,8 +211,15 @@ _WEAK_WORDS = frozenset({"road", "சாலை", "saalai", "light", "தொட�
 # in the nouns, which is why counting them could never separate the two —
 # it is that the second sentence COORDINATES them, and Tamil says so
 # explicitly with the clitic உம் on each noun: "சாலையும் ... குடிநீரும்".
+# Each language marks "and also" its own way. Tamil's உம் is a clitic on each
+# noun; Malayalam's ഉം is the same device; Telugu and Hindi use separate words.
+# Without these a two-subject complaint in Malayalam is answered confidently
+# with one of its two subjects, which is the one failure this rule exists for.
 _COORDINATION = (" both ", "both the ", " as well as ", " and also ",
-                 " are also ", " is also ", " neither ", "ும் ")
+                 " are also ", " is also ", " neither ", "ும் ",
+                 "ും ", " കൂടാതെ ", " ഒപ്പം ",
+                 " మరియు ", " కూడా ", " అలాగే ",
+                 " और ", " भी ", " तथा ", " दोनों ")
 _STRONG, _WEAK = 2, 1
 
 
@@ -213,6 +238,17 @@ _WORD = re.compile(r"[^\W\d_]+", re.UNICODE)
 # drinking water, and the sentence was classified from the other noun in
 # it. Dropping the mark leaves குடிநீர, a prefix of both forms.
 _VIRAMA = "்"
+
+# The same mark in each of the other scripts the service serves. Malayalam,
+# Telugu and Devanagari inflect by suffix exactly as Tamil does, and each
+# writes its pure-consonant mark at its own codepoint, so one constant could
+# never have covered them.
+_VIRAMAS = frozenset({
+    "\u0bcd",   # Tamil       ்
+    "\u0d4d",   # Malayalam   ്
+    "\u0c4d",   # Telugu      ్
+    "\u094d",   # Devanagari  ्
+})
 
 # --------------------------------------------------------------------------- #
 # Romanised Tamil
@@ -306,10 +342,16 @@ def _hits(haystack: str, needles: tuple[str, ...]) -> list[str]:
     """
     found = []
     for needle in needles:
-        if _TAMIL.search(needle):
+        # ANY Indic script, not Tamil alone. This tested the Tamil block alone while
+        # the service served five languages, so a Malayalam, Telugu or Hindi
+        # needle fell through to the Latin branch and was matched with a word
+        # boundary — and Python's \w does not see Indic combining marks, so
+        # the match was against a mutilated word. The words and this test had
+        # to change together; either one alone looks like a fix and is not.
+        if _has_indic(needle):
             if needle in haystack:
                 found.append(needle)
-            elif needle.endswith(_VIRAMA) and needle[:-1] in haystack:
+            elif needle[-1:] in _VIRAMAS and needle[:-1] in haystack:
                 found.append(needle)          # the suffix replaced the mark
         elif re.search(_BOUNDARY + re.escape(needle), haystack):
             found.append(needle)
