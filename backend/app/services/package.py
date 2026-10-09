@@ -34,6 +34,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
+
 from ..domain import languages
 from ..domain.languages import TAMIL  # noqa: F401
 

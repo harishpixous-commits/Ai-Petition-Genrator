@@ -27,9 +27,9 @@ sys.path.insert(0, str(root))
 from app.config import get_settings
 from app.graph.state import new_state
 from app.graph.workflow import workflow_lifespan
+from app.services import attachment_store
 from app.services.officer_store import provision
 from app.services.render import render_docx
-from app.services import attachment_store
 
 password = secrets.token_urlsafe(24)
 provision("ui-reviewer", "Acceptance Officer", password)

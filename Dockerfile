@@ -95,22 +95,27 @@ WORKDIR /app/backend
 COPY backend/ /app/backend/
 
 # ---------------------------------------------------------------------------
-# Tamil fonts for the PDF converter.
+# Indic fonts for the PDF converter.
 #
-# The repository already ships Noto Sans and Noto Sans Tamil under
-# backend/app/assets/fonts/ (they are served to the browser by FastAPI).
-# Installing those same files system-wide guarantees LibreOffice can shape
-# with the exact family LETTER_FONT names ("Noto Sans Tamil"), rather than
-# depending on a distribution package name. Belt and braces alongside
-# fonts-noto-core above.
+# The repository ships a font for every script this service serves — Latin,
+# Tamil, Malayalam, Telugu and Devanagari — under backend/app/assets/fonts/
+# (the same files FastAPI serves to the browser). Installing them system-wide
+# guarantees LibreOffice can shape with the exact family the renderer names,
+# rather than depending on a distribution package name. Belt and braces
+# alongside fonts-noto-core above.
+#
+# THE CHECK READS THE LANGUAGE REGISTRY rather than grepping for one family,
+# so a language added to the service without its font fails the BUILD. A
+# missing face raises nothing at render time: LibreOffice substitutes, the PDF
+# prints dotted boxes, and the only trace is a log line nobody reads — on the
+# one artifact a citizen carries to a counter.
 #
 # Verify after any base-image change with: scripts/verify_pdf.py
 # ---------------------------------------------------------------------------
 RUN install -d /usr/local/share/fonts/petition \
  && cp /app/backend/app/assets/fonts/*.ttf /usr/local/share/fonts/petition/ \
  && fc-cache -f \
- && fc-list | grep -i "Noto Sans Tamil" >/dev/null \
-    || (echo "FATAL: Noto Sans Tamil not registered with fontconfig" && exit 1)
+ && python /app/backend/scripts/check_fonts.py
 
 # ---------------------------------------------------------------------------
 # Non-root runtime user.

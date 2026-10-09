@@ -41,7 +41,7 @@ from pathlib import Path
 from typing import Any
 
 from ..config import get_settings
-from ..domain import attachments, emblem, phrasing, prior_petition, revisions
+from ..domain import attachments, emblem, languages, phrasing, prior_petition, revisions
 from ..domain.fields import (
     clean_text,
     display_value,
@@ -49,6 +49,7 @@ from ..domain.fields import (
     read_boolean,
     validate_field,
 )
+from ..domain.languages import TAMIL as _TAMIL  # noqa: F401
 from ..domain.letter import (
     VERBATIM_FIELDS,
     Composition,
@@ -78,8 +79,6 @@ from ..logging_setup import timed
 from ..services import render as render_service
 from ..services.llm import chat_json, enhance
 from ..services.translate import translate_lines
-from ..domain import languages
-from ..domain.languages import TAMIL as _TAMIL  # noqa: F401
 from .state import LetterState, turn
 
 log = logging.getLogger(__name__)

@@ -21,11 +21,10 @@ from collections.abc import AsyncIterator
 import httpx
 
 from ..config import Settings, get_settings
+from .asr import sarvam_locale
 from .speech_text import redact_for_speech
 
 log = logging.getLogger(__name__)
-
-from .asr import sarvam_locale
 
 # Sarvam rejects long inputs; the replies this service produces are short, but a
 # confirmation read-back can run long and must be split rather than truncated.

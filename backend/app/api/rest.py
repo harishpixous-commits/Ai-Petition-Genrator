@@ -13,8 +13,8 @@ spoken sessions identical.
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime
 import uuid
+from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Response, UploadFile
@@ -22,9 +22,10 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, field_validator
 
 from ..config import get_settings
-from ..domain import attachment_relevance, prior_petition, revisions
+from ..domain import attachment_relevance, languages, prior_petition, revisions
 from ..domain import attachments as attachment_rules
 from ..domain.fields import MAX_FREE_TEXT
+from ..domain.languages import english_name
 from ..domain.letter import verbatim_lines
 from ..domain.templates import missing_fields, the_template
 from ..graph.state import LetterState, new_state
@@ -41,12 +42,9 @@ from ..services import (
     tts,
 )
 from ..services.officer_store import require_citizen_session
-from ..domain import languages
-from ..domain.languages import english_name
-from ..services.translate import OFFERED
 from ..services.render import pdf_status
 from ..services.speech_text import readable_sections, redact_for_speech, speech_for
-from ..services.translate import language_of, translate_lines
+from ..services.translate import OFFERED, language_of, translate_lines
 from .views import session_view
 
 log = logging.getLogger(__name__)

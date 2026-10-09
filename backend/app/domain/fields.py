@@ -34,8 +34,8 @@ from datetime import date, datetime
 from typing import Any
 
 from . import clock
-from .spoken_numbers import spoken_cardinal
 from .languages import INDIC_RANGES, TAMIL_RANGE
+from .spoken_numbers import spoken_cardinal
 
 # --------------------------------------------------------------------------- #
 # Result type

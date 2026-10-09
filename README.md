@@ -147,14 +147,15 @@ conversation. The system is built with defined attachment points for them.
 
 ## Status
 
-Working end to end in Tamil and English, with 239 automated tests covering the
-checks on official values, whole conversations in both languages, corrections,
-interruption and recovery, Aadhaar containment, and the contents of the generated
-document.
+Working end to end in English, Tamil, Malayalam, Telugu and Hindi, with over
+2,000 automated tests covering the checks on official values, whole
+conversations in each language, corrections, interruption and recovery, Aadhaar
+containment, and the contents of the generated document.
 
-The generated Tamil PDF has been checked by eye, not only by confirming that a
-file was produced: Tamil vowel signs reorder around the consonant they attach to,
-and a converter without proper shaping produces a file of the right size that is
-unreadable on the page.
+The generated PDFs have been checked by eye, not only by confirming that a file
+was produced: Indic vowel signs reorder around the consonant they attach to, and
+a converter without proper shaping produces a file of the right size that is
+unreadable on the page. A font is shipped for every script, and a build fails
+rather than printing a petition as a row of dotted boxes.
 
 Setup and operation: [backend/README.md](backend/README.md).

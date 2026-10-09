@@ -32,6 +32,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from typing import Literal
+
 from .languages import INDIC_RANGES
 
 Language = Literal["en", "ta"]

@@ -42,6 +42,7 @@ import logging
 import re
 from dataclasses import dataclass, field
 from typing import Any
+
 from ..domain.languages import TAMIL as _TAMIL
 
 log = logging.getLogger(__name__)

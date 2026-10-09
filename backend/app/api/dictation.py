@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import logging
 import json
+import logging
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 

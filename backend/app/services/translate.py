@@ -31,9 +31,6 @@ from dataclasses import dataclass, field
 import httpx
 
 from ..config import Settings, get_settings
-
-log = logging.getLogger(__name__)
-
 from ..domain import languages
 from ..domain.languages import (  # noqa: F401
     DEVANAGARI,
@@ -42,6 +39,8 @@ from ..domain.languages import (  # noqa: F401
     TAMIL,
     TELUGU,
 )
+
+log = logging.getLogger(__name__)
 
 # The languages a petition can be produced in, and what the translator
 # calls them. Adding one here is the whole change: every code below is

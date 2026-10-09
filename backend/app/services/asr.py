@@ -34,10 +34,9 @@ from urllib.parse import urlencode
 import websockets
 
 from ..config import Settings, get_settings
+from ..domain import languages
 
 log = logging.getLogger(__name__)
-
-from ..domain import languages
 
 
 @dataclass

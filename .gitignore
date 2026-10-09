@@ -56,3 +56,9 @@ Thumbs.db
 .idea/
 .vscode/
 *.swp
+
+# Captured test output. A failing run from a fortnight ago, committed at the
+# repository root, reads as the current state of the suite to anyone who opens
+# it. Run the suite instead.
+voice-test-results.txt
+*-test-results.txt
