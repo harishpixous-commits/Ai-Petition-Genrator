@@ -126,3 +126,122 @@ anything, which is deliberate.
   count cannot regress unnoticed.
 - The benchmark harness, with a `laya` slot ready for an adapter.
 - Fourteen classifier fixes that came out of building the set.
+
+---
+
+# Part two: Laya for grievance classification, measured
+
+Written 9 October 2026, after the first assessment named this as the one place
+Laya might genuinely help. It was asked for again, so it was measured rather
+than argued about.
+
+**The decision is unchanged: do not integrate Laya.** Nothing is installed,
+vendored or added to the image. What follows is why, on numbers produced on
+this machine rather than quoted from anybody's table.
+
+## This is a different question from part one
+
+Part one rejected Laya as an INTENT classifier — reading "yes, that's right"
+at a confirmation prompt. This is grievance CATEGORY: water, road, street
+light, sanitation, pension and six others. Part one explicitly set it aside as
+worth re-testing, because a wrong category is caught downstream instead of
+being printed.
+
+## Laya was installed and run, not read about
+
+The previous assessment recorded `torch>=2.14`, `transformers>=5` and
+`huggingface_hub>=1`, taken from the README. **The README is wrong about its
+own package.** `pyproject.toml` requires `torch>=2.0.0`,
+`transformers>=4.48.0`, `huggingface_hub>=0.20.0`. Laya 0.4.1 installed
+cleanly against the torch 2.13 this project already has.
+
+So the dependency objection from part one is weaker than recorded, and the
+measurement below is the real reason rather than a convenient one.
+
+Checkpoints are all subfolders of one repository, `convaiinnovations/laya`,
+not three repositories as the README's table implies. `Router` chose the
+English checkpoint for Latin text and the multilingual one for Indic text, by
+script detection, exactly as documented.
+
+## The measurement
+
+`backend/benchmarks/grievance_cases.py` — 64 cases written for this: eleven
+categories across English, Tamil, Malayalam, Telugu and Hindi, plus romanised
+Tamil, two-subject complaints that should return UNKNOWN, and decoys where a
+category word is scenery rather than the subject. All invented; no citizen
+text.
+
+`backend/benchmarks/run_grievance_benchmark.py` scores any classifier on it.
+
+| | incumbent | Laya (zero-shot) |
+|---|---|---|
+| Accuracy | **0.891** | 0.391 |
+| English | 0.788 | 0.667 |
+| Tamil | **1.000** | 0.000 |
+| Malayalam | **1.000** | 0.000 |
+| Telugu | **1.000** | 0.000 |
+| Hindi | **1.000** | 0.429 |
+| Wrong subject | 5 | 8 |
+| Median latency | **0.19 ms** | 2,374 ms |
+| p95 latency | **0.24 ms** | 5,732 ms |
+| Dependency | none | torch + transformers + a 322M–421M checkpoint |
+
+Laya answered `OTHER` for 31 of the 64 cases and scored zero on all 24
+Tamil, Malayalam and Telugu ones. That is not an anomaly: it is consistent
+with the repository's own published figure of 0.352 for multilingual
+zero-shot typed decisions.
+
+**A correction, recorded because the number was nearly published.** A first
+run scored Laya at 0.172. That was my bug, not Laya's result: `predict`
+returns `{"model", "answers", "usage", "routing"}` and the adapter read
+`out["category"]` instead of `out["answers"]["category"]`, so every case came
+back `None`. A classifier that answers one label for all 64 inputs has not
+been measured, it has been misused. The adapter was fixed and the run
+repeated; 0.172 appears nowhere except here.
+
+Laya also warns on load that this checkpoint "ships invalid temperatures or
+values outside [0.5, 5] ... Treat confidence from the affected entries as
+uncalibrated". Confidence is what a gate would read, so that matters.
+
+## What the measurement actually found
+
+Not something about Laya. **The incumbent had no Malayalam, Telugu or Hindi at
+all.** Of 105 category words, 41 were Tamil and none were in the other three
+scripts; and `_hits` tested `TAMIL.search` to decide how to match, so even
+added words would have been matched with a Latin word boundary, which drops
+Indic combining marks.
+
+Every grievance in three of the five languages this service offers returned
+UNKNOWN, always, and nothing said so because nothing measured it. The reader
+scored 0.609 before this was fixed and 0.891 after — the whole gain came from
+Malayalam, Telugu and Hindi going from 0.000 to 1.000.
+
+That is the second time a benchmark written to evaluate Laya has paid for
+itself by finding a defect in the thing it was measuring against. It is the
+main reason to keep writing them.
+
+## What would change this decision
+
+The bar from part one stands, restated for this task:
+
+1. A fine-tuned checkpoint scoring **above 0.891** on
+   `benchmarks/grievance_cases.py`, with Tamil, Malayalam, Telugu and Hindi
+   each above 0.9 — because that is what the service now does without it.
+2. CPU latency under ~50 ms on the deployment host. Measured here: 2,374 ms
+   median, 42 s worst case.
+3. Calibrated confidence, since an uncalibrated score cannot gate anything.
+
+Run it:
+
+```
+python -m benchmarks.run_grievance_benchmark                  # the incumbent
+python -m benchmarks.run_grievance_benchmark --classifier laya
+```
+
+## What is kept from part two
+
+- The 64-case grievance set and its harness.
+- Malayalam, Telugu and Hindi in the category tables, and a matcher that reads
+  any Indic script rather than Tamil alone.
+- `LayaProvider` stays a seam that raises on construction. The question will
+  be asked a third time, and now there are two measuring sticks ready.
