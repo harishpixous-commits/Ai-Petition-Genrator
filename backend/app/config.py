@@ -400,7 +400,17 @@ class Settings(BaseSettings):
      # database — which a slim container does not ship.
     petition_utc_offset_minutes: int = 330
 
-    letter_font: str = "Nirmala UI"  # carries Tamil on Windows; Noto Sans Tamil on Linux
+    # Default matches the deploy target. The Dockerfile installs
+    # fonts-noto-core and copies the shipped `.ttf` into
+    # /usr/local/share/fonts/petition at build time, so fontconfig
+    # resolves "Noto Sans Tamil" on every container the service runs
+    # in. check_fonts.py reads this value during `docker build` and
+    # fails the build when it is not registered — a "Nirmala UI"
+    # default (Microsoft, Windows-only) failed run #63 Deploy to EC2
+    # at the fonts check. Windows developers who want local DOCX
+    # previews to match a Windows laptop set `LETTER_FONT=Nirmala UI`
+    # in their shell; the service picks it up via pydantic-settings.
+    letter_font: str = "Noto Sans Tamil"
 
     # -- operator screen ---------------------------------------------------- #
     #
