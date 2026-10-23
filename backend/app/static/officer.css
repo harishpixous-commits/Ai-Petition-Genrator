@@ -854,3 +854,47 @@
   .officer .review-form .field-grid { grid-template-columns: minmax(0, 1fr); }
   .officer .ack-lookup-form { align-items: stretch; flex-direction: column; }
 }
+
+/* -----------------------------------------------------------------------
+   Admin panel + account page. Lightweight — the panel is only reached by
+   admins and only when editing users, so most of the time none of this is
+   on the page.
+   ----------------------------------------------------------------------- */
+.officer .admin-panel { padding: 28px; }
+.officer .admin-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; margin-bottom: 24px; }
+.officer .admin-head h2 { margin: 4px 0 6px; }
+.officer .admin-users { width: 100%; border-collapse: collapse; }
+.officer .admin-users th { text-align: left; font-size: 12px; letter-spacing: 0.5px; text-transform: uppercase; color: var(--muted, #667); padding: 10px 12px; border-bottom: 1px solid var(--line, #e2e5ea); }
+.officer .admin-users td { padding: 14px 12px; border-bottom: 1px solid var(--line, #eef0f3); vertical-align: middle; }
+.officer .admin-users .row-actions { white-space: nowrap; display: flex; gap: 6px; justify-content: flex-end; }
+.officer .admin-users .monospace, .officer .account-panel .monospace { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.92em; }
+.officer .role-badge { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 11px; letter-spacing: 0.4px; text-transform: uppercase; }
+.officer .role-badge.role-admin { background: #ecf6ff; color: #1a56a4; }
+.officer .role-badge.role-officer { background: #f3f5f8; color: #4a5160; }
+.officer .hbtn.small { padding: 4px 10px; font-size: 12px; }
+.officer .hbtn.danger { color: #a3271e; }
+.officer .hbtn.danger:disabled { color: #c7a7a2; cursor: not-allowed; }
+
+.officer .dialog-backdrop { position: fixed; inset: 0; background: rgba(10, 20, 35, 0.42); display: flex; align-items: center; justify-content: center; z-index: 50; padding: 20px; }
+.officer .dialog { background: #fff; border-radius: 10px; max-width: 460px; width: 100%; box-shadow: 0 24px 60px rgba(10, 20, 35, 0.25); }
+.officer .dialog header { display: flex; align-items: center; justify-content: space-between; padding: 18px 22px 10px; border-bottom: 1px solid var(--line, #eef0f3); }
+.officer .dialog header h3 { margin: 0; font-size: 17px; }
+.officer .dialog-body { padding: 20px 22px 22px; }
+.officer .form-stack { display: flex; flex-direction: column; gap: 14px; }
+.officer .form-stack label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: #313844; }
+.officer .form-stack input, .officer .form-stack select { padding: 9px 11px; border: 1px solid #cfd4dc; border-radius: 7px; font-size: 14px; }
+.officer .form-stack input:focus, .officer .form-stack select:focus { outline: 2px solid #2b6cb0; outline-offset: 1px; }
+.officer .dialog-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 4px; }
+.officer .form-stack .small { font-size: 12px; }
+.officer .form-stack h3 { margin: 0 0 4px; }
+
+.officer .account-panel { padding: 28px; max-width: 560px; }
+.officer .account-panel header { margin-bottom: 20px; }
+
+@media (prefers-color-scheme: dark) {
+  .officer .dialog { background: #1a2130; color: #e5e8ee; }
+  .officer .dialog header { border-bottom-color: #2a3243; }
+  .officer .form-stack input, .officer .form-stack select { background: #10172a; color: #e5e8ee; border-color: #2a3243; }
+  .officer .role-badge.role-admin { background: #112944; color: #8ec4ff; }
+  .officer .role-badge.role-officer { background: #1e2432; color: #c3c9d2; }
+}

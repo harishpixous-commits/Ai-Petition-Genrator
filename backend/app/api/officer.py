@@ -50,7 +50,19 @@ def require_officer(request: Request):
     return user
 
 
+def require_admin(user: Annotated[dict, Depends(require_officer)]):
+    """Gate for the admin panel endpoints. An officer without the admin
+    role gets a 403, not a 404: that lets the UI tell them exactly what
+    is wrong instead of leaving the page broken in some other way."""
+    if user.get("role") != store.ADMIN:
+        raise HTTPException(
+            403, "Administrator access is required for user management."
+        )
+    return user
+
+
 OfficerUser = Annotated[dict, Depends(require_officer)]
+AdminUser = Annotated[dict, Depends(require_admin)]
 
 
 class Login(BaseModel):
@@ -100,6 +112,148 @@ def logout(request: Request, response: Response, user: OfficerUser):
             (store.digest(request.cookies[store.COOKIE]),),
         )
     response.delete_cookie(store.COOKIE, path="/")
+
+
+# -------------------------------------------------------------------- #
+# Admin panel. User management from the portal rather than through CI.
+# -------------------------------------------------------------------- #
+#
+# Every write below carries three invariants, enforced in officer_store:
+#   * the last admin cannot be demoted or deleted — the panel would be
+#     unreachable the next request if it were;
+#   * usernames are lowercase, 3-64 chars, `[a-z0-9._-]`, start with
+#     alphanumeric — they end up in URL paths and audit lines;
+#   * passwords are at least 12 characters — matches the floor the login
+#     already enforced.
+#
+# Changing your OWN account is split from managing OTHERS. `/me/password`
+# needs the current password even for an authenticated session, so a
+# stolen cookie alone cannot take an account over; `/users/*` endpoints
+# need the admin role.
+
+
+class ChangeOwnPassword(BaseModel):
+    current_password: str = Field(min_length=1, max_length=256)
+    new_password: str = Field(min_length=12, max_length=256)
+
+
+@router.post("/me/password", status_code=204)
+def change_own_password(body: ChangeOwnPassword, user: OfficerUser):
+    """An officer may change their own password at any time. Requires the
+    current password even though the session cookie is valid — a stolen
+    cookie must not be enough to take over the account."""
+    if not store.verify_password(user["username"], body.current_password):
+        raise HTTPException(400, "Current password is incorrect.")
+    if body.current_password == body.new_password:
+        raise HTTPException(400, "New password must differ from the current one.")
+    try:
+        store.set_password(user["username"], body.new_password)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+class NewOfficer(BaseModel):
+    username: str = Field(min_length=1, max_length=64)
+    name: str = Field(min_length=1, max_length=150)
+    password: str = Field(min_length=12, max_length=256)
+    role: Literal["admin", "officer"] = "officer"
+
+
+class EditOfficer(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=150)
+    role: Literal["admin", "officer"] | None = None
+    new_username: str | None = Field(default=None, min_length=1, max_length=64)
+
+
+class ResetPassword(BaseModel):
+    new_password: str = Field(min_length=12, max_length=256)
+
+
+@router.get("/users")
+def list_users(admin: AdminUser):
+    """The list the admin panel renders. Admins first, then alphabetical."""
+    return {"users": store.list_officers()}
+
+
+@router.post("/users", status_code=201)
+def create_user(body: NewOfficer, admin: AdminUser):
+    try:
+        store.create(
+            body.username, body.name, body.password, role=body.role
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return {
+        u["username"]: u for u in store.list_officers()
+    }[body.username.strip().casefold()]
+
+
+@router.patch("/users/{username}")
+def edit_user(username: str, body: EditOfficer, admin: AdminUser):
+    # Order matters: rename FIRST, so a later `set_role` / `set_name`
+    # addresses the new username. The response is the row as it now reads.
+    target = username.strip().casefold()
+    try:
+        if body.new_username and body.new_username.strip().casefold() != target:
+            store.rename(target, body.new_username)
+            target = body.new_username.strip().casefold()
+        if body.name is not None:
+            store.set_name(target, body.name)
+        if body.role is not None:
+            # Protect the admin against demoting the account they are logged
+            # in with: there is no "that was a typo" if the UI reloads under
+            # the plain officer role.
+            if (target == admin["username"]
+                    and body.role != store.ADMIN):
+                raise HTTPException(
+                    400,
+                    "You cannot demote your own account. Promote another "
+                    "officer to admin first, then demote this one from the "
+                    "other login.",
+                )
+            store.set_role(target, body.role)
+    except LookupError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    row = next(
+        (u for u in store.list_officers() if u["username"] == target), None
+    )
+    if not row:
+        raise HTTPException(404, f'No officer "{target}" after update.')
+    return row
+
+
+@router.put("/users/{username}/password", status_code=204)
+def reset_user_password(username: str, body: ResetPassword, admin: AdminUser):
+    """Admin-driven password reset for someone else. Revokes their sessions
+    so they must sign in again with the new password."""
+    try:
+        store.set_password(username, body.new_password)
+    except LookupError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@router.delete("/users/{username}", status_code=204)
+def delete_user(username: str, admin: AdminUser):
+    target = username.strip().casefold()
+    # Deleting the account you are logged into would log you out mid-request
+    # and leave the panel confused. Blocked explicitly here — the admin can
+    # ask another admin to delete it, or demote and then delete.
+    if target == admin["username"]:
+        raise HTTPException(
+            400,
+            "You cannot delete your own account. Ask another administrator "
+            "to delete it, or sign out first.",
+        )
+    try:
+        store.delete_officer(target)
+    except LookupError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
 
 
 def _dedup_sources(sources):

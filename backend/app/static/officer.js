@@ -277,9 +277,20 @@
       ? '<div class="sample-banner">Design preview · Fictional sample records. Changes stay in this preview; no official action is taken.</div>'
       : "";
   function header() {
-    account.innerHTML = user
-      ? `<div class="account-name">${esc(user.name)}<small>${esc(user.role)}</small></div><button class="hbtn" id="logout">Log out</button>`
-      : '<a class="hbtn" href="/#home">← Citizen Portal</a>';
+    if (!user) {
+      account.innerHTML = '<a class="hbtn" href="/#home">← Citizen Portal</a>';
+      return;
+    }
+    const adminLink = user.role === "admin"
+      ? '<a class="hbtn ghost" href="/officer/admin" data-go>Admin panel</a>'
+      : "";
+    const accountLink =
+      '<a class="hbtn ghost" href="/officer/account" data-go>My account</a>';
+    account.innerHTML =
+      `<div class="account-name">${esc(user.name)}` +
+      `<small>${esc(user.title || user.role)}</small></div>` +
+      `${adminLink}${accountLink}` +
+      '<button class="hbtn" id="logout">Log out</button>';
     document.getElementById("logout")?.addEventListener("click", async () => {
       try {
         if (!demo) await api("/logout", { method: "POST" });
@@ -294,18 +305,11 @@
   }
   function login() {
     header();
-    /* DEMO CREDENTIALS, FILLED IN ALREADY. Asked for so the portal can be
-       opened at a demonstration without anybody typing: the page loads with
-       both fields populated and the reviewer presses Sign In.
-
-       They sit here, named and together, so that taking them out before this
-       portal is in front of real citizens' petitions is a two-line deletion
-       and not a search through a template string. Anyone who opens this page
-       can read them, which is the point at a demonstration and a liability
-       anywhere else. */
-    const DEMO_USERNAME = "Review officer";
-    const DEMO_PASSWORD = "Review@12345";  // 12 chars: the officer store refuses anything shorter.
-    main.innerHTML = `${banner()}<div class="login-layout"><section class="login-copy"><p class="eyebrow">A CLEARER PATH TO ACTION</p><h2>Every petition deserves a thoughtful review.</h2><p>A dedicated workspace to understand citizen concerns, review supporting documents and identify the right next step.</p><div class="service-points"><span><b>01</b>Petitions and acknowledgements, together</span><span><b>02</b>Original documents, always in focus</span><span><b>03</b>Source-backed information for your review</span></div></section><section class="panel login-card"><p class="eyebrow">OFFICER PORTAL</p><h2>Welcome back</h2><p class="muted">Secure access for petition review and processing</p><form id="loginForm"><div class="field"><label for="username">Email / Username</label><input id="username" name="username" autocomplete="username" required maxlength="150" placeholder="Enter your official username" value="${DEMO_USERNAME}"></div><div class="field"><label for="password">Password</label><div class="password-wrap"><input type="password" id="password" autocomplete="current-password" required maxlength="256" placeholder="Enter your password" value="${DEMO_PASSWORD}"><button type="button" id="showPassword" aria-label="Show password">Show</button></div></div><p class="error" id="loginError" role="alert"></p><button class="hbtn primary wide" type="submit">Sign In →</button></form><div class="login-foot"><a href="/#home">← Back to Citizen Portal</a><p class="muted">Need access? Contact your system administrator.</p></div></section></div>`;
+    /* No pre-filled credentials. The portal is live in front of real
+       citizens' petitions: a username and password printed into the markup
+       is a liability now, not a convenience. The admin panel at
+       /officer/admin is where new logins are created from here on. */
+    main.innerHTML = `${banner()}<div class="login-layout"><section class="login-copy"><p class="eyebrow">A CLEARER PATH TO ACTION</p><h2>Every petition deserves a thoughtful review.</h2><p>A dedicated workspace to understand citizen concerns, review supporting documents and identify the right next step.</p><div class="service-points"><span><b>01</b>Petitions and acknowledgements, together</span><span><b>02</b>Original documents, always in focus</span><span><b>03</b>Source-backed information for your review</span></div></section><section class="panel login-card"><p class="eyebrow">OFFICER PORTAL</p><h2>Welcome back</h2><p class="muted">Secure access for petition review and processing</p><form id="loginForm"><div class="field"><label for="username">Email / Username</label><input id="username" name="username" autocomplete="username" required maxlength="150" placeholder="Enter your official username" autofocus></div><div class="field"><label for="password">Password</label><div class="password-wrap"><input type="password" id="password" autocomplete="current-password" required maxlength="256" placeholder="Enter your password"><button type="button" id="showPassword" aria-label="Show password">Show</button></div></div><p class="error" id="loginError" role="alert"></p><button class="hbtn primary wide" type="submit">Sign In →</button></form><div class="login-foot"><a href="/#home">← Back to Citizen Portal</a><p class="muted">Need access? Ask an administrator to create one.</p></div></section></div>`;
     document.getElementById("showPassword").onclick = (e) => {
       const p = document.getElementById("password");
       p.type = p.type === "password" ? "text" : "password";
@@ -318,7 +322,7 @@
       b.disabled = true;
       try {
         user = demo
-          ? { name: "Sample Officer", role: "Review officer" }
+          ? { name: "Sample Officer", role: "officer", title: "Review officer" }
           : await api("/login", {
               method: "POST",
               body: JSON.stringify({
@@ -807,6 +811,250 @@
       : await api("/acknowledgements/" + encodeURIComponent(id));
     main.innerHTML = `${banner()}<a data-go href="${url("/officer/dashboard")}">← Officer dashboard</a><h2>Acknowledgement</h2><div class="review-grid"><article class="paper"><p class="eyebrow">${demo ? "SAMPLE RECEIPT" : "RECORDED ACKNOWLEDGEMENT"}</p><h2>${esc(a.reference || "Reference not recorded")}</h2><p>Linked petition: <a data-go href="${url("/officer/petitions/" + encodeURIComponent(a.petition_id))}">${esc(a.petition_reference)}</a></p><dl class="details"><dt>Petitioner</dt><dd>${esc(a.petitioner_name)}</dd><dt>Department</dt><dd>${esc(a.department || "Not recorded")}</dd><dt>Date</dt><dd>${esc(date(a.created_at))}</dd><dt>Status</dt><dd>${badge(a.status)}</dd></dl><h4>Receipt preview</h4><p>${esc(a.text || "Open the original supporting document to review the acknowledgement receipt.")}</p>${a.url ? `<a class="hbtn" target="_blank" rel="noopener" href="${esc(a.url)}">View original receipt ↗</a>` : ""}</article><section class="panel"><h3>Linked petition</h3><p>${esc(a.petition_reference)}</p><a class="hbtn" data-go href="${url("/officer/petitions/" + encodeURIComponent(a.petition_id))}">Open petition →</a><p class="muted">A recorded receipt is evidence of a previous submission; it does not confirm resolution.</p></section></div>`;
   }
+  /* ---------- Admin panel + account page ------------------------------ */
+
+  function roleBadge(role) {
+    const kind = role === "admin" ? "admin" : "officer";
+    const label = role === "admin" ? "Administrator" : "Review officer";
+    return `<span class="role-badge role-${kind}">${label}</span>`;
+  }
+
+  async function adminPanel() {
+    if (user.role !== "admin") {
+      main.innerHTML =
+        '<section class="panel empty"><h2>Administrator access is required</h2>' +
+        '<p>Your account does not have user-management rights. Ask an administrator ' +
+        'if you need to add or edit officer logins.</p>' +
+        '<a class="hbtn" href="/officer/dashboard" data-go>Back to petitions</a></section>';
+      return;
+    }
+    let users = [];
+    try {
+      users = (await api("/users")).users || [];
+    } catch (e) {
+      main.innerHTML = `<section class="panel empty"><h2>Could not load users</h2><p>${esc(e.message)}</p></section>`;
+      return;
+    }
+    const rows = users.map((u) => `
+      <tr data-username="${esc(u.username)}">
+        <td>${esc(u.name)}</td>
+        <td class="monospace">${esc(u.username)}</td>
+        <td>${roleBadge(u.role)}</td>
+        <td class="row-actions">
+          <button class="hbtn ghost small" data-edit="${esc(u.username)}">Edit</button>
+          <button class="hbtn ghost small" data-pw="${esc(u.username)}">Reset password</button>
+          <button class="hbtn danger small" data-del="${esc(u.username)}" ${u.username === user.username ? "disabled title='You cannot delete your own account'" : ""}>Delete</button>
+        </td>
+      </tr>`).join("");
+    main.innerHTML = `
+      <section class="panel admin-panel">
+        <header class="admin-head">
+          <div>
+            <p class="eyebrow">OFFICER PORTAL · ADMIN</p>
+            <h2>User management</h2>
+            <p class="muted">Add officers, change their roles and reset passwords without touching GitHub.</p>
+          </div>
+          <button class="hbtn primary" id="newUser">+ Add officer</button>
+        </header>
+        <table class="admin-users">
+          <thead><tr><th>Name</th><th>Username</th><th>Role</th><th></th></tr></thead>
+          <tbody>${rows || '<tr><td colspan="4" class="muted">No officers yet.</td></tr>'}</tbody>
+        </table>
+        <div id="adminDialog"></div>
+      </section>`;
+
+    document.getElementById("newUser").onclick = () => showCreateDialog();
+    document.querySelectorAll("[data-edit]").forEach((b) => {
+      b.onclick = () => showEditDialog(users.find((u) => u.username === b.dataset.edit));
+    });
+    document.querySelectorAll("[data-pw]").forEach((b) => {
+      b.onclick = () => showResetDialog(b.dataset.pw);
+    });
+    document.querySelectorAll("[data-del]").forEach((b) => {
+      if (b.disabled) return;
+      b.onclick = async () => {
+        const name = b.closest("tr").querySelector("td").textContent;
+        if (!confirm(`Delete the "${name}" account? This cannot be undone.`)) return;
+        try {
+          await api(`/users/${encodeURIComponent(b.dataset.del)}`, { method: "DELETE" });
+          notify(`Deleted ${name}.`, "ok");
+          adminPanel();
+        } catch (e) {
+          notify(e.message, "err");
+        }
+      };
+    });
+  }
+
+  function dialogShell(title, body) {
+    const host = document.getElementById("adminDialog");
+    host.innerHTML = `
+      <div class="dialog-backdrop" id="dialogBack">
+        <div class="dialog" role="dialog" aria-modal="true" aria-label="${esc(title)}">
+          <header><h3>${esc(title)}</h3><button class="hbtn ghost small" id="dialogClose" aria-label="Close">×</button></header>
+          <div class="dialog-body">${body}</div>
+        </div>
+      </div>`;
+    const close = () => (host.innerHTML = "");
+    document.getElementById("dialogClose").onclick = close;
+    document.getElementById("dialogBack").onclick = (e) => {
+      if (e.target.id === "dialogBack") close();
+    };
+    return close;
+  }
+
+  function showCreateDialog() {
+    const close = dialogShell("Add an officer", `
+      <form id="createForm" class="form-stack">
+        <label>Display name<input id="newName" required maxlength="150" placeholder="e.g. Ravi Kumar"></label>
+        <label>Username<input id="newUsername" required maxlength="64" placeholder="lowercase, 3–64 chars, letters/digits/._-"></label>
+        <label>Password<input id="newPassword" type="password" required minlength="12" maxlength="256" placeholder="At least 12 characters"></label>
+        <label>Role
+          <select id="newRole">
+            <option value="officer" selected>Review officer</option>
+            <option value="admin">Administrator</option>
+          </select>
+        </label>
+        <p class="error" id="createError" role="alert"></p>
+        <div class="dialog-actions">
+          <button type="button" class="hbtn ghost" id="createCancel">Cancel</button>
+          <button type="submit" class="hbtn primary">Create</button>
+        </div>
+      </form>`);
+    document.getElementById("createCancel").onclick = close;
+    document.getElementById("createForm").onsubmit = async (e) => {
+      e.preventDefault();
+      try {
+        await api("/users", {
+          method: "POST",
+          body: JSON.stringify({
+            username: document.getElementById("newUsername").value,
+            name: document.getElementById("newName").value,
+            password: document.getElementById("newPassword").value,
+            role: document.getElementById("newRole").value,
+          }),
+        });
+        close();
+        notify("Officer created.", "ok");
+        adminPanel();
+      } catch (err) {
+        document.getElementById("createError").textContent = err.message;
+      }
+    };
+  }
+
+  function showEditDialog(u) {
+    const isSelf = u.username === user.username;
+    const close = dialogShell(`Edit "${u.name}"`, `
+      <form id="editForm" class="form-stack">
+        <label>Display name<input id="editName" value="${esc(u.name)}" required maxlength="150"></label>
+        <label>Username<input id="editUsername" value="${esc(u.username)}" required maxlength="64"></label>
+        <label>Role
+          <select id="editRole" ${isSelf ? "disabled title='You cannot change your own role'" : ""}>
+            <option value="officer" ${u.role === "officer" ? "selected" : ""}>Review officer</option>
+            <option value="admin" ${u.role === "admin" ? "selected" : ""}>Administrator</option>
+          </select>
+        </label>
+        ${isSelf ? '<p class="muted small">You cannot change your own role. Ask another administrator, or promote someone else and then demote yourself.</p>' : ""}
+        <p class="error" id="editError" role="alert"></p>
+        <div class="dialog-actions">
+          <button type="button" class="hbtn ghost" id="editCancel">Cancel</button>
+          <button type="submit" class="hbtn primary">Save changes</button>
+        </div>
+      </form>`);
+    document.getElementById("editCancel").onclick = close;
+    document.getElementById("editForm").onsubmit = async (e) => {
+      e.preventDefault();
+      try {
+        const payload = {
+          name: document.getElementById("editName").value,
+          new_username: document.getElementById("editUsername").value,
+        };
+        if (!isSelf) payload.role = document.getElementById("editRole").value;
+        await api(`/users/${encodeURIComponent(u.username)}`, {
+          method: "PATCH",
+          body: JSON.stringify(payload),
+        });
+        close();
+        notify("Changes saved.", "ok");
+        adminPanel();
+      } catch (err) {
+        document.getElementById("editError").textContent = err.message;
+      }
+    };
+  }
+
+  function showResetDialog(username) {
+    const close = dialogShell(`Reset password for ${username}`, `
+      <form id="resetForm" class="form-stack">
+        <p class="muted small">Setting a new password here will sign this user out of every current session.</p>
+        <label>New password<input id="resetPw" type="password" required minlength="12" maxlength="256" placeholder="At least 12 characters"></label>
+        <p class="error" id="resetError" role="alert"></p>
+        <div class="dialog-actions">
+          <button type="button" class="hbtn ghost" id="resetCancel">Cancel</button>
+          <button type="submit" class="hbtn primary">Reset password</button>
+        </div>
+      </form>`);
+    document.getElementById("resetCancel").onclick = close;
+    document.getElementById("resetForm").onsubmit = async (e) => {
+      e.preventDefault();
+      try {
+        await api(`/users/${encodeURIComponent(username)}/password`, {
+          method: "PUT",
+          body: JSON.stringify({ new_password: document.getElementById("resetPw").value }),
+        });
+        close();
+        notify("Password reset.", "ok");
+      } catch (err) {
+        document.getElementById("resetError").textContent = err.message;
+      }
+    };
+  }
+
+  function accountPanel() {
+    main.innerHTML = `
+      <section class="panel account-panel">
+        <header>
+          <p class="eyebrow">OFFICER PORTAL</p>
+          <h2>My account</h2>
+          <p class="muted">You are signed in as <strong>${esc(user.name)}</strong> (<span class="monospace">${esc(user.username)}</span>). Role: ${roleBadge(user.role)}</p>
+        </header>
+        <form id="accountForm" class="form-stack">
+          <h3>Change my password</h3>
+          <label>Current password<input id="curPw" type="password" autocomplete="current-password" required maxlength="256"></label>
+          <label>New password<input id="newPw" type="password" autocomplete="new-password" required minlength="12" maxlength="256" placeholder="At least 12 characters"></label>
+          <label>Confirm new password<input id="confirmPw" type="password" autocomplete="new-password" required minlength="12" maxlength="256"></label>
+          <p class="error" id="accountError" role="alert"></p>
+          <div class="dialog-actions">
+            <button type="submit" class="hbtn primary">Change password</button>
+          </div>
+        </form>
+      </section>`;
+    document.getElementById("accountForm").onsubmit = async (e) => {
+      e.preventDefault();
+      const errEl = document.getElementById("accountError");
+      errEl.textContent = "";
+      const newPw = document.getElementById("newPw").value;
+      if (newPw !== document.getElementById("confirmPw").value) {
+        errEl.textContent = "The two new-password entries do not match.";
+        return;
+      }
+      try {
+        await api("/me/password", {
+          method: "POST",
+          body: JSON.stringify({
+            current_password: document.getElementById("curPw").value,
+            new_password: newPw,
+          }),
+        });
+        notify("Password changed. Your other sessions have been signed out.", "ok");
+        document.getElementById("accountForm").reset();
+      } catch (err) {
+        errEl.textContent = err.message;
+      }
+    };
+  }
+
   function fail(e) {
     main.innerHTML = `<section class="panel empty"><h2>Unable to open this page</h2><p role="alert">${esc(e.message)}</p><button class="hbtn" id="retry">Try again</button> <a href="/officer/login">Return to sign in</a></section>`;
     document.getElementById("retry").onclick = render;
@@ -816,11 +1064,13 @@
       const path = location.pathname;
       if (path.endsWith("/login")) return login();
       if (!user) {
-        if (demo) user = { name: "Sample Officer", role: "Review officer" };
+        if (demo) user = { name: "Sample Officer", role: "officer", title: "Review officer" };
         else user = await api("/me");
       }
       header();
-      if (path.includes("/petitions/"))
+      if (path.endsWith("/admin")) await adminPanel();
+      else if (path.endsWith("/account")) accountPanel();
+      else if (path.includes("/petitions/"))
         await detail(decodeURIComponent(path.split("/").pop()));
       else if (path.includes("/acknowledgements/"))
         await acknowledgement(decodeURIComponent(path.split("/").pop()));

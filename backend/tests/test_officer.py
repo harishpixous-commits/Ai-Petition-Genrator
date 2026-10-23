@@ -373,3 +373,255 @@ class TestTheCatalogueNeverWidensToEverybody:
         """
         client, stranger, _ = before_any_officer_exists
         assert (await client.get(f"/api/sessions/{stranger}")).status_code == 200
+
+
+# --------------------------------------------------------------------- #
+# Admin panel. New officers, roles, passwords, deletions — all from the
+# portal, no GitHub Actions workflow needed.
+# --------------------------------------------------------------------- #
+
+
+@pytest.fixture
+async def admin_api(graph, tmp_path, monkeypatch):
+    """A client with one admin (`chief`) and one plain officer (`reviewer`)."""
+    settings = get_settings().model_copy(update={"data_dir": tmp_path})
+    monkeypatch.setattr(store, "get_settings", lambda: settings)
+    app = FastAPI()
+    for r in (officer.router, catalog.router, rest.router):
+        app.include_router(r)
+    workflow = Workflow(graph, None)
+    app.state.workflow = workflow
+    store.provision("chief", "Chief Admin", "chief-password-1234",
+                    role=store.ADMIN)
+    store.provision("reviewer", "Review Officer", "reviewer-password-1234")
+    async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app),
+            base_url="http://test") as client:
+        yield client
+
+
+async def _sign_in(client, username, password):
+    response = await client.post(
+        "/api/officer/login",
+        json={"username": username, "password": password},
+    )
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+class TestTheRoleColumnIsThereAfterUpgrade:
+    """Deployments before the admin panel had no role column. The migration
+    adds it in place and leaves pre-existing officers as admin — demoting
+    them silently would lock the operator out of their own portal."""
+
+    def test_pre_role_deployments_grandfather_to_admin(
+            self, tmp_path, monkeypatch):
+        import sqlite3
+        settings = get_settings().model_copy(update={"data_dir": tmp_path})
+        monkeypatch.setattr(store, "get_settings", lambda: settings)
+        tmp_path.mkdir(parents=True, exist_ok=True)
+        db_path = tmp_path / "officer.sqlite"
+        db = sqlite3.connect(db_path)
+        db.executescript(
+            "CREATE TABLE officers("
+            " username TEXT PRIMARY KEY, name TEXT NOT NULL,"
+            " salt TEXT NOT NULL, password TEXT NOT NULL,"
+            " enabled INTEGER NOT NULL DEFAULT 1);"
+        )
+        db.execute(
+            "INSERT INTO officers VALUES(?,?,?,?,1)",
+            ("legacy", "Legacy Operator", "00" * 16, "00" * 32),
+        )
+        db.commit()
+        db.close()
+
+        officers = store.list_officers()
+        assert len(officers) == 1
+        assert officers[0]["username"] == "legacy"
+        assert officers[0]["role"] == store.ADMIN
+
+
+class TestWhoCanReachTheAdminPanel:
+    async def test_a_plain_officer_cannot_list_users(self, admin_api):
+        await _sign_in(admin_api, "reviewer", "reviewer-password-1234")
+        response = await admin_api.get("/api/officer/users")
+        assert response.status_code == 403
+        assert "Administrator" in response.json()["detail"]
+
+    async def test_an_admin_can_list_users(self, admin_api):
+        await _sign_in(admin_api, "chief", "chief-password-1234")
+        response = await admin_api.get("/api/officer/users")
+        assert response.status_code == 200
+        usernames = {u["username"] for u in response.json()["users"]}
+        assert usernames == {"chief", "reviewer"}
+
+    async def test_the_signed_out_browser_is_asked_to_sign_in(self, admin_api):
+        response = await admin_api.get("/api/officer/users")
+        assert response.status_code == 401
+
+
+class TestCreatingAnOfficer:
+    async def test_an_admin_can_create_a_new_officer(self, admin_api):
+        await _sign_in(admin_api, "chief", "chief-password-1234")
+        response = await admin_api.post("/api/officer/users", json={
+            "username": "ravi",
+            "name": "Ravi Kumar",
+            "password": "a-password-with-plenty",
+            "role": "officer",
+        })
+        assert response.status_code == 201, response.text
+        row = response.json()
+        assert row["username"] == "ravi"
+        assert row["role"] == "officer"
+        await admin_api.post("/api/officer/logout")
+        confirm = await admin_api.post("/api/officer/login", json={
+            "username": "ravi", "password": "a-password-with-plenty",
+        })
+        assert confirm.status_code == 200
+
+    async def test_a_duplicate_username_is_refused(self, admin_api):
+        await _sign_in(admin_api, "chief", "chief-password-1234")
+        response = await admin_api.post("/api/officer/users", json={
+            "username": "reviewer",
+            "name": "Someone Else",
+            "password": "anotherpassword-plenty",
+        })
+        assert response.status_code == 400
+        assert "already taken" in response.json()["detail"]
+
+    async def test_a_short_password_is_refused(self, admin_api):
+        await _sign_in(admin_api, "chief", "chief-password-1234")
+        response = await admin_api.post("/api/officer/users", json={
+            "username": "shorty",
+            "name": "Short",
+            "password": "short",
+        })
+        assert response.status_code == 422
+
+    @pytest.mark.parametrize(
+        "bad",
+        ["ab", "has space", "has/slash", "unicöde", "_leading"],
+    )
+    async def test_invalid_usernames_are_refused(self, admin_api, bad):
+        await _sign_in(admin_api, "chief", "chief-password-1234")
+        response = await admin_api.post("/api/officer/users", json={
+            "username": bad,
+            "name": "Bad Name",
+            "password": "fine-password-1234",
+        })
+        assert response.status_code in (400, 422)
+
+
+class TestEditingAnOfficer:
+    async def test_an_admin_can_rename_and_change_a_display_name(
+            self, admin_api):
+        await _sign_in(admin_api, "chief", "chief-password-1234")
+        response = await admin_api.patch("/api/officer/users/reviewer", json={
+            "name": "Reviewer Renamed",
+            "new_username": "reviewer2",
+        })
+        assert response.status_code == 200, response.text
+        assert response.json()["username"] == "reviewer2"
+        assert response.json()["name"] == "Reviewer Renamed"
+        assert {u["username"] for u in store.list_officers()} == {
+            "chief", "reviewer2",
+        }
+
+    async def test_promoting_and_demoting_an_officer(self, admin_api):
+        await _sign_in(admin_api, "chief", "chief-password-1234")
+        promote = await admin_api.patch(
+            "/api/officer/users/reviewer", json={"role": "admin"})
+        assert promote.status_code == 200
+        assert promote.json()["role"] == "admin"
+        demote = await admin_api.patch(
+            "/api/officer/users/reviewer", json={"role": "officer"})
+        assert demote.status_code == 200
+        assert demote.json()["role"] == "officer"
+
+
+class TestTheLastAdminIsProtected:
+    async def test_an_admin_cannot_demote_their_own_account(self, admin_api):
+        await _sign_in(admin_api, "chief", "chief-password-1234")
+        response = await admin_api.patch(
+            "/api/officer/users/chief", json={"role": "officer"})
+        assert response.status_code == 400
+        assert "own account" in response.json()["detail"]
+
+    async def test_the_last_admin_rule_holds_from_a_second_admin(
+            self, admin_api):
+        await _sign_in(admin_api, "chief", "chief-password-1234")
+        await admin_api.patch(
+            "/api/officer/users/reviewer", json={"role": "admin"})
+        await admin_api.post("/api/officer/logout")
+        await _sign_in(admin_api, "reviewer", "reviewer-password-1234")
+        await admin_api.patch(
+            "/api/officer/users/chief", json={"role": "officer"})
+        last = await admin_api.patch(
+            "/api/officer/users/reviewer", json={"role": "officer"})
+        assert last.status_code == 400
+        assert "own account" in last.json()["detail"]
+
+    async def test_the_last_admin_cannot_be_deleted(self, admin_api):
+        await _sign_in(admin_api, "chief", "chief-password-1234")
+        response = await admin_api.delete("/api/officer/users/chief")
+        assert response.status_code == 400
+        assert "own account" in response.json()["detail"]
+
+
+class TestPasswords:
+    async def test_an_admin_can_reset_someone_elses_password(
+            self, admin_api):
+        await _sign_in(admin_api, "chief", "chief-password-1234")
+        reset = await admin_api.put(
+            "/api/officer/users/reviewer/password",
+            json={"new_password": "a-new-reset-password"})
+        assert reset.status_code == 204
+        bad = await admin_api.post("/api/officer/login", json={
+            "username": "reviewer", "password": "reviewer-password-1234"})
+        assert bad.status_code == 401
+        good = await admin_api.post("/api/officer/login", json={
+            "username": "reviewer", "password": "a-new-reset-password"})
+        assert good.status_code == 200
+
+    async def test_an_officer_can_change_their_own_password(self, admin_api):
+        await _sign_in(admin_api, "reviewer", "reviewer-password-1234")
+        response = await admin_api.post("/api/officer/me/password", json={
+            "current_password": "reviewer-password-1234",
+            "new_password": "the-brand-new-password",
+        })
+        assert response.status_code == 204
+        bad = await admin_api.post("/api/officer/login", json={
+            "username": "reviewer", "password": "reviewer-password-1234"})
+        assert bad.status_code == 401
+        good = await admin_api.post("/api/officer/login", json={
+            "username": "reviewer", "password": "the-brand-new-password"})
+        assert good.status_code == 200
+
+    async def test_the_current_password_must_be_correct(self, admin_api):
+        await _sign_in(admin_api, "reviewer", "reviewer-password-1234")
+        response = await admin_api.post("/api/officer/me/password", json={
+            "current_password": "wrong-password",
+            "new_password": "the-brand-new-password",
+        })
+        assert response.status_code == 400
+        assert "incorrect" in response.json()["detail"].lower()
+
+    async def test_a_new_password_must_differ_from_the_current_one(
+            self, admin_api):
+        await _sign_in(admin_api, "reviewer", "reviewer-password-1234")
+        response = await admin_api.post("/api/officer/me/password", json={
+            "current_password": "reviewer-password-1234",
+            "new_password": "reviewer-password-1234",
+        })
+        assert response.status_code == 400
+
+
+class TestDeletion:
+    async def test_an_admin_can_delete_an_officer(self, admin_api):
+        await _sign_in(admin_api, "chief", "chief-password-1234")
+        response = await admin_api.delete("/api/officer/users/reviewer")
+        assert response.status_code == 204
+        assert {u["username"] for u in store.list_officers()} == {"chief"}
+        try_login = await admin_api.post("/api/officer/login", json={
+            "username": "reviewer", "password": "reviewer-password-1234"})
+        assert try_login.status_code == 401
