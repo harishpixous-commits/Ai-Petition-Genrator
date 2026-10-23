@@ -749,6 +749,73 @@ def validate_field(field_type: str, raw: str) -> FieldResult:
     return validator(raw)
 
 
+#: Short filler words that stay lowercase in a Title Cased name or address,
+#: unless they lead the string. "80/33 Perumal Kovil Street" reads as a Place;
+#: "The House Of Representatives" reads as a nineteenth-century schoolbook.
+_LOWERCASE_FILLERS = frozenset({
+    "a", "an", "and", "at", "by", "for", "in", "of", "on", "or", "the", "to",
+    "near", "opposite", "via",
+})
+
+#: Short tokens that should stay all-uppercase after Title Case. "no." for
+#: door numbers is left alone (it already carries a dot); these are the ones
+#: that would look wrong as "Dr" or "Tn".
+_UPPERCASE_TOKENS = frozenset({"tn", "dc", "sc", "st", "mla", "mp", "lic"})
+
+_SMART_SPLIT = re.compile(r"(\s+|[,/.-])")
+
+
+def smart_titlecase(text: str) -> str:
+    """Title-case a Latin-script name or address without touching Tamil / Hindi /
+    Telugu / Malayalam.
+
+    Rules — chosen so a petition reads like a document, not a schoolbook:
+      * tokens with at least one non-ASCII character are returned unchanged
+        (Tamil names, Devanagari addresses — those have their own rendering);
+      * the first token is always capitalised;
+      * `_LOWERCASE_FILLERS` ("of", "and", "to", "near", ...) stay lowercase
+        when they appear mid-string;
+      * `_UPPERCASE_TOKENS` ("TN", "LIC", "MLA", ...) become uppercase;
+      * door numbers like "80/33" and tokens with internal digits are left
+        exactly as the citizen typed them;
+      * excess whitespace is collapsed and spacing around commas is cleaned
+        up ("perumal kovil street , theni" → "Perumal Kovil Street, Theni").
+
+    The returned string is purely for DISPLAY. The stored value is unchanged;
+    switching back to raw storage is a one-attribute read.
+    """
+    text = str(text or "").strip()
+    if not text:
+        return ""
+    if any(ord(c) > 0x7F for c in text):
+        return text   # non-Latin — leave to the Indic-script dispatcher
+    text = re.sub(r"\s*,\s*", ", ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    tokens = _SMART_SPLIT.split(text)
+    out: list[str] = []
+    seen_word = False
+    for tok in tokens:
+        if not tok:
+            continue
+        if tok.isspace() or tok in {",", "/", "-", "."}:
+            out.append(tok)
+            continue
+        lower = tok.lower()
+        if any(c.isdigit() for c in tok):
+            # Door numbers / pins / years stay as typed.
+            out.append(tok)
+            seen_word = True
+            continue
+        if lower in _UPPERCASE_TOKENS:
+            out.append(lower.upper())
+        elif not seen_word or lower not in _LOWERCASE_FILLERS:
+            out.append(lower[:1].upper() + lower[1:])
+        else:
+            out.append(lower)
+        seen_word = True
+    return "".join(out)
+
+
 def display_value(field_type: str, value: Any, language: str = "en") -> str:
     """How a validated value is read back to a citizen for confirmation.
 
@@ -795,5 +862,22 @@ def display_value(field_type: str, value: Any, language: str = "en") -> str:
         # dispatcher returns the value unchanged for a language with none.
         from . import indic_tables  # noqa: F401
         from .indic_script import for_language as in_script
-        return in_script(str(value), language)
+        rendered = in_script(str(value), language)
+        # For English (or any language where the Indic dispatcher returned the
+        # Latin spelling unchanged), Title Case the name/address so a petition
+        # reads "80/33, Perumal Kovil Street, Theni" instead of the citizen's
+        # lower-case keyboard input. Non-Latin scripts are already returned
+        # unchanged by `smart_titlecase` — see its guard.
+        if language == "en" or rendered == str(value):
+            rendered = smart_titlecase(rendered)
+        if field_type == "address" and (language == "en" or rendered == str(value)):
+            # Separate a leading door number from the street name so a raw
+            # entry like "80/33 perumal kovil street, theni" prints as
+            # "80/33, Perumal Kovil Street, Theni". Existing punctuation and
+            # nonnumeric openings are left as entered.
+            rendered = re.sub(
+                r"^(\d+(?:/\d+)?(?:-\d+)?)\s+(?=[A-Z])",
+                r"\1, ", rendered,
+            )
+        return rendered
     return str(value)

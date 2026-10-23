@@ -97,6 +97,38 @@
       <div><span class="action-eyebrow" id="homeCreateEyebrow" data-i18n="homeCreateEyebrow">START SOMETHING NEW</span><h3 id="homeCreateTitle" data-i18n="homeCreateTitle">Create a petition</h3><p id="homeCreateDescription" data-i18n="homeCreateDescription">A guided conversation, a complete draft, and a document ready for your review.</p></div>
       <span class="action-arrow" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M5 12h14m-6-6 6 6-6 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
     </a>
+    <section class="home-action-card track-action" aria-labelledby="trackTitle">
+      <span class="home-action-icon track-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><circle cx="10.8" cy="10.8" r="6.3" stroke="currentColor" stroke-width="1.8"/><path d="m15.5 15.5 4.2 4.2M8.2 10.8h5.2M10.8 8.2v5.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></span>
+      <div class="track-card-content">
+        <span class="action-eyebrow" data-track-label="trackEyebrow">PETITION UPDATES</span>
+        <h3 id="trackTitle" data-track-label="trackTitle">Track your petition</h3>
+        <p data-track-label="trackDescription">Enter the reference number printed on your petition.</p>
+        <form id="trackForm" class="track-form">
+          <label class="sr-only" for="trackReferenceInput" data-track-label="trackReferenceLabel">Petition reference number</label>
+          <input id="trackReferenceInput" name="reference" autocomplete="off" maxlength="40" placeholder="AP/2026/B38DBC" aria-describedby="trackError" required>
+          <button class="btn primary" id="trackLookupButton" type="submit" data-track-label="trackLookup">Track</button>
+        </form>
+        <p class="track-error" id="trackError" role="alert" hidden></p>
+      </div>
+      <section class="track-result" id="trackResult" aria-live="polite" hidden>
+        <div class="track-result-heading"><div><span class="action-eyebrow" data-track-label="trackResultEyebrow">PETITION STATUS</span><h4 id="trackResultReference"></h4></div><span class="track-status" id="trackResultStatus"></span></div>
+        <p class="track-result-date"><span data-track-label="trackDateLabel">Submitted</span>: <time id="trackResultDate"></time></p>
+        <p class="track-result-subject"><strong data-track-label="trackSubjectLabel">Subject</strong>: <span id="trackResultSubject"></span></p>
+        <ol class="track-steps" id="trackSteps" aria-label="Petition progress">
+          <li data-step="0" data-track-label="trackStepSubmitted">Submitted</li>
+          <li data-step="1" data-track-label="trackStepAcknowledged">Acknowledged</li>
+          <li data-step="2" data-track-label="trackStepRouted">Routed to Department</li>
+          <li data-step="3" data-track-label="trackStepReview">Under Review</li>
+          <li data-step="4" data-track-label="trackStepResolved">Resolved</li>
+        </ol>
+        <dl class="track-details">
+          <dt data-track-label="trackDepartmentLabel">Assigned Department</dt><dd id="trackResultDepartment"></dd>
+          <dt data-track-label="trackAuthorityLabel">Assigned Authority</dt><dd id="trackResultAuthority"></dd>
+          <dt data-track-label="trackSlaLabel">SLA target</dt><dd id="trackResultSla"></dd>
+          <dt data-track-label="trackReplyLabel">Official reply</dt><dd id="trackResultReply"></dd>
+        </dl>
+      </section>
+    </section>
   </div>
 
 
@@ -138,7 +170,7 @@
 <main class="workspace">
   <!-- LEFT: conversation, or the finished document once there is one -->
   <div class="left">
-    <section class="card" id="chatCard" style="flex:1">
+    <section class="card chat-card" id="chatCard">
       <div class="card-head">
         <div class="ai-badge" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5L12 3Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg></div>
         <div>
@@ -201,7 +233,7 @@
                thing: another way of putting something into the petition, and
                available whenever the citizen happens to have it in their hand
                rather than only at one step. -->
-          <button class="icon-btn" id="attachBtn" type="button">
+          <button class="icon-btn" id="attachBtn" type="button" title="Attach a file" aria-label="Attach a file">
             <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
               <path d="M18.4 11.3 12 17.7a4.5 4.5 0 0 1-6.4-6.4l7.1-7a3 3 0 0 1 4.3 4.2l-7.1 7.1a1.5 1.5 0 0 1-2.1-2.1l6.3-6.4"
                     stroke="currentColor" stroke-width="1.7" stroke-linecap="round"
@@ -250,32 +282,32 @@
         <div class="gp-body">
           <div class="gp-block">
             <span class="gp-tag" id="gp-from">From</span>
-            <div class="gp-line w70"><i style="animation-delay:.10s"></i></div>
-            <div class="gp-line w85"><i style="animation-delay:.35s"></i></div>
+            <div class="gp-line w70 delay-1"><i></i></div>
+            <div class="gp-line w85 delay-2"><i></i></div>
           </div>
           <div class="gp-block">
             <span class="gp-tag" id="gp-to">To</span>
-            <div class="gp-line w60"><i style="animation-delay:.70s"></i></div>
-            <div class="gp-line w50"><i style="animation-delay:.95s"></i></div>
+            <div class="gp-line w60 delay-3"><i></i></div>
+            <div class="gp-line w50 delay-4"><i></i></div>
           </div>
           <div class="gp-block">
-            <div class="gp-line w90 strong"><i style="animation-delay:1.30s"></i></div>
+            <div class="gp-line w90 strong delay-5"><i></i></div>
           </div>
           <div class="gp-block">
-            <div class="gp-line w95"><i style="animation-delay:1.70s"></i></div>
-            <div class="gp-line w88"><i style="animation-delay:1.90s"></i></div>
-            <div class="gp-line w92 mark"><i style="animation-delay:2.10s"></i></div>
-            <div class="gp-line w75"><i style="animation-delay:2.30s"></i></div>
+            <div class="gp-line w95 delay-6"><i></i></div>
+            <div class="gp-line w88 delay-7"><i></i></div>
+            <div class="gp-line w92 mark delay-8"><i></i></div>
+            <div class="gp-line w75 delay-9"><i></i></div>
           </div>
           <div class="gp-block">
-            <div class="gp-line w90"><i style="animation-delay:2.55s"></i></div>
-            <div class="gp-line w95"><i style="animation-delay:2.75s"></i></div>
-            <div class="gp-line w85"><i style="animation-delay:2.95s"></i></div>
-            <div class="gp-line w60"><i style="animation-delay:3.15s"></i></div>
+            <div class="gp-line w90 delay-10"><i></i></div>
+            <div class="gp-line w95 delay-11"><i></i></div>
+            <div class="gp-line w85 delay-12"><i></i></div>
+            <div class="gp-line w60 delay-13"><i></i></div>
           </div>
           <div class="gp-block">
-            <div class="gp-line w40"><i style="animation-delay:3.45s"></i></div>
-            <div class="gp-sign"><i style="animation-delay:3.70s"></i></div>
+            <div class="gp-line w40 delay-14"><i></i></div>
+            <div class="gp-sign delay-15"><i></i></div>
           </div>
         </div>
 
@@ -435,21 +467,27 @@
           <div>
             <h3 id="submittedTitle"></h3>
             <p id="submittedText"></p>
+            <div class="submission-details" id="submissionDetails">
+              <div class="submission-reference"><strong id="submissionReferenceLabel">Reference Number</strong><code id="submittedReference"></code><button class="btn small" id="copyReferenceBtn" type="button">Copy</button></div>
+              <p class="submission-status"><strong id="submissionStatusLabel">Current Status</strong><span id="submissionStatus"></span></p>
+              <p class="submission-sla"><strong id="submissionSlaLabel">Timeline</strong><span id="submissionSla"></span></p>
+              <button class="btn primary" id="trackSubmittedBtn" type="button" data-track-petition>Track Petition Status</button>
+            </div>
           </div>
     </section>
   </div>
 
   <!-- RIGHT: the record -->
   <aside class="right" id="detailsPanel" aria-labelledby="ui-details">
-    <section class="card" style="flex:1">
-      <div class="card-head" style="display:block">
+    <section class="card details-card">
+      <div class="card-head details-card-head">
         <div class="details-heading"><h2 id="ui-details">Petition Details</h2><span class="details-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M9 5h11M9 12h11M9 19h11M4 5h.1M4 12h.1M4 19h.1" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></span></div>
         <p class="details-hint" id="ui-detailsHint">Your details come together as we talk.</p>
         <div class="progress-note">
           <span id="progressText">0 of 6 required details collected</span>
           <span id="progressPct">0%</span>
         </div>
-        <div class="progress-track"><i id="progressBar" style="width:0%"></i></div>
+        <div class="progress-track"><progress id="progressBar" max="100" value="0"></progress></div>
       </div>
 
       <div class="card-body">

@@ -346,6 +346,74 @@ const NAV = {
     builtBy: "विकसित",
   },
 };
+const TRACK_COPY = {
+  en: {
+    trackEyebrow: "PETITION UPDATES", trackTitle: "Track your petition",
+    trackDescription: "Enter the reference number printed on your petition.",
+    trackReferenceLabel: "Petition reference number", trackLookup: "Track",
+    trackResultEyebrow: "PETITION STATUS", trackDateLabel: "Submitted", trackSubjectLabel: "Subject",
+    trackStepSubmitted: "Submitted", trackStepAcknowledged: "Acknowledged",
+    trackStepRouted: "Routed to Department", trackStepReview: "Under Review",
+    trackStepResolved: "Resolved", trackDepartmentLabel: "Assigned Department",
+    trackAuthorityLabel: "Assigned Authority", trackSlaLabel: "SLA target",
+    trackReplyLabel: "Official reply", trackError: "We could not find a submitted petition with that reference number.",
+    trackFailed: "Tracking is temporarily unavailable. Please try again.",
+    trackNoReply: "No officer reply has been recorded yet.", trackTarget: "Portal target",
+  },
+  ta: {
+    trackEyebrow: "மனு புதுப்பிப்புகள்", trackTitle: "உங்கள் மனுவின் நிலையைப் பார்க்கவும்",
+    trackDescription: "மனுவில் அச்சிடப்பட்டுள்ள குறிப்பு எண்ணை உள்ளிடவும்.",
+    trackReferenceLabel: "மனு குறிப்பு எண்", trackLookup: "தேடுக",
+    trackResultEyebrow: "மனு நிலை", trackDateLabel: "சமர்ப்பித்த தேதி", trackSubjectLabel: "பொருள்",
+    trackStepSubmitted: "சமர்ப்பிக்கப்பட்டது", trackStepAcknowledged: "பெறப்பட்டது",
+    trackStepRouted: "துறைக்கு அனுப்பப்பட்டது", trackStepReview: "பரிசீலனையில் உள்ளது",
+    trackStepResolved: "தீர்வு காணப்பட்டது", trackDepartmentLabel: "ஒதுக்கப்பட்ட துறை",
+    trackAuthorityLabel: "ஒதுக்கப்பட்ட அலுவலர்", trackSlaLabel: "இலக்கு காலவரம்பு",
+    trackReplyLabel: "அலுவலக பதில்", trackError: "இந்த குறிப்பு எண்ணில் சமர்ப்பிக்கப்பட்ட மனுவைக் காண முடியவில்லை.",
+    trackFailed: "நிலையை இப்போது பார்க்க முடியவில்லை. மீண்டும் முயலவும்.",
+    trackNoReply: "அலுவலக பதில் இன்னும் பதிவு செய்யப்படவில்லை.", trackTarget: "தள இலக்கு",
+  },
+  ml: {
+    trackEyebrow: "ഹർജി വിവരങ്ങൾ", trackTitle: "നിങ്ങളുടെ ഹർജി പിന്തുടരുക",
+    trackDescription: "ഹർജിയിൽ അച്ചടിച്ചിരിക്കുന്ന റഫറൻസ് നമ്പർ നൽകുക.",
+    trackReferenceLabel: "ഹർജി റഫറൻസ് നമ്പർ", trackLookup: "നില പരിശോധിക്കുക",
+    trackResultEyebrow: "ഹർജി നില", trackDateLabel: "സമർപ്പിച്ച തീയതി", trackSubjectLabel: "വിഷയം",
+    trackStepSubmitted: "സമർപ്പിച്ചു", trackStepAcknowledged: "സ്വീകരിച്ചു",
+    trackStepRouted: "വകുപ്പിലേക്ക് അയച്ചു", trackStepReview: "പരിശോധനയിൽ",
+    trackStepResolved: "പരിഹരിച്ചു", trackDepartmentLabel: "ചുമതലപ്പെടുത്തിയ വകുപ്പ്",
+    trackAuthorityLabel: "ചുമതലപ്പെടുത്തിയ ഉദ്യോഗസ്ഥൻ", trackSlaLabel: "ലക്ഷ്യ സമയം",
+    trackReplyLabel: "ഔദ്യോഗിക മറുപടി", trackError: "ഈ നമ്പറിൽ സമർപ്പിച്ച ഹർജി കണ്ടെത്താനായില്ല.",
+    trackFailed: "നിലവിവരം ഇപ്പോൾ ലഭ്യമല്ല. വീണ്ടും ശ്രമിക്കുക.",
+    trackNoReply: "ഉദ്യോഗസ്ഥന്റെ മറുപടി ഇതുവരെ രേഖപ്പെടുത്തിയിട്ടില്ല.", trackTarget: "പോർട്ടൽ ലക്ഷ്യം",
+  },
+  te: {
+    trackEyebrow: "విన్నపం సమాచారం", trackTitle: "మీ విన్నపాన్ని ట్రాక్ చేయండి",
+    trackDescription: "విన్నపంపై ముద్రించిన రిఫరెన్స్ నంబర్‌ను నమోదు చేయండి.",
+    trackReferenceLabel: "విన్నపం రిఫరెన్స్ నంబర్", trackLookup: "స్థితి చూడండి",
+    trackResultEyebrow: "విన్నప స్థితి", trackDateLabel: "సమర్పించిన తేదీ", trackSubjectLabel: "విషయం",
+    trackStepSubmitted: "సమర్పించబడింది", trackStepAcknowledged: "స్వీకరించబడింది",
+    trackStepRouted: "శాఖకు పంపబడింది", trackStepReview: "పరిశీలనలో ఉంది",
+    trackStepResolved: "పరిష్కరించబడింది", trackDepartmentLabel: "కేటాయించిన శాఖ",
+    trackAuthorityLabel: "కేటాయించిన అధికారి", trackSlaLabel: "లక్ష్య గడువు",
+    trackReplyLabel: "అధికారిక సమాధానం", trackError: "ఈ రిఫరెన్స్ నంబర్‌తో సమర్పించిన విన్నపం కనబడలేదు.",
+    trackFailed: "ప్రస్తుతం స్థితిని పొందలేకపోయాం. మళ్లీ ప్రయత్నించండి.",
+    trackNoReply: "అధికారిక సమాధానం ఇంకా నమోదు కాలేదు.", trackTarget: "పోర్టల్ లక్ష్యం",
+  },
+  hi: {
+    trackEyebrow: "आवेदन अपडेट", trackTitle: "अपने आवेदन की स्थिति देखें",
+    trackDescription: "आवेदन पर छपी संदर्भ संख्या दर्ज करें।",
+    trackReferenceLabel: "आवेदन संदर्भ संख्या", trackLookup: "स्थिति देखें",
+    trackResultEyebrow: "आवेदन की स्थिति", trackDateLabel: "जमा करने की तिथि", trackSubjectLabel: "विषय",
+    trackStepSubmitted: "जमा हुआ", trackStepAcknowledged: "प्राप्त हुआ",
+    trackStepRouted: "विभाग को भेजा गया", trackStepReview: "समीक्षा जारी",
+    trackStepResolved: "समाधान हुआ", trackDepartmentLabel: "आवंटित विभाग",
+    trackAuthorityLabel: "आवंटित अधिकारी", trackSlaLabel: "लक्ष्य समय",
+    trackReplyLabel: "आधिकारिक जवाब", trackError: "इस संदर्भ संख्या से जमा आवेदन नहीं मिला।",
+    trackFailed: "अभी स्थिति उपलब्ध नहीं है। कृपया फिर प्रयास करें।",
+    trackNoReply: "अधिकारी का जवाब अभी दर्ज नहीं हुआ है।", trackTarget: "पोर्टल लक्ष्य",
+  },
+};
+const TRACK = () => TRACK_COPY[lang] || TRACK_COPY.en;
 const N = () => NAV[lang] || NAV.en;
 let currentRoute = "home";
 let versionRequest = 0;
@@ -362,6 +430,7 @@ let routeHash = "#home";
 
 function navigationLabels() {
   const n = N();
+  const tracking = TRACK();
   document.querySelectorAll("[data-i18n]").forEach(el => {
     const key = el.dataset.i18n;
     if (n[key]) el.textContent = n[key];
@@ -373,7 +442,63 @@ function navigationLabels() {
     versionTitle: n.history })) {
     if ($(id)) $(id).textContent = text;
   }
+  document.querySelectorAll("[data-track-label]").forEach(el => {
+    const value = tracking[el.dataset.trackLabel];
+    if (value) el.textContent = value;
+  });
+  if ($("trackReferenceInput")) {
+    $("trackReferenceInput").placeholder = "AP/2026/B38DBC";
+    $("trackSteps").setAttribute("aria-label", tracking.trackResultEyebrow);
+  }
   if (view) drawVersions(view);
+}
+
+async function trackByReference(reference) {
+  const t = TRACK();
+  const input = $("trackReferenceInput");
+  const error = $("trackError");
+  const result = $("trackResult");
+  const button = $("trackLookupButton");
+  const value = String(reference || "").trim();
+  error.hidden = true;
+  result.hidden = true;
+  if (!value) {
+    error.textContent = t.trackError;
+    error.hidden = false;
+    return;
+  }
+  button.disabled = true;
+  try {
+    const response = await fetch(`/api/petitions/track/${encodeURIComponent(value)}`, {
+      headers: { Accept: "application/json" },
+    });
+    if (response.status === 404) throw new Error(t.trackError);
+    if (!response.ok) throw new Error(t.trackFailed);
+    const petition = await response.json();
+    $("trackResultReference").textContent = petition.reference || value;
+    $("trackResultStatus").textContent = petition.status || "";
+    $("trackResultSubject").textContent = petition.subject || "";
+    const submitted = petition.date ? new Date(petition.date) : null;
+    $("trackResultDate").textContent = submitted && !Number.isNaN(submitted.getTime())
+      ? new Intl.DateTimeFormat(lang === "ta" ? "ta-IN" : lang === "ml" ? "ml-IN" : lang === "te" ? "te-IN" : lang === "hi" ? "hi-IN" : "en-IN", { dateStyle: "medium" }).format(submitted)
+      : petition.date || "";
+    $("trackResultDepartment").textContent = petition.assigned_department || "—";
+    $("trackResultAuthority").textContent = petition.assigned_authority || "—";
+    $("trackResultSla").textContent = petition.sla_target || "—";
+    $("trackResultReply").textContent = petition.official_reply || t.trackNoReply;
+    const step = Math.max(0, Math.min(4, Number(petition.progress_step) || 0));
+    $("trackSteps").querySelectorAll("[data-step]").forEach(el => {
+      const index = Number(el.dataset.step);
+      el.classList.toggle("complete", index < step);
+      el.classList.toggle("current", index === step);
+    });
+    result.hidden = false;
+  } catch (e) {
+    error.textContent = e.message === t.trackError ? t.trackError : t.trackFailed;
+    error.hidden = false;
+  } finally {
+    button.disabled = false;
+  }
 }
 
 function syncNavigation() {
@@ -383,6 +508,13 @@ function syncNavigation() {
     el.setAttribute("aria-disabled", String(requestPending || busy));
   });
   $("new").hidden = currentRoute !== "generator";
+  // Officer Login lives in the header for the citizen's benefit on the
+  // landing page only. On the generator page (petition creation) the
+  // button sits two inches from "Submit" and gives a nervous citizen a
+  // staff-door button next to their own; the user asked for it to be
+  // the landing page only, which is the right answer anyway.
+  const officerLink = document.querySelector(".officer-login-link");
+  if (officerLink) officerLink.hidden = currentRoute !== "home";
   // The spoken-replies toggle lives on the assistant panel now, which only
   // exists on the generator page, so its container governs when it shows.
   // Inside a kiosk session the whole navigation is hidden by CSS; this keeps
@@ -521,10 +653,32 @@ document.addEventListener("keydown", e => {
 });
 
 document.addEventListener("click", e => {
+  const track = e.target.closest("[data-track-petition]");
+  if (track) {
+    e.preventDefault();
+    const reference = track.dataset.reference || "";
+    const openTracker = () => {
+      void navigate("home", { checked: true }).then(() => {
+        if (currentRoute !== "home") return;
+        $("trackReferenceInput").value = reference;
+        $("trackReferenceInput").focus({ preventScroll: true });
+        return trackByReference(reference);
+      });
+    };
+    if (!guardUnsaved(openTracker)) return;
+    openTracker();
+    return;
+  }
   const route = e.target.closest("[data-route]");
   if (route) { e.preventDefault(); navigate(route.dataset.route); return; }
   const version = e.target.closest("[data-version]");
   if (version) previewVersion(Number(version.dataset.version));
+});
+
+document.addEventListener("submit", e => {
+  if (e.target.id !== "trackForm") return;
+  e.preventDefault();
+  void trackByReference($("trackReferenceInput").value);
 });
 
 // The saved-petitions screen was removed from the citizen UI, and the

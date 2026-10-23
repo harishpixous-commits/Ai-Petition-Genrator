@@ -29,10 +29,34 @@ Status = Literal[
 ]
 
 
+#: Sentinel a node emits as the first turn to say "discard every turn before
+#: this and keep only what follows". Only one node uses it — the restart
+#: branch — because Start Over is the only moment a conversation legitimately
+#: ends and a new one begins on the same session. See the restart branch in
+#: `graph/nodes.py`.
+_RESET_MARKER = "__RESET__"
+
+
+def reset_marker_turn() -> dict:
+    return {"_reset": _RESET_MARKER}
+
+
 def merge_turns(left: list[dict] | None, right: list[dict] | None) -> list[dict]:
-    """Append-only transcript. Trimmed, because a long session must not grow the
-    checkpoint without bound — the last 60 turns are far more than any node reads."""
-    combined = (left or []) + (right or [])
+    """Append-only transcript, with one escape hatch for Start Over.
+
+    If the emitted list begins with the reset marker, the previous turns are
+    discarded and only what came after the marker survives. Without this a
+    restart could not clear the chat — the reducer would concatenate the
+    acknowledgement onto the old conversation, and the next petition would
+    show the previous one above the fresh prompt.
+
+    Trimmed to the last 60, because a long session must not grow the
+    checkpoint without bound — 60 turns is well beyond any node's read.
+    """
+    right = right or []
+    if right and isinstance(right[0], dict) and right[0].get("_reset") == _RESET_MARKER:
+        return list(right[1:])[-60:]
+    combined = (left or []) + right
     return combined[-60:]
 
 
@@ -175,6 +199,12 @@ class LetterState(TypedDict, total=False):
     # Replace, not append: a restart must be able to clear the audit trail it
     # is restarting from. Nodes append to the existing list explicitly.
     corrections: list[dict]
+    # STATUS TRANSITIONS, one entry per status move: from, to, actor, at,
+    # reason, source and correlation_id. SRS §10.4 — an officer handling an
+    # incident must be able to reconstruct when a petition reached a given
+    # status, through which action, and under which request thread. Owned by
+    # `Workflow._record_transition`; nodes do not write to this field.
+    transitions: list[dict]
 
 
 def new_state(session_id: str, language: Language = "en") -> LetterState:
@@ -228,6 +258,7 @@ def new_state(session_id: str, language: Language = "en") -> LetterState:
         error=None,
         turns=[],
         corrections=[],
+        transitions=[],
         awaiting_correction=False,
         _extracted={},
         _corrections={},

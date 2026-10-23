@@ -1,0 +1,309 @@
+# How the documents in this corpus change one another.
+#
+# WHY THIS IS DECLARED AND NOT INFERRED. The tempting shortcut is "the newest
+# document wins". It is wrong, and here is the counter-example from this very
+# corpus: G.O. Ms. No. 164 of 3 September 2026 is the newest amendment to the
+# Tamil Nadu Urban Local Bodies Rules, 2023, and it changes exactly two things —
+# rule 290(1) and a proviso to rule 289(1). G.O. Ms. No. 104 of 2025 changed
+# rule 289(5), G.O. Ms. No. 480 of 2025 changed rules 255 to 268, and NONE of
+# those is touched by G.O. 164. A system that marked every earlier amendment
+# superseded because a later one exists would tell a citizen that the
+# same-day small-shop licence of G.O. 104 is no longer law. It is.
+#
+# So every relationship below names the PROVISION it affects, quotes the
+# Gazette text that establishes it, and is read from that text — never from
+# which file is newer.
+#
+# DATES. `issued` is the date printed on the Gazette notification and was read
+# from it. `effective_from` is recorded ONLY where the source states it (an Act
+# deemed in force from a date, or a commencement notification). Where it is
+# not stated, it is left null and the service says the commencement date is
+# PRESUMED to be publication — it does not silently assume it. A rule made
+# under a statute ordinarily takes effect on publication in the Gazette, but
+# "ordinarily" is not the same as "verified", and the difference is printed.
+#
+# Every entry was verified against the Gazette PDF at the URL in
+# `corpus/tamil_nadu.yaml` on 2026-10-11, by fetching the document and
+# extracting its text. Quoted evidence is verbatim.
+
+version: 1
+verified_on: "2026-10-11"
+
+# --------------------------------------------------------------------------- #
+# The instruments, with the dates that were actually printed on them
+# --------------------------------------------------------------------------- #
+instruments:
+
+  tn-ulb-rules-2023:
+    citation: "Tamil Nadu Urban Local Bodies Rules, 2023 (G.O. Ms. No. 45, MA&WS (Election), SRO A-17(a)/2023)"
+    issued: "2023-04-12"
+    effective_from: null
+    note: "The parent rules. Every amendment below modifies them."
+
+  tn-ulb-rules-amend-35-2025:
+    citation: "G.O. Ms. No. 35, MA&WS (MA.IV), SRO A-5(a)/2025"
+    issued: "2025-03-17"
+    effective_from: null
+
+  tn-ulb-rules-amend-104-2025:
+    citation: "G.O. Ms. No. 104, MA&WS (MA.IV), SRO A-15(a)/2025"
+    issued: "2025-06-16"
+    effective_from: null
+
+  tn-ulb-rules-amend-162-2024:
+    citation: "G.O. Ms. No. 162, MA&WS, SRO A-19(a)/2024"
+    issued: "2024-11-05"
+    effective_from: null
+
+  tn-ulb-rules-amend-433-2025:
+    citation: "G.O. Ms. No. 433, MA&WS, SRO A-34(c)/2025"
+    issued: "2025-11-24"
+    effective_from: null
+
+  tn-ulb-rules-amend-480-2025:
+    citation: "G.O. Ms. No. 480, MA&WS, SRO A-35(b)/2025"
+    issued: "2025-12-16"
+    effective_from: null
+
+  tn-ulb-rules-amend-164-2026:
+    citation: "G.O. Ms. No. 164, MA&WS (MA.IV), SRO A-16(a)/2026"
+    issued: "2026-09-03"
+    effective_from: null
+
+  tn-ulb-act-1998:
+    citation: "Tamil Nadu Urban Local Bodies Act, 1998 (Tamil Nadu Act 9 of 1999)"
+    issued: null
+    effective_from: null
+    note: >
+      The departmental copy indexed here is a consolidated text uploaded in
+      2023. Its own enactment and commencement dates were not verified from a
+      primary source in this pass and are deliberately left null.
+
+  tn-ulb-amendment-act-24-2024:
+    citation: "Tamil Nadu Act 24 of 2024"
+    issued: "2024-07-05"
+    effective_from: "2024-03-15"
+    effective_basis: "deemed to have come into force on 15 March 2024, as stated in the Act"
+
+  tn-ulb-amendment-act-30-2025:
+    citation: "Tamil Nadu Act 30 of 2025, the Tamil Nadu Urban Local Bodies (Amendment) Act, 2025"
+    issued: "2025-06-02"
+    effective_from: "2025-06-26"
+    effective_basis: "appointed day notified by G.O. Ms. No. 119, MA&WS, 26 June 2025"
+
+# --------------------------------------------------------------------------- #
+# What changed what — one entry per provision affected
+# --------------------------------------------------------------------------- #
+#
+#   substitutes  the provision's text is REPLACED. The old text is historical.
+#   amends       part of the provision's text is changed. The old text is
+#                historical where it differs.
+#   inserts      new text is added (a proviso, a sub-rule, a rule). The
+#                existing text is not wrong, but it is no longer complete.
+#
+relationships:
+
+  # -- trade licences: the chain the brief named ------------------------------
+  - source: tn-ulb-rules-amend-35-2025
+    relation: amends
+    target: tn-ulb-rules-2023
+    provision: "rule 290(1)"
+    evidence: >-
+      in rule 290, in sub-rule (1), for the expression "for a period of three
+      years", the expression "upto the 31st day of March of the third year"
+      shall be substituted
+
+  - source: tn-ulb-rules-amend-164-2026
+    relation: substitutes
+    target: tn-ulb-rules-2023
+    provision: "rule 290(1)"
+    evidence: >-
+      in rule 290, for sub-rule (1), the following sub-rule shall be
+      substituted, namely:- "(1) A licence issued by the Commissioner under
+      rule 289 shall be valid for a period of ten years from the date of issue
+      and may be renewed for successive period of ten years."
+
+  - source: tn-ulb-rules-amend-35-2025
+    relation: inserts
+    target: tn-ulb-rules-2023
+    provision: "rule 289(1)"
+    evidence: >-
+      in rule 289,- (a) to sub-rule (1), the following proviso shall be added,
+      namely:- "Provided that the Commissioner shall grant licence, for the
+      trade or business other than the trade or business specified in the
+      Schedules I, II and III."
+
+  - source: tn-ulb-rules-amend-164-2026
+    relation: inserts
+    target: tn-ulb-rules-2023
+    provision: "rule 289(1)"
+    evidence: >-
+      in rule 289, in sub-rule (1), after the proviso, the following proviso
+      shall be added, namely:- "Provided further that the shops and the
+      establishments, which are registered under the Tamil Nadu Shops and
+      Establishments Act, 1947 (Tamil Nadu Act XXXVI of 1947), are exempted
+      from obtaining separate licence under this rule in respect of the same
+      premises and the same trade or business covered by such registration
+
+  - source: tn-ulb-rules-amend-35-2025
+    relation: inserts
+    target: tn-ulb-rules-2023
+    provision: "rule 300-A"
+    evidence: >-
+      after rule 300, the following rule shall be inserted, namely:- "300-A.
+      Payment of licence fee.
+
+  - source: tn-ulb-rules-amend-104-2025
+    relation: substitutes
+    target: tn-ulb-rules-2023
+    provision: "rule 289(5)"
+    evidence: >-
+      in rule 289, in sub-rule (5), for the proviso, the following provisos
+      shall be substituted, namely:-- "Provided that where the trade or
+      business relates to Schedule II, except food retail and storage of
+      goods, is to be carried out in a shop measuring areas up to 500 square
+      feet, the Commissioner shall grant licence through self certification on
+      the same day itself: Provided further that no licence shall be refused
+      without giving an opportunity of being heard to the applicant."
+
+  # -- property tax -----------------------------------------------------------
+  - source: tn-ulb-rules-amend-480-2025
+    relation: amends
+    target: tn-ulb-rules-2023
+    provision: "rule 255(1)"
+    evidence: >-
+      in rule 255, in sub-rule (1), in clause (c), in the first proviso, for
+      the word "assessee", the word "lessee" shall be substituted
+
+  - source: tn-ulb-rules-amend-480-2025
+    relation: inserts
+    target: tn-ulb-rules-2023
+    provision: "rule 256"
+    evidence: "in rule 256, after sub-rule (4), the following sub-rule shall be inserted"
+
+  - source: tn-ulb-rules-amend-480-2025
+    relation: amends
+    target: tn-ulb-rules-2023
+    provision: "rule 258(2)"
+    evidence: "in rule 258, in sub-rule (2), the following expression shall be added at the end"
+
+  - source: tn-ulb-rules-amend-480-2025
+    relation: amends
+    target: tn-ulb-rules-2023
+    provision: "rule 260(3)"
+    evidence: "in rule 260, in sub-rule (3), the following expression shall be added at the end"
+
+  - source: tn-ulb-rules-amend-480-2025
+    relation: amends
+    target: tn-ulb-rules-2023
+    provision: "rule 265(2)"
+    evidence: >-
+      in rule 265, in sub-rule (2), in clause (h), after the expression
+      "educational", the expression "social, cultural" shall [be inserted]
+
+  - source: tn-ulb-rules-amend-480-2025
+    relation: amends
+    target: tn-ulb-rules-2023
+    provision: "rule 268(2)"
+    evidence: >-
+      in rule 268, (a) in sub-rule (2), for the expression "thirty days", the
+      expression "a month" shall be substituted
+
+  # -- elections and staff ----------------------------------------------------
+  - source: tn-ulb-rules-amend-433-2025
+    relation: substitutes
+    target: tn-ulb-rules-2023
+    provision: "Form 2"
+    evidence: >-
+      In the said Rules, in Chapter III-A, for Form 2, the following Form shall
+      be substituted
+
+  - source: tn-ulb-rules-amend-162-2024
+    relation: inserts
+    target: tn-ulb-rules-2023
+    provision: "rule 192-A"
+    evidence: >-
+      In the said Rules, after rule 192, the following rule shall be inserted,
+      namely:- "192-A. Fixation of seniority.
+
+  # -- the parent Act ---------------------------------------------------------
+  - source: tn-ulb-amendment-act-24-2024
+    relation: amends
+    target: tn-ulb-act-1998
+    provision: "section 3(1)"
+    evidence: >-
+      in sub-section (1), in clause (c), for the expressions "three lakhs" and
+      "thirty crores of rupees", the expressions "two lakhs" and "twenty crores
+      of rupees" shall, respectively, be substituted
+
+  - source: tn-ulb-amendment-act-30-2025
+    relation: amends
+    target: tn-ulb-act-1998
+    provision: "section 37"
+    evidence: "s.3 amends section 37 (substituting 'clauses (i-a), (ii)')"
+
+  - source: tn-ulb-amendment-act-30-2025
+    relation: amends
+    target: tn-ulb-act-1998
+    provision: "section 48"
+    evidence: >-
+      s.6 amends section 48 (substituting 'councillor and nominated member' and
+      cross-references to 'clause (i-a) of sub-section (1) of section 37')
+
+  - source: tn-ulb-amendment-act-30-2025
+    relation: amends
+    target: tn-ulb-act-1998
+    provision: "section 198"
+    evidence: "s.8 amends section 198 sub-section (2)"
+
+# A CURRENT source record means the official page/document was checked on the
+# recorded date and the status statement is limited to the scope below. It does
+# not turn a city charter into a statewide SLA or certify an unamended law.
+current_sources:
+  - source: tn-cra-department-portal
+    url: "https://cra.tn.gov.in/"
+    status: CURRENT
+    verified_on: "2026-10-22"
+    scope: "Commissionerate homepage directory links for revenue administration, citizen services and public grievance channels; not a workflow or SLA"
+
+  - source: tn-rd-citizen-charter-2024
+    url: "https://tnrd.tn.gov.in/rdweb_newsite/project/reports/Public/public_page_table_content_getpdf.php?pdf_download_id=NDY1"
+    status: CURRENT
+    verified_on: "2026-10-22"
+    scope: "Rural local-body duties and responsibilities in the 2024 Citizen Charter"
+
+  - source: tn-urban-madurai-charter
+    url: "https://www.tnurbantree.tn.gov.in/madurai/citizen-charter/"
+    status: CURRENT
+    verified_on: "2026-10-22"
+    scope: "Madurai Corporation services and time schedules only"
+
+  - source: tn-edistrict-services
+    url: "https://it.tn.gov.in/en/TNEGA/e-District"
+    status: CURRENT
+    verified_on: "2026-10-22"
+    scope: "Department and service names in the Tamil Nadu e-District service list"
+
+  - source: tn-tnega-csc-revenue-services
+    url: "https://it.tn.gov.in/en/TNEGA/common_service_centres"
+    status: CURRENT
+    verified_on: "2026-10-22"
+    scope: "e-Sevai service names and citizen access channels for revenue services; no current SLA inferred from historic durations on the page"
+
+  - source: tnpdcl-cgrf-guidelines
+    url: "https://www.tnebltd.gov.in/cgrfonline/guidelines.xhtml"
+    status: CURRENT
+    verified_on: "2026-10-22"
+    scope: "Electricity consumer grievance redressal forum procedure and deadlines"
+
+  - source: tn-rd-org-chart
+    url: "https://tnrd.tn.gov.in/rdweb_newsite/project/reports/Public/Organization_chart.php"
+    status: CURRENT
+    verified_on: "2026-10-22"
+    scope: "Rural Development district and block organization chart"
+
+  - source: tn-rd-housing-schemes
+    url: "https://www.tnrd.tn.gov.in/schemes/st_cmspghs.php"
+    status: CURRENT
+    verified_on: "2026-10-22"
+    scope: "Rural housing scheme roles and administrative monitoring"

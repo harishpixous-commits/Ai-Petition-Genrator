@@ -34,12 +34,25 @@
           })
       : "Not recorded";
   const statuses = [
-    "New",
-    "Pending",
-    "Under Review",
+    "New / Pending",
     "Acknowledged",
+    "Routed to Department",
+    "Under Review",
+    "Field Inspection Scheduled",
     "Resolved",
-    "Needs Review",
+    "Rejected",
+  ];
+  const departments = [
+    "Revenue and Disaster Management Department",
+    "Municipal Administration and Water Supply Department",
+    "Rural Development and Panchayat Raj Department",
+    "Social Welfare and Women Empowerment Department",
+    "Co-operation, Food and Consumer Protection Department",
+    "Energy Department",
+    "Home, Prohibition and Excise Department",
+    "Housing and Urban Development Department",
+    "Highways and Minor Ports Department",
+    "Other / Collectorate Review",
   ];
   let demo = new URLSearchParams(location.search).has("preview"),
     user = null,
@@ -65,7 +78,7 @@
       "குடிநீர் விநியோகத்தை சீரமைக்க வேண்டுதல்",
       "Municipal Administration",
       "Water supply",
-      "New",
+      "New / Pending",
       "ta",
     ],
     [
@@ -85,7 +98,7 @@
       "Drainage overflow near residential area",
       "",
       "Sanitation",
-      "Needs Review",
+      "New / Pending",
       "en",
     ],
     [
@@ -95,7 +108,7 @@
       "Request to repair damaged local road",
       "Highways",
       "Infrastructure",
-      "Pending",
+      "New / Pending",
       "en",
     ],
     [
@@ -127,6 +140,7 @@
       category,
       status,
       language,
+      assigned_department: department,
       created_at: "2026-09-20T10:00:00Z",
     }),
   );
@@ -180,12 +194,32 @@
     render();
     window.scrollTo(0, 0);
   }
-  function notify(t) {
-    document.getElementById("notice").textContent = t;
-    setTimeout(
-      () => (document.getElementById("notice").textContent = ""),
-      5000,
-    );
+  function notify(t, kind = "info") {
+    const el = document.getElementById("notice");
+    el.textContent = t;
+    el.dataset.kind = kind;
+    setTimeout(() => { el.textContent = ""; delete el.dataset.kind; }, 5000);
+  }
+
+  /* localStorage, in a try/except so a private tab or quota-full browser
+     silently falls back to in-memory only. All reads tolerate `null`. */
+  const store = {
+    get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+    del(k) { try { localStorage.removeItem(k); } catch {} },
+  };
+  const noteKey = (id) => `officer:note-draft:${id}`;
+  const sortKey = () => "officer:dashboard-sort";
+  const neighboursKey = "officer:detail-neighbours";
+
+  /* Keep a snapshot of the filtered dashboard list so the detail page can
+     walk Previous/Next without re-fetching. Written on every table()
+     render and on every "View →" click. */
+  function recordNeighbours(filteredIds) {
+    try { sessionStorage.setItem(neighboursKey, JSON.stringify(filteredIds)); } catch {}
+  }
+  function readNeighbours() {
+    try { return JSON.parse(sessionStorage.getItem(neighboursKey) || "[]"); } catch { return []; }
   }
   async function api(path, options = {}) {
     const r = await fetch("/api/officer" + path, {
@@ -336,7 +370,7 @@
       ["Total Petitions", records.length],
       [
         "New / Pending",
-        records.filter((p) => ["New", "Pending"].includes(p.status)).length,
+        records.filter((p) => p.status === "New / Pending").length,
       ],
       [
         "Under Review",
@@ -347,7 +381,7 @@
         records.filter((p) => p.status === "Acknowledged").length,
       ],
       ["Resolved", records.filter((p) => p.status === "Resolved").length],
-      ["Needs Routing", records.filter((p) => !p.department).length],
+      ["Needs Routing", records.filter((p) => !p.assigned_department).length],
     ]
       .map(
         ([s, n]) =>
@@ -355,7 +389,13 @@
       )
       .join(
         "",
-      )}</section><div class="tabs" role="tablist" aria-label="Record type"><button role="tab" id="petitionsTab" aria-controls="recordPanel" aria-selected="${tab === "petitions"}">Petitions <span class="muted">${records.length}</span></button><button role="tab" id="acksTab" aria-controls="recordPanel" aria-selected="${tab === "acknowledgements"}">Acknowledgements <span class="muted">${acks.length}</span></button></div><section id="recordPanel" role="tabpanel" aria-labelledby="${tab === "petitions" ? "petitionsTab" : "acksTab"}"><div class="filters"><div><label for="search">Search ${tab}</label><input id="search" type="search" placeholder="Reference, petitioner or subject…"></div>${select("status", "Status", statuses)}${select("department", "Department", [...new Set(records.map((p) => p.department).filter(Boolean))])}${select("category", "Category", [...new Set(records.map((p) => p.category).filter(Boolean))])}${select("language", "Language", Object.values(LANGUAGES))}</div><div class="filter-dates"><div><label for="from">From date</label><input id="from" type="date"></div><div><label for="to">To date</label><input id="to" type="date"></div><button class="hbtn" id="clear">Clear Filters</button></div><div id="results" class="panel table-panel"></div></section>`;
+      )}</section><div class="tabs" role="tablist" aria-label="Record type"><button role="tab" id="petitionsTab" aria-controls="recordPanel" aria-selected="${tab === "petitions"}">Petitions <span class="muted">${records.length}</span></button><button role="tab" id="acksTab" aria-controls="recordPanel" aria-selected="${tab === "acknowledgements"}">Acknowledgements <span class="muted">${acks.length}</span></button></div><section id="recordPanel" role="tabpanel" aria-labelledby="${tab === "petitions" ? "petitionsTab" : "acksTab"}"><div class="filters"><div><label for="search">Search ${tab}</label><input id="search" type="search" placeholder="Reference, petitioner or subject…"></div>${select("status", "Status", statuses)}${select("department", "Assigned Department", [...new Set((tab === "petitions" ? records.map((p) => p.assigned_department || "Needs routing") : acks.map((p) => p.department || "Not recorded")).filter(Boolean))])}${select("category", "Category", [...new Set(records.map((p) => p.category).filter(Boolean))])}${select("language", "Language", Object.values(LANGUAGES))}</div><div class="filter-dates"><div><label for="from">From date</label><input id="from" type="date"></div><div><label for="to">To date</label><input id="to" type="date"></div><button class="hbtn" id="clear">Clear Filters</button></div><div id="results" class="panel table-panel"></div></section>`;
+    if (tab === "acknowledgements" && !demo) {
+      const lookup = document.createElement("section");
+      lookup.className = "panel ack-lookup";
+      lookup.innerHTML = `<h3>Record a paper petition receipt</h3><p class="muted">Enter its petition reference to acknowledge receipt and print a slip.</p><form id="ackLookupForm" class="ack-lookup-form"><div><label for="ackReference">Petition reference number</label><input id="ackReference" maxlength="40" placeholder="AP/2026/B38DBC" required></div><button class="hbtn primary" type="submit">Acknowledge &amp; create slip</button></form><div class="ack-lookup-result" id="ackLookupResult" aria-live="polite"></div>`;
+      main.querySelector("#recordPanel").prepend(lookup);
+    }
     for (const [id, t] of [
       ["petitionsTab", "petitions"],
       ["acksTab", "acknowledgements"],
@@ -383,51 +423,117 @@
       page = 1;
       table();
     };
+    document.getElementById("ackLookupForm")?.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const button = event.currentTarget.querySelector("button");
+      const result = document.getElementById("ackLookupResult");
+      button.disabled = true;
+      result.textContent = "Looking up petition…";
+      try {
+        const receipt = await api("/acknowledgements/lookup", {
+          method: "POST",
+          body: JSON.stringify({ reference: document.getElementById("ackReference").value.trim() }),
+        });
+        result.innerHTML = `<article class="paper ack-slip"><p class="eyebrow">COLLECTORATE ACKNOWLEDGEMENT</p><h2>${esc(receipt.reference)}</h2><p>Petition reference: <strong>${esc(receipt.petition_reference)}</strong></p><dl class="details"><dt>Petitioner</dt><dd>${esc(receipt.petitioner_name || "Not recorded")}</dd><dt>Subject</dt><dd>${esc(receipt.subject || "Not recorded")}</dd><dt>Department</dt><dd>${esc(receipt.department || "To be routed")}</dd><dt>Received</dt><dd>${esc(date(receipt.created_at))}</dd><dt>Status</dt><dd>Acknowledged</dd></dl><button type="button" class="hbtn primary" id="printAckSlip">Print acknowledgement slip</button></article>`;
+        document.getElementById("printAckSlip").onclick = () => window.print();
+        const existing = acks.findIndex((item) => item.id === receipt.id);
+        if (existing >= 0) acks[existing] = { ...acks[existing], reference: receipt.reference, status: receipt.status, created_at: receipt.created_at };
+        else acks.unshift({ ...receipt, id: receipt.id, petition_id: receipt.id, language: receipt.language, category: "" });
+        document.getElementById("acksTab").innerHTML = `Acknowledgements <span class="muted">${acks.length}</span>`;
+        table();
+      } catch (error) {
+        result.textContent = error.message || "Could not find that petition reference.";
+      } finally {
+        button.disabled = false;
+      }
+    });
     table();
+  }
+  /* Column sort state, read from localStorage so it persists across page
+     loads. One key per tab; shape: {column: "created_at", dir: "desc"}. */
+  function readSort() {
+    try { return JSON.parse(store.get(sortKey()) || "{}")[tab] || null; }
+    catch { return null; }
+  }
+  function writeSort(order) {
+    try {
+      const all = JSON.parse(store.get(sortKey()) || "{}");
+      if (order) all[tab] = order;
+      else delete all[tab];
+      store.set(sortKey(), JSON.stringify(all));
+    } catch {}
+  }
+  function compareRows(key, dir) {
+    const sign = dir === "asc" ? 1 : -1;
+    return (a, b) => {
+      const av = (a[key] ?? "").toString().toLowerCase();
+      const bv = (b[key] ?? "").toString().toLowerCase();
+      if (av < bv) return -1 * sign;
+      if (av > bv) return 1 * sign;
+      return 0;
+    };
   }
   function table() {
     const val = (id) => document.getElementById(id).value;
-    const filtered = (tab === "petitions" ? records : acks).filter(
+    let filtered = (tab === "petitions" ? records : acks).filter(
       (p) =>
         (!val("search") ||
           [p.reference, p.petition_reference, p.petitioner_name, p.subject]
             .join(" ")
             .toLowerCase()
             .includes(val("search").toLowerCase())) &&
-        ["status", "department", "category"].every(
-          (k) => !val(k) || p[k] === val(k),
-        ) &&
+        (!val("status") || p.status === val("status")) &&
+        (!val("department") ||
+          (tab === "petitions"
+            ? (p.assigned_department || "Needs routing")
+            : (p.department || "Not recorded")) === val("department")) &&
+        (!val("category") || p.category === val("category")) &&
         (!val("language") ||
           p.language === (Object.keys(LANGUAGES).find(
             (c) => LANGUAGES[c] === val("language")) || "en")) &&
         (!val("from") || String(p.created_at).slice(0, 10) >= val("from")) &&
         (!val("to") || String(p.created_at).slice(0, 10) <= val("to")),
     );
-    const cols =
-      tab === "petitions"
-        ? [
-            "Reference No.",
-            "Petitioner",
-            "Subject / Issue",
-            "Department",
-            "Date",
-            "Status",
-            "Language",
-            "Action",
-          ]
-        : [
-            "Acknowledgement No.",
-            "Petitioner",
-            "Petition Reference",
-            "Department",
-            "Date",
-            "Status",
-            "Language",
-            "Action",
-          ];
+    const order = readSort();
+    if (order && order.key) {
+      filtered = filtered.slice().sort(compareRows(order.key, order.dir));
+    }
+    /* Record the filtered id order so the detail page can walk it. */
+    recordNeighbours(filtered.map((r) => r.id));
+    /* Columns and the record-key each sorts on. "Action" has no key —
+       sorting a link column is nonsense. */
+    const cols = tab === "petitions"
+      ? [
+          ["Reference No.",   "reference"],
+          ["Petitioner",      "petitioner_name"],
+          ["Subject / Issue", "subject"],
+          ["Assigned Department", "assigned_department"],
+          ["Date",            "created_at"],
+          ["Status",          "status"],
+          ["Language",        "language"],
+          ["Action",          null],
+        ]
+      : [
+          ["Acknowledgement No.", "reference"],
+          ["Petitioner",          "petitioner_name"],
+          ["Petition Reference",  "petition_reference"],
+          ["Department",          "department"],
+          ["Date",                "created_at"],
+          ["Status",              "status"],
+          ["Language",            "language"],
+          ["Action",              null],
+        ];
     const rows = filtered.slice((page - 1) * 10, page * 10);
+    const headerCell = ([label, key]) => {
+      if (!key) return `<th scope="col">${label}</th>`;
+      const active = order && order.key === key;
+      const arrow = active ? (order.dir === "asc" ? " ↑" : " ↓") : "";
+      const nextDir = active ? (order.dir === "asc" ? "desc" : null) : "asc";
+      const aria = active ? (order.dir === "asc" ? "ascending" : "descending") : "none";
+      return `<th scope="col" aria-sort="${aria}"><button type="button" class="sortable" data-sort-key="${esc(key)}" data-sort-next="${nextDir || ""}">${label}${arrow}</button></th>`;
+    };
     document.getElementById("results").innerHTML = filtered.length
-      ? `<table><thead><tr>${cols.map((c) => `<th scope="col">${c}</th>`).join("")}</tr></thead><tbody>${rows.map((p) => `<tr>${[esc(p.reference || "Not assigned"), esc(p.petitioner_name || "Not recorded"), `<span class="subject">${esc(p.subject || p.petition_reference || "Untitled petition")}</span>`, esc(p.department || "Verification required"), esc(date(p.created_at)), badge(p.status), languageName(p.language), `<a href="${url("/officer/" + (tab === "petitions" ? "petitions" : "acknowledgements") + "/" + encodeURIComponent(p.id))}" data-go aria-label="View ${esc(p.reference)}">View →</a>`].map((v, i) => `<td data-label="${cols[i]}">${v}</td>`).join("")}</tr>`).join("")}</tbody></table><div class="table-footer"><span class="muted">${(page - 1) * 10 + 1}–${Math.min(page * 10, filtered.length)} of ${filtered.length} ${tab}</span><div class="actions"><button class="hbtn" id="prev" ${page === 1 ? "disabled" : ""}>Previous</button><button class="hbtn" id="next" ${page * 10 >= filtered.length ? "disabled" : ""}>Next</button></div></div>`
+      ? `<table><thead><tr>${cols.map(headerCell).join("")}</tr></thead><tbody>${rows.map((p) => `<tr>${[esc(p.reference || "Not assigned"), esc(p.petitioner_name || "Not recorded"), `<span class="subject">${esc(p.subject || p.petition_reference || "Untitled petition")}</span>`, esc(tab === "petitions" ? (p.assigned_department || "Needs routing") : (p.department || "Not recorded")), esc(date(p.created_at)), badge(p.status), languageName(p.language), `<a href="${url("/officer/" + (tab === "petitions" ? "petitions" : "acknowledgements") + "/" + encodeURIComponent(p.id))}" data-go aria-label="View ${esc(p.reference)}">View →</a>`].map((v, i) => `<td data-label="${cols[i][0]}">${v}</td>`).join("")}</tr>`).join("")}</tbody></table><div class="table-footer"><span class="muted">${(page - 1) * 10 + 1}–${Math.min(page * 10, filtered.length)} of ${filtered.length} ${tab}</span><div class="actions"><button class="hbtn" id="prev" ${page === 1 ? "disabled" : ""}>Previous</button><button class="hbtn" id="next" ${page * 10 >= filtered.length ? "disabled" : ""}>Next</button></div></div>`
       : `<div class="empty"><h3>No ${tab} found</h3><p>Try another search or clear the filters.</p></div>`;
     document.getElementById("prev")?.addEventListener("click", () => {
       page--;
@@ -437,43 +543,211 @@
       page++;
       table();
     });
+    main.querySelectorAll(".sortable").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const key = btn.getAttribute("data-sort-key");
+        const next = btn.getAttribute("data-sort-next");
+        writeSort(next ? { key, dir: next } : null);
+        page = 1;
+        table();
+      });
+    });
   }
-  function finding(f) {
-    if (!f?.value) return '<p class="muted">Verification required</p>';
-    return `<p>${esc(f.value)}</p>${(f.sources || []).map(source).join("")}`;
+  /* The empty-finding placeholder. "Verification required" read like
+     mockup text next to blank fields; this says the same thing more
+     precisely so it does not look placeholder-y. */
+  const EMPTY_FINDING = '<p class="muted">No verified source identified from the retrieved passages.</p>';
+
+  /* Dedupe source cards on the way to render. The backend already dedupes
+     within a single finding; this one covers the case where the SAME
+     source rides under two different Suggested-Process steps and the
+     screen would otherwise show the card twice. The signature follows the
+     backend's: (document_title, first 60 chars of section, page_number). */
+  function dedupSources(sources, seen) {
+    const out = [];
+    for (const s of sources || []) {
+      const key = [
+        (s.document_title || "").trim(),
+        (s.section || "").slice(0, 60).trim().toLowerCase(),
+        s.page_number || "",
+      ].join("|");
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(s);
+    }
+    return out;
   }
-  function source(s) {
+
+  /* Render N source cards with the rest tucked into a <details> so the
+     page is not drowned when retrieval returns many thin chunks. The
+     user screenshot showed five near-identical ULB Rules 2023 cards in
+     one block; two visible is enough. */
+  function sourceList(sources, { visible = 2, seen = new Set(), suppressTitle = null } = {}) {
+    const unique = dedupSources(sources, seen);
+    if (!unique.length) return "";
+    const render = (s) => source(s, { suppressTitle });
+    const head = unique.slice(0, visible).map(render).join("");
+    const tail = unique.slice(visible);
+    if (!tail.length) return head;
+    const label = tail.length === 1 ? "1 more source" : `${tail.length} more sources`;
+    return head +
+      `<details class="more-sources"><summary>Show ${label}</summary>${tail.map(render).join("")}</details>`;
+  }
+
+  /* One finding in its own card so two findings in a list (two Acts, two
+     candidate departments) do not visually bleed into each other.
+
+     `suppressTitle` is passed to the source renderer so a source whose
+     document_title matches the finding's own value does NOT repeat the
+     title at the top of the card — the user saw "Tamil Nadu Urban Local
+     Bodies Rules, 2023" written three times in a row (finding value plus
+     two source headings) and read as noise. The <strong> stays when the
+     source refers to a different document than the finding is about.  */
+  function finding(f, options = {}) {
+    if (!f?.value) return EMPTY_FINDING;
+    const inner = sourceList(f.sources || [], { ...options, suppressTitle: f.value });
+    return `<article class="finding"><p class="finding-value">${esc(f.value)}</p>${inner}</article>`;
+  }
+
+  /* A list of findings (applicable_acts, applicable_rules, government_orders)
+     with ONE "no verified source" fallback for the whole list, not one per
+     empty entry. */
+  function findingList(items) {
+    const safe = (items || []).filter((f) => f && f.value);
+    if (!safe.length) return EMPTY_FINDING;
+    const seen = new Set();
+    return safe.map((f) => finding(f, { seen })).join("");
+  }
+
+  /* Suggested-Process rendering collapses sources shared across steps so
+     the ULB Act §118 passage, cited under more than one step, does not
+     render as four identical source cards down the page. The step texts
+     stay as a numbered list; the sources live in one shared "References"
+     footer under them. */
+  function processBlock(steps) {
+    const list = (steps || []).filter((s) => s && s.value);
+    if (!list.length) return EMPTY_FINDING;
+    const items = list.map((s) => `<li>${esc(s.value)}</li>`).join("");
+    const seen = new Set();
+    const allSources = [];
+    for (const step of list) for (const s of (step.sources || [])) {
+      const key = [
+        (s.document_title || "").trim(),
+        (s.section || "").slice(0, 60).trim().toLowerCase(),
+        s.page_number || "",
+      ].join("|");
+      if (seen.has(key)) continue;
+      seen.add(key);
+      allSources.push(s);
+    }
+    const refs = allSources.length
+      ? `<p class="muted source-label">Grounded in:</p>${allSources.map(source).join("")}`
+      : "";
+    return `<ol class="process-steps">${items}</ol>${refs}`;
+  }
+
+  function source(s, { suppressTitle = null } = {}) {
     let link = "";
     try {
       const u = new URL(s.source_url);
       if (["https:", "http:"].includes(u.protocol))
         link = `<a target="_blank" rel="noopener noreferrer" href="${esc(u.href)}">View Source ↗</a>`;
     } catch {}
-    return `<div class="source"><strong>${esc(s.document_title)}</strong><br>${esc([s.date, s.section, s.page_number ? "Page " + s.page_number : ""].filter(Boolean).join(" · "))}${s.excerpt ? `<p>${esc(s.excerpt)}</p>` : ""}${link}</div>`;
+    const title = (s.document_title || "").trim();
+    const titleBar = (suppressTitle && title === String(suppressTitle).trim())
+      ? ""   /* finding value already names the document; do not repeat it */
+      : `<strong>${esc(title)}</strong><br>`;
+    const meta = esc([s.date, s.section, s.page_number ? "Page " + s.page_number : ""].filter(Boolean).join(" · "));
+    const excerpt = s.excerpt ? `<p>${esc(s.excerpt)}</p>` : "";
+    return `<div class="source">${titleBar}${meta}${excerpt}${link}</div>`;
   }
   async function detail(id) {
     let p = demo
       ? sampleDetail(demoRows.find((r) => r.id === id) || demoRows[0])
       : await api("/petitions/" + encodeURIComponent(id));
     const a = p.analysis || {};
-    main.innerHTML = `${banner()}<a data-go href="${url("/officer/dashboard")}">← All petitions</a><div class="row" style="margin-top:18px"><div><p class="eyebrow">PETITION REVIEW</p><h2>${esc(p.subject || "Petition details")}</h2><p class="muted">${esc(p.reference || "Reference not assigned")} · Created ${esc(date(p.created_at))} · ${languageName(p.language)}</p></div>${badge(p.status)}</div><div class="review-grid"><section><div class="panel preview-tools"><div class="row"><h3 style="margin:0">Petition Preview</h3><div class="actions">${["pdf", "docx"].map((ext) => (p.document?.[ext + "_url"] ? `<a class="hbtn" href="${esc(p.document[ext + "_url"])}">Download ${ext === "pdf" ? "PDF" : "Word"}</a>` : `<button class="hbtn" disabled title="${demo ? "Not available for sample records" : "Document not generated"}">Download ${ext === "pdf" ? "PDF" : "Word"}</button>`)).join("")}<button class="hbtn" id="print">Print</button></div></div></div><div class="paper-frame"><article class="paper" aria-label="Petition document" lang="${p.language === "ta" ? "ta" : "en"}"><div class="paper-brand"><img src="/assets/emblem/tamil-nadu-web.png" alt="" width="32" height="36"><strong>${demo ? "SAMPLE PETITION" : "CITIZEN PETITION"}</strong></div><div class="letter-text">${esc(p.letter_text || "The petition document has not yet been generated.")}</div></article></div></section><aside class="review-side" aria-label="Knowledge and officer review"><section class="panel"><p class="eyebrow">OFFICER ASSISTANCE</p><h3>Petition Summary</h3><p>${esc(p.summary || "No grievance recorded.")}</p><p class="muted">Based on the citizen’s recorded information. The original petition remains authoritative.</p></section><section class="panel"><h3>Grievance Summary</h3><dl class="details">${
+    main.innerHTML = `${banner()}<a data-go href="${url("/officer/dashboard")}">← All petitions</a><div class="row spaced-row"><div><p class="eyebrow">PETITION REVIEW</p><h2>${esc(p.subject || "Petition details")}</h2><p class="muted">${esc(p.reference || "Reference not assigned")} · Created ${esc(date(p.created_at))} · ${languageName(p.language)}</p></div>${badge(p.status)}</div><div class="review-grid"><section><div class="panel preview-tools"><div class="row"><h3 class="flat-title">Petition Preview</h3><div class="actions">${["pdf", "docx"].map((ext) => (p.document?.[ext + "_url"] ? `<a class="hbtn" href="${esc(p.document[ext + "_url"])}">Download ${ext === "pdf" ? "PDF" : "Word"}</a>` : `<button class="hbtn" disabled title="${demo ? "Not available for sample records" : "Document not generated"}">Download ${ext === "pdf" ? "PDF" : "Word"}</button>`)).join("")}<button class="hbtn" id="print">Print</button></div></div></div><div class="paper-frame"><article class="paper" aria-label="Petition document" lang="${p.language === "ta" ? "ta" : "en"}"><div class="paper-brand"><img src="/assets/emblem/tamil-nadu-web.png" alt="" width="32" height="36"><strong>${demo ? "SAMPLE PETITION" : "CITIZEN PETITION"}</strong></div><div class="letter-text">${esc(p.letter_text || "The petition document has not yet been generated.")}</div></article></div></section><aside class="review-side" aria-label="Knowledge and officer review"><section class="panel"><p class="eyebrow">OFFICER ASSISTANCE</p><h3>Petition Summary</h3><p>${esc(p.summary || "No grievance recorded.")}</p><p class="muted">Based on the citizen’s recorded information. The original petition remains authoritative.</p></section><section class="panel"><h3>Grievance Summary</h3><dl class="details">${
       Object.entries(p.facts || {})
         .filter(([, v]) => v)
         .map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`)
         .join("") || "<dt>Details</dt><dd>Not recorded</dd>"
-    }</dl></section><section class="panel"><h3>Recommended Department</h3>${finding(a.department)}<h4>Responsible authority / office</h4>${finding(a.responsible_authority)}</section><section class="panel"><h3>Applicable Acts &amp; Rules</h3>${(a.warnings || []).map((w) => `<p class="error">${esc(w)}</p>`).join("")}${[
+    }</dl></section><section class="panel"><h3>Recommended Department</h3>${finding(a.department)}<h4>Responsible authority / office</h4>${finding(a.responsible_authority)}</section><section class="panel"><h3>Applicable Acts &amp; Rules</h3>${(a.warnings || []).map((w) => `<p class="warning">${esc(w)}</p>`).join("")}${[
       ["Act", "applicable_acts"],
       ["Rule", "applicable_rules"],
       ["Government Order", "government_orders"],
     ]
       .map(
         ([l, k]) =>
-          `<h4>${l}</h4>${a[k]?.length ? a[k].map(finding).join("") : '<p class="muted">Not identified in verified sources</p>'}`,
+          `<h4>${l}</h4>${findingList(a[k])}`,
       )
       .join(
         "",
-      )}<p class="muted">Source-grounded assistance. Officer verification is required.</p></section><section class="panel"><h3>Suggested Process</h3><p class="muted">Review → Verify department → Confirm authority → Record action → Closure</p>${(a.processing_steps || []).map(finding).join("")}<h4>Processing hierarchy / escalation</h4>${(a.processing_hierarchy || []).map(finding).join("") || '<p class="muted">Verification required</p>'}<h4>Current status</h4>${badge(p.status)}<p class="muted">No automatic routing or official decision is made.</p></section><section class="panel"><h3>Supporting Documents</h3>${(p.attachments || []).map((f) => `<div class="attachment"><strong>${esc(f.filename)}</strong><p class="muted">${esc(f.kind || "Document")}</p>${relationship(f)}${f.url ? `<div class="actions"><a target="_blank" rel="noopener" href="${esc(f.url)}">View ↗</a><a href="${esc(f.url)}?download=1">Download ↓</a></div>` : '<p class="muted">Sample file · No document uploaded</p>'}${f.metadata ? `<p>${esc(f.metadata)}</p>` : ""}</div>`).join("") || '<p class="muted">No supporting documents attached.</p>'}</section><section class="panel"><h3>Officer Review</h3><div id="savedNotes">${(p.notes || []).map((n) => `<div class="note">${esc(n.text)}<p class="muted">${esc(n.author)} · ${esc(date(n.created_at))}</p></div>`).join("")}</div><form class="review-form" id="reviewForm"><div><label for="note">Officer notes</label><textarea id="note" rows="3" maxlength="4000" placeholder="Record observations or the next step…"></textarea></div><div><label for="reviewStatus">Status</label><select id="reviewStatus">${statuses.map((s) => `<option ${p.status === s ? "selected" : ""}>${s}</option>`).join("")}</select></div><button class="hbtn primary" type="submit">Save review</button><p id="reviewError" class="error" role="alert"></p></form></section></aside></div>`;
+      )}<p class="muted">Source-grounded assistance. Officer verification is required.</p></section><section class="panel"><h3>Suggested Process</h3><p class="muted">Review → Verify department → Confirm authority → Record action → Closure</p>${processBlock(a.processing_steps)}<h4>Processing hierarchy / escalation</h4>${processBlock(a.processing_hierarchy)}<h4>Current status</h4>${badge(p.status)}<p class="muted">No automatic routing or official decision is made.</p></section><section class="panel"><h3>Supporting Documents</h3>${(p.attachments || []).map((f) => `<div class="attachment"><strong>${esc(f.filename)}</strong><p class="muted">${esc(f.kind || "Document")}</p>${relationship(f)}${f.url ? `<div class="actions"><a target="_blank" rel="noopener" href="${esc(f.url)}">View ↗</a><a href="${esc(f.url)}?download=1">Download ↓</a></div>` : '<p class="muted">Sample file · No document uploaded</p>'}${f.metadata ? `<p>${esc(f.metadata)}</p>` : ""}</div>`).join("") || '<p class="muted">No supporting documents attached.</p>'}</section><section class="panel"><h3>Officer Review</h3><div id="savedNotes">${(p.notes || []).map((n) => `<div class="note">${esc(n.text)}<p class="muted">${esc(n.author)} · ${esc(date(n.created_at))}</p></div>`).join("")}</div><form class="review-form" id="reviewForm"><div><label for="note">Officer notes</label><textarea id="note" rows="3" maxlength="4000" placeholder="Record observations or the next step…"></textarea></div><div><label for="reviewStatus">Status</label><select id="reviewStatus">${statuses.map((s) => `<option ${p.status === s ? "selected" : ""}>${s}</option>`).join("")}</select></div><button class="hbtn primary" type="submit">Save review</button><p id="reviewError" class="error" role="alert"></p></form></section></aside></div>`;
+    const actionSection = document.getElementById("reviewForm").closest("section.panel");
+    actionSection.querySelector("h3").textContent = "Collectorate Action Panel";
+    const suggestedDepartment = a.department?.value || p.department || "";
+    const suggestedAuthority = a.responsible_authority?.value || "";
+    const departmentChoices = [...new Set([...departments, suggestedDepartment].filter(Boolean))];
+    const chosenDepartment = p.assigned_department || suggestedDepartment;
+    const priorityChoice = `${p.priority || "Normal"}|${p.sla_target || "15 Days"}`;
+    const form = document.getElementById("reviewForm");
+    form.innerHTML = `
+      <div class="field-grid">
+        <div><label for="assignedDepartment">Assigned Department</label><select id="assignedDepartment"><option value="">Select a department</option>${departmentChoices.map((department) => `<option value="${esc(department)}" ${department === chosenDepartment ? "selected" : ""}>${esc(department)}</option>`).join("")}</select></div>
+        <div><label for="assignedAuthority">Assigned Officer / Authority</label><input id="assignedAuthority" maxlength="200" value="${esc(p.assigned_authority || suggestedAuthority)}" placeholder="Choose or confirm the responsible office"></div>
+      </div>
+      <div class="field-grid">
+        <div><label for="prioritySla">Priority &amp; SLA target</label><select id="prioritySla"><option value="Normal|15 Days" ${priorityChoice === "Normal|15 Days" ? "selected" : ""}>Normal - 15 Days</option><option value="High Priority|7 Days" ${priorityChoice === "High Priority|7 Days" ? "selected" : ""}>High Priority - 7 Days</option><option value="Urgent / Essential Utility|48 Hours" ${priorityChoice === "Urgent / Essential Utility|48 Hours" ? "selected" : ""}>Urgent / Essential Utility - 48 Hours</option></select></div>
+        <div><label for="reviewStatus">Status</label><select id="reviewStatus">${statuses.map((status) => `<option ${p.status === status ? "selected" : ""}>${esc(status)}</option>`).join("")}</select></div>
+      </div>
+      <div><label for="officialReply">Official Reply / Action Taken Note (Visible to Citizen)</label><textarea id="officialReply" rows="4" maxlength="4000" placeholder="Write the update the citizen may see on the tracking page.">${esc(p.official_reply || "")}</textarea></div>
+      <div><label for="note">Private Officer Notes</label><textarea id="note" rows="3" maxlength="4000" placeholder="Internal observations for the review record."></textarea></div>
+      <p class="muted action-target-note">Targets are officer-set estimates; statutory and service-charter timelines take precedence.</p>
+      <button class="hbtn primary" type="submit">Save action</button><p id="reviewError" class="error" role="alert"></p>`;
     document.getElementById("print").onclick = () => window.print();
+
+    /* Officer notes autosave to localStorage, keyed by petition id.
+       Prevents a stray refresh from losing a half-written observation.
+       Cleared only after a successful review save. */
+    const noteBox = document.getElementById("note");
+    const noteDraftTag = document.createElement("span");
+    noteDraftTag.className = "draft-indicator";
+    noteBox.parentNode.appendChild(noteDraftTag);
+    const draft = store.get(noteKey(id));
+    if (draft && !noteBox.value) {
+      noteBox.value = draft;
+      noteDraftTag.textContent = "Draft restored";
+      noteDraftTag.dataset.state = "restored";
+    }
+    let draftTimer;
+    noteBox.addEventListener("input", () => {
+      noteDraftTag.textContent = "Unsaved";
+      noteDraftTag.dataset.state = "dirty";
+      clearTimeout(draftTimer);
+      draftTimer = setTimeout(() => {
+        store.set(noteKey(id), noteBox.value);
+        noteDraftTag.textContent = "Draft saved";
+        noteDraftTag.dataset.state = "saved";
+      }, 400);
+    });
+
+    /* Previous / Next walk the filtered dashboard list.
+       `recordNeighbours` writes the id order on the dashboard; this reads
+       it. If the officer landed here from a bookmark, both buttons stay
+       hidden — no fake navigation without context. */
+    const neighbours = readNeighbours();
+    const here = neighbours.indexOf(id);
+    const prevId = here > 0 ? neighbours[here - 1] : null;
+    const nextId = here !== -1 && here < neighbours.length - 1 ? neighbours[here + 1] : null;
+    const nav = document.createElement("nav");
+    nav.className = "detail-nav";
+    nav.setAttribute("aria-label", "Petition navigation");
+    nav.innerHTML = `
+      ${prevId ? `<a class="hbtn" data-go href="${url("/officer/petitions/" + encodeURIComponent(prevId))}">← Previous (${here}/${neighbours.length})</a>` : ""}
+      ${nextId ? `<a class="hbtn" data-go href="${url("/officer/petitions/" + encodeURIComponent(nextId))}">Next (${here + 2}/${neighbours.length}) →</a>` : ""}
+    `.trim();
+    if (nav.innerHTML) main.querySelector(".review-grid")?.before(nav);
+
     document.getElementById("reviewForm").onsubmit = async (e) => {
       e.preventDefault();
       const b = e.target.querySelector("button");
@@ -482,6 +756,11 @@
         const body = {
           note: document.getElementById("note").value,
           status: document.getElementById("reviewStatus").value,
+          assigned_department: document.getElementById("assignedDepartment").value,
+          assigned_authority: document.getElementById("assignedAuthority").value,
+          priority: document.getElementById("prioritySla").value.split("|")[0],
+          sla_target: document.getElementById("prioritySla").value.split("|")[1],
+          official_reply: document.getElementById("officialReply").value,
         };
         if (demo) {
           demoRows.find((r) => r.id === id).status = body.status;
@@ -497,13 +776,17 @@
             method: "POST",
             body: JSON.stringify(body),
           });
+          store.del(noteKey(id));
           await detail(id);
         }
+        store.del(noteKey(id));
         notify(
           demo ? "Sample review updated in this preview." : "Review saved.",
+          "success",
         );
       } catch (err) {
         document.getElementById("reviewError").textContent = err.message;
+        notify("Could not save: " + (err.message || "request failed"), "error");
       } finally {
         b.disabled = false;
       }
@@ -554,6 +837,33 @@
       go(new URL(a.href).pathname);
     }
   });
+
+  /* Keyboard shortcuts. All require the focus NOT be on an input, so
+     typing "/" or "n" into a textarea does what the user expects. */
+  document.addEventListener("keydown", (e) => {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    const inField = /^(input|textarea|select)$/i.test(e.target.tagName);
+    if (inField) {
+      if (e.key === "Escape") e.target.blur();
+      return;
+    }
+    if (e.key === "/") {
+      const search = document.getElementById("search");
+      if (search) { e.preventDefault(); search.focus(); }
+      return;
+    }
+    if (e.key === "j" || e.key === "n") {
+      const next = document.querySelector(".detail-nav a:last-child[href*='/petitions/']");
+      if (next) { e.preventDefault(); next.click(); }
+      return;
+    }
+    if (e.key === "k" || e.key === "p") {
+      const prev = document.querySelector(".detail-nav a:first-child[href*='/petitions/']");
+      if (prev) { e.preventDefault(); prev.click(); }
+      return;
+    }
+  });
+
   window.addEventListener("popstate", render);
   render();
 })();

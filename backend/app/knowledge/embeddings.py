@@ -20,6 +20,7 @@ vector spaces.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import logging
 import math
@@ -83,6 +84,14 @@ class LocalEmbeddings:
         return [self._vector(t) for t in texts]
 
 
+#: Statuses worth waiting out rather than failing on. 429 is the one that
+#: matters for a bulk ingest; the 5xx family is ordinary transient trouble.
+_RETRYABLE = frozenset({401, 402, 403, 429, 500, 502, 503, 504})
+_RETRY_ATTEMPTS = 6
+_RETRY_BASE_SECONDS = 2.0
+_RETRY_MAX_SECONDS = 60.0
+
+
 class GeminiEmbeddings:
     """`gemini-embedding-001`, one request per text, with key rotation.
 
@@ -124,24 +133,62 @@ class GeminiEmbeddings:
                     "outputDimensionality": self.dimension,
                 }
                 vector = None
-                for offset in range(len(keys)):
-                    key = keys[(active + offset) % len(keys)]
-                    try:
-                        response = await client.post(
-                            url, headers={"x-goog-api-key": key}, json=payload)
-                    except httpx.HTTPError as exc:
-                        log.info("embed.transport_failed",
-                                 extra={"error": str(exc)[:140]})
-                        continue
-                    if response.status_code < 400:
-                        vector = ((response.json() or {}).get("embedding") or {}).get("values")
-                        active = (active + offset) % len(keys)
-                        break
-                    if response.status_code not in (401, 402, 403, 429, 500, 502, 503, 504):
+                # ROTATING KEYS IS NOT ENOUGH ON A BULK INGEST, and this cost
+                # a real corpus. Indexing the Tamil Nadu Acts is ~8,000 chunks
+                # and therefore ~8,000 requests; the per-minute quota is
+                # reached within the first document, every key then answers
+                # 429 together, and this gave up immediately. The result was
+                # a corpus where 687 of 8,069 chunks had vectors and the rest
+                # had none — lexical search still worked, so nothing looked
+                # broken, and cross-language retrieval quietly did not.
+                #
+                # So when EVERY key is rate-limited, wait and try again rather
+                # than failing the chunk. The delay doubles, and `Retry-After`
+                # is honoured when the service sends one, because a server
+                # saying how long to wait knows better than a formula.
+                delay = _RETRY_BASE_SECONDS
+                for attempt in range(_RETRY_ATTEMPTS):
+                    retry_after = 0.0
+                    exhausted = False
+                    for offset in range(len(keys)):
+                        key = keys[(active + offset) % len(keys)]
+                        try:
+                            response = await client.post(
+                                url, headers={"x-goog-api-key": key},
+                                json=payload)
+                        except httpx.HTTPError as exc:
+                            log.info("embed.transport_failed",
+                                     extra={"error": str(exc)[:140]})
+                            exhausted = True
+                            continue
+                        if response.status_code < 400:
+                            vector = ((response.json() or {}).get("embedding")
+                                      or {}).get("values")
+                            active = (active + offset) % len(keys)
+                            break
+                        if response.status_code in _RETRYABLE:
+                            exhausted = True
+                            header = response.headers.get("retry-after", "")
+                            if header.strip().isdigit():
+                                retry_after = max(retry_after,
+                                                  float(header.strip()))
+                            continue
                         raise RuntimeError(
                             f"Embedding rejected: HTTP {response.status_code}")
+                    if vector or not exhausted:
+                        break
+                    if attempt == _RETRY_ATTEMPTS - 1:
+                        break
+                    pause = retry_after or delay
+                    log.info("embed.backing_off",
+                             extra={"attempt": attempt + 1,
+                                    "seconds": round(pause, 1)})
+                    await asyncio.sleep(pause)
+                    delay = min(delay * 2, _RETRY_MAX_SECONDS)
                 if not vector:
-                    raise RuntimeError("No embedding key answered.")
+                    raise RuntimeError(
+                        "No embedding key answered after "
+                        f"{_RETRY_ATTEMPTS} attempts.")
                 # Normalise here so distance is comparable whatever the
                 # provider returns.
                 norm = math.sqrt(sum(v * v for v in vector)) or 1.0

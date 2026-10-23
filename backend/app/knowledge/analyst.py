@@ -224,6 +224,15 @@ def grounded(value: str, chunks: list[Chunk], strict: bool,
         return False
     hay = _haystack(chunks)
 
+    # Numbers are checked WHOLE, never as substrings. "rule 29" must not pass
+    # against a passage whose only rule is 290, and "G.O. Ms. No. 16" must not
+    # pass against "No. 164"; both did, before this, because the check was
+    # `number in hay` (string contains). The fix is a set of hay digit tokens.
+    hay_numbers = set(re.findall(r"\d+", hay))
+    candidate_numbers = re.findall(r"\d+", candidate)
+    if not all(n in hay_numbers for n in candidate_numbers):
+        return False
+
     if verbatim:
         return candidate in hay
 
@@ -231,16 +240,14 @@ def grounded(value: str, chunks: list[Chunk], strict: bool,
         if candidate in hay:
             return True
         # A name may be cited with a trailing year or bracketed qualifier the
-        # passage writes differently. Every content word of the claim must still
-        # be present, and any digit in it must be present exactly — which is
-        # what stops a fabricated order number from passing.
+        # passage writes differently. Every content word of the claim must
+        # still be present; the digit guard above already stopped a fabricated
+        # or truncated order number from passing.
         words = _content_words(value)
         if not words:
             return False
         hay_words = set(hay.split())
-        if not words <= hay_words:
-            return False
-        return all(number in hay for number in re.findall(r"\d+", candidate))
+        return words <= hay_words
 
     hay_words = set(hay.split())
 
@@ -265,12 +272,11 @@ def grounded(value: str, chunks: list[Chunk], strict: bool,
         if len(word) > 2 and word[:1].isupper() \
                 and normalise(word) not in hay_words:
             return False
-    # Every quantity must be present, written out or in digits.
+    # Every quantity must be present, written out or in digits. The digit side
+    # is covered by the whole-token guard above, which runs before this block.
     for token in normalise(value).split():
         if token in _NUMBER_WORDS and token not in hay_words:
             return False
-    if not all(number in hay for number in re.findall(r"\d+", candidate)):
-        return False
 
     words = {w for w in _content_words(value) if w not in _STOPWORDS}
     if not words:

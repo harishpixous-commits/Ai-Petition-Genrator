@@ -176,7 +176,9 @@ VERBATIM_FIELDS = ("grievance",)
 SENDER_ADDRESS_FIELDS = ("address", "applicant_address")
 SENDER_NAME_FIELDS = ("applicant_name", "petitioner_name")
 
-# Every field whose value is printed exactly as the citizen typed it.
+# The citizen-supplied values that must be kept out of rewriting: the sender
+# fields can be formatted or transliterated for display; the grievance stays
+# verbatim.
 CITIZEN_TEXT_FIELDS = SENDER_NAME_FIELDS + SENDER_ADDRESS_FIELDS + VERBATIM_FIELDS
 
 
@@ -281,20 +283,23 @@ def _paragraphs(text: str, indent: str = "   ") -> list[str]:
 
 
 def verbatim_lines(fields: dict[str, Any], *,
-                   protect_grievance: bool = True) -> frozenset[str]:
-    """Everything in the letter that is the citizen's own text, stripped.
+                   protect_grievance: bool = True,
+                   language: str | None = "en") -> frozenset[str]:
+    """Citizen-supplied lines as stored and as displayed in the letter.
 
-    Three fields reach the page exactly as they were typed: the name, the
-    address, and the grievance. Two things depend on knowing which lines those
-    are, and both matter.
+    The name and address may be title-cased or transliterated for display; the
+    grievance is placed as written. Translation and language detection must
+    protect the displayed form as well as the stored form so formatting does
+    not make an address look like text the translator can rewrite.
 
-    The translator must never touch them. The grievance is placed verbatim
-    because a petition in which the complaint has been reworded is a different
-    petition. A name and an address are worse still: the pinned-terms table in
-    `translate.py` exists because a translator once rendered Coimbatore as
-    Koyambedu, a locality in Chennai. A petition that names the wrong town is
-    not a petition with a translation error in it; it is a petition that will
-    not be acted on.
+    The translator must never change their identity. The grievance is placed
+    verbatim because a petition in which the complaint has been reworded is a
+    different petition. Names and addresses may be title-cased or transliterated
+    for the document's script, but a model must not rewrite them: the pinned
+    terms in `translate.py` exist because a translator once rendered
+    Coimbatore as Koyambedu, a locality in Chennai. A petition naming the wrong
+    town is not a petition with a translation error in it; it is a petition
+    that will not be acted on.
 
     And their script must not be what decides the letter needs translating at
     all. A citizen may write the complaint in Tamil inside an English petition,
@@ -303,10 +308,10 @@ def verbatim_lines(fields: dict[str, Any], *,
     correct letter to the translator, and with no translator configured put a
     warning on it saying it had not been translated.
 
-    Stripped rather than indented, because the same value is printed in three
-    shapes: indented in the sender block, indented as a paragraph, and bare on
-    the signature line. The callers compare both the raw line and its stripped
-    form, so one entry covers all three.
+    Stripped rather than indented, because the same value is printed in more
+    than one shape. When `language` is None, display variants in all supported
+    scripts are returned; this is useful when detecting a document's language
+    before its rendered language is known.
     """
     # THE TRANSLATOR PASSES protect_grievance=False.
     #
@@ -322,11 +327,22 @@ def verbatim_lines(fields: dict[str, Any], *,
     wanted = CITIZEN_TEXT_FIELDS if protect_grievance else (
         SENDER_NAME_FIELDS + SENDER_ADDRESS_FIELDS)
     out: set[str] = set()
+    display_types = {
+        **dict.fromkeys(SENDER_NAME_FIELDS, "person_name"),
+        **dict.fromkeys(SENDER_ADDRESS_FIELDS, "address"),
+    }
+    display_languages = ("en", "ta", "ml", "te", "hi") if language is None else (language,)
     for name in wanted:
         for paragraph in str(fields.get(name) or "").splitlines():
             stripped = paragraph.strip()
             if stripped:
                 out.add(stripped)
+                field_type = display_types.get(name)
+                if field_type:
+                    out.update(
+                        display_value(field_type, stripped, display_language).strip()
+                        for display_language in display_languages
+                    )
     return frozenset(out)
 
 
@@ -468,11 +484,28 @@ def build_letter_text(
     lines.append("")
 
     # -- பெறுநர், / To, ----------------------------------------------------- #
+    #
+    # The "To" block now carries a line naming the destination District
+    # when the citizen's address lets us detect one, so the petition reads
+    # "The District Collector, District Collectorate, Theni District, Tamil
+    # Nadu." instead of a bare "District Collectorate" with no state and no
+    # town. Detection is deterministic — the piece has to match one of
+    # Tamil Nadu's 38 districts (or a known alias / major town) in
+    # `app/domain/districts.py` — because printing the wrong District on
+    # a petition routes it to the wrong office. When nothing matches, the
+    # block stays as it was and the citizen can write the destination
+    # District in by hand.
     lines.append(label("to", language))
     lines.append(f"{BLOCK_INDENT}{template.text_for('addressee', language)}")
     department = template.text_for("department", language)
     if department:
         lines.append(f"{BLOCK_INDENT}{department}")
+    sender_address = next((fields[n] for n in SENDER_ADDRESS_FIELDS if fields.get(n)), "")
+    if sender_address:
+        from .districts import detect_district
+        district = detect_district(sender_address)
+        if district:
+            lines.append(f"{BLOCK_INDENT}{district} District, Tamil Nadu.")
     lines.append("")
 
     # -- salutation, then subject ------------------------------------------- #
@@ -570,6 +603,18 @@ def build_letter_text(
         # sender block and "Harish" over the signature — the one line an
         # officer looks at to see who is asking.
         lines.append(display_value("person_name", name, language))
+    lines.append("")
+
+    # Enclosure COUNT, as a one-liner next to the signature. This is the
+    # second half of the enclosures story: the itemised list above comes
+    # when there are files; this line is always present and says plainly
+    # how many are enclosed (or "Nil" when there are none), so an office
+    # taking delivery can count against the number on the record.
+    enclosure_count = len(enclosures)
+    enclosure_word = label("enclosures", language) or "Enclosures"
+    nil_word = {"en": "Nil", "ta": "இல்லை", "ml": "ഇല്ല",
+                "te": "లేదు", "hi": "कुछ नहीं"}.get(language, "Nil")
+    lines.append(f"{enclosure_word}: {enclosure_count if enclosure_count else nil_word}")
     lines.append("")
 
     lines.append(f"{label('note', language)}: {DISCLAIMER[language]}")

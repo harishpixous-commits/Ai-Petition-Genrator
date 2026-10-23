@@ -428,7 +428,6 @@ class TestTheOfficerPortalShowsItAsAdvice:
         """"Previous submissions" is a claim about THIS citizen's history.
         A number read off somebody else's document goes under its own
         heading, so an officer sees both that it exists and whose it is."""
-        from app.api import officer
 
         theirs = attachment_for(citizen_name="Harish", document_name="Harish")
         other = attachment_for(citizen_name="Harish", document_name="Sethubala",

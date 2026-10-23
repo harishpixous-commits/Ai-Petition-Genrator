@@ -407,6 +407,71 @@
   font-size: 11px;
   overflow-wrap: anywhere;
 }
+/* Finding card — ONE grounded recommendation plus up to two citations.
+   Explicit container so two Acts in a list do not visually bleed; the
+   earlier run with just <p>value</p> + loose <div class="source"> had
+   the second Act's title read as a continuation of the first Act's
+   source list. */
+.officer .finding {
+  margin: 10px 0 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: var(--surface-2, #fafafa);
+}
+.officer .finding + .finding {
+  margin-top: 12px;
+}
+.officer .finding-value {
+  font-weight: 600;
+  margin: 0 0 6px;
+}
+.officer .finding .source {
+  border-top: 1px solid var(--line-soft);
+  padding-top: 8px;
+  margin-top: 8px;
+}
+.officer .finding .source:first-of-type {
+  border-top: 0;
+  padding-top: 0;
+  margin-top: 0;
+}
+.officer .more-sources {
+  margin-top: 8px;
+  font-size: 11px;
+}
+.officer .more-sources > summary {
+  cursor: pointer;
+  color: var(--accent, #0b65c2);
+  margin-bottom: 6px;
+  user-select: none;
+}
+.officer .more-sources[open] > summary {
+  margin-bottom: 8px;
+}
+/* Suggested-Process rendering: numbered steps up top, ONE shared
+   citation footer below. "Grounded in:" plus the deduped source list
+   replaces the earlier per-step repetition of the same card. */
+.officer .process-steps {
+  margin: 10px 0;
+  padding-left: 20px;
+}
+.officer .process-steps li {
+  margin: 6px 0;
+}
+/* The analyst-emitted conflict paragraph. Distinct from .error so it
+   does not render as an action failure — it is a verified warning the
+   officer MUST read, not something to retry. */
+.officer .warning {
+  margin: 8px 0 10px;
+  padding: 10px 12px;
+  background: var(--surface-warning, #fff7e6);
+  border-left: 3px solid var(--warning, #c08400);
+  border-radius: 6px;
+  color: var(--ink-strong, #333);
+  font-size: 12px;
+  line-height: 1.5;
+}
 .officer .error {
   color: var(--bad);
   font-size: 12px;
@@ -424,6 +489,43 @@
   display: grid;
   gap: 12px;
 }
+.officer .review-form .field-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.officer .review-form label {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+.officer .review-form input,
+.officer .review-form select,
+.officer .review-form textarea,
+.officer .ack-lookup input {
+  width: 100%;
+  min-height: 40px;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+}
+.officer .review-form textarea { resize: vertical; }
+.officer .action-target-note { margin: 0; }
+.officer .spaced-row { margin-top: 18px; }
+.officer .flat-title { margin: 0; }
+.officer .source-label { margin-top: 14px; }
+.officer .ack-lookup { margin-bottom: 18px; }
+.officer .ack-lookup-form { display: flex; gap: 9px; align-items: end; }
+.officer .ack-lookup-form > div { flex: 1; min-width: 0; }
+.officer .ack-lookup-result { margin-top: 12px; }
+.officer .ack-slip { max-width: 620px; margin-top: 12px; }
+.officer .ack-slip .hbtn { margin-top: 12px; }
 .officer #notice:not(:empty) {
   position: fixed;
   bottom: 24px;
@@ -435,6 +537,66 @@
   border-radius: 10px;
   box-shadow: var(--shadow-lg);
   z-index: 60;
+}
+.officer #notice[data-kind="success"] {
+  background: var(--ok, #1d6b1d);
+}
+.officer #notice[data-kind="error"] {
+  background: var(--bad, #a01f1f);
+}
+
+/* Sortable column headers. The <th> keeps its layout; a button inside
+   is what's clickable (so keyboard focus works and screen readers
+   announce "button"). The button inherits text styling so it still looks
+   like a header, with a subtle hover for discoverability. */
+.officer th .sortable {
+  background: none;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  padding: 0;
+  cursor: pointer;
+  text-align: inherit;
+  width: 100%;
+  user-select: none;
+}
+.officer th .sortable:hover,
+.officer th .sortable:focus-visible {
+  text-decoration: underline;
+  outline: none;
+}
+.officer th[aria-sort="ascending"] .sortable,
+.officer th[aria-sort="descending"] .sortable {
+  font-weight: 700;
+  color: var(--navy, #0b2545);
+}
+
+/* Previous/Next walker above the review grid, visible only when the
+   officer arrived from the dashboard list. */
+.officer .detail-nav {
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  margin: 18px 0 10px;
+}
+.officer .detail-nav .hbtn {
+  min-width: 0;
+}
+
+/* Autosave-draft indicator next to the officer-notes textarea. Three
+   states: "Draft restored", "Unsaved" (dirty), "Draft saved". */
+.officer .draft-indicator {
+  display: inline-block;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.officer .draft-indicator[data-state="dirty"] {
+  color: var(--warning, #c08400);
+}
+.officer .draft-indicator[data-state="saved"],
+.officer .draft-indicator[data-state="restored"] {
+  color: var(--ok, #1d6b1d);
 }
 .officer .account-name {
   font-size: 12px;
@@ -687,4 +849,8 @@
   width: 100%;
   height: auto;
   padding: 12px;
+}
+@media (max-width: 700px) {
+  .officer .review-form .field-grid { grid-template-columns: minmax(0, 1fr); }
+  .officer .ack-lookup-form { align-items: stretch; flex-direction: column; }
 }

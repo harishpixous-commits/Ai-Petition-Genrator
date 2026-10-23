@@ -190,3 +190,42 @@ def canonical(text: str) -> str | None:
     keeps whatever the citizen wrote.
     """
     return _TO_DISTRICT.get(_key(text))
+
+
+def detect_district(address: str) -> str:
+    """The TN district a free-text address falls in, or "" when uncertain.
+
+    `derive_place` is already looking at the last meaningful piece of the
+    address for the "Place:" line at the foot of the petition — this does
+    the same scan with a tighter rule: it only returns a value when the
+    piece is a KNOWN district (or an alias / major town that maps to one),
+    so the "To" block can honestly print the destination Collectorate.
+
+    Returns the canonical district spelling the state uses — "Theni" not
+    "theni" — because the destination address is one the office compares
+    letters by. Empty string when no piece of the address matches a known
+    district; the caller then leaves the district line out rather than
+    guessing one. A wrong Collectorate on a petition routes it to the
+    wrong office, and that is worse than the citizen filling it in by hand.
+    """
+    text = str(address or "").strip()
+    if not text:
+        return ""
+    # Try each known piece, from the end: a citizen typically writes
+    # street → area → town → district in that order, so the district (if
+    # present) is at the tail. `is_place` already knows about towns +
+    # aliases + districts; we filter down to actual DISTRICTS.
+    pieces = [p.strip() for p in re.split(r"[,\n]+", text) if p.strip()]
+    for piece in reversed(pieces):
+        if is_place(piece):
+            canon = canonical(without_suffix(piece))
+            if canon:
+                return canon
+    # The citizen may have written the district without any comma around
+    # it — "80/33 Perumal Kovil Street Theni". Scan the token stream for
+    # a direct district / alias match.
+    for token in re.findall(r"[A-Za-z]+", text):
+        canon = canonical(token)
+        if canon:
+            return canon
+    return ""

@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.domain.districts import DISTRICTS, canonical, is_place
+from app.domain.districts import DISTRICTS, canonical, detect_district, is_place
 from app.domain.fields import validate_district
 from app.domain.letter import derive_place
 
@@ -135,3 +135,38 @@ class TestTheValidatorDoesNotRefuseRealDistricts:
         assert not validate_district("").ok
         assert not validate_district("District 9").ok
         assert not validate_district("x" * 61).ok
+
+
+# ---------------------------------------------------------------------------
+# District detection — a new helper added 2026-10-22 so the "To" address
+# on the petition can read "Theni District, Tamil Nadu." instead of a bare
+# "District Collectorate" with no district named.
+# ---------------------------------------------------------------------------
+
+class TestDetectDistrict:
+    def test_a_citizen_who_wrote_the_district_name_at_the_end_is_recognised(self):
+        assert detect_district("80/33 perumal kovil street, theni") == "Theni"
+        assert detect_district("12 Gandhi Street, Peelamedu, Coimbatore") == "Coimbatore"
+
+    def test_a_citizen_who_used_an_alias_is_mapped_to_the_official_name(self):
+        """A letter must address the Collectorate the state actually names,
+        not the citizen's older spelling of it."""
+        assert detect_district("5 Mount Road, Madras 600002") == "Chennai"
+        assert detect_district("12 Rockfort, Trichy") == "Tiruchirappalli"
+        assert detect_district("Nellai town") == "Tirunelveli"
+
+    def test_a_district_name_without_commas_is_still_found(self):
+        """A citizen may write the address in one line without punctuation."""
+        assert detect_district("80/33 Perumal Kovil Street Theni") == "Theni"
+
+    def test_an_address_with_no_matching_district_returns_empty(self):
+        """If detection fails the caller leaves the line out rather than
+        guessing — a wrong Collectorate on a petition routes it wrong."""
+        assert detect_district("") == ""
+        assert detect_district("some random street name") == ""
+
+    def test_a_street_named_after_a_town_is_not_mistaken_for_the_town(self):
+        """`is_place` matches whole pieces, not words inside them — a
+        petition from "Perumal Kovil Street" must not route to Perumal
+        Kovil District (which doesn't exist anyway)."""
+        assert detect_district("Perumal Kovil Street") == ""

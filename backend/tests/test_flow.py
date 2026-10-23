@@ -339,9 +339,29 @@ class TestTheLetterIsProducedInOneLanguage:
         assert verbatim_lines(fields) == frozenset({
             "Harish",
             "80/33 sidthaputhur, coimbatore",
+            "80/33, Sidthaputhur, Coimbatore",
             "First paragraph.",
             "Second paragraph.",
         })
+
+    def test_display_variants_are_protected_in_the_language_the_letter_uses(self):
+        fields = {
+            "applicant_name": "harish kumar",
+            "address": "80/33 perumal kovil street, theni",
+        }
+
+        protected = verbatim_lines(fields, protect_grievance=False, language="en")
+
+        assert "Harish Kumar" in protected
+        assert "80/33, Perumal Kovil Street, Theni" in protected
+
+    def test_language_detection_can_protect_transliterated_sender_fields(self):
+        protected = verbatim_lines({
+            "applicant_name": "Harish Kumar",
+            "address": "80/33 Perumal Kovil Street, Theni",
+        }, language=None)
+
+        assert "ஹரிஷ் குமார்" in protected
 
     def test_nothing_entered_protects_nothing(self):
         assert verbatim_lines({}) == frozenset()

@@ -14,13 +14,13 @@ import argparse
 import statistics
 import sys
 import time
-from collections import Counter, defaultdict
+from collections import defaultdict
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.services.system_one import DeterministicProvider  # noqa: E402
-from benchmarks.system_one_cases import Case, dataset  # noqa: E402
+from benchmarks.system_one_cases import Case  # noqa: E402
 
 # THE SETS ARE NOT EQUAL EVIDENCE. Three of these four have already caused a
 # change to the tables, which means they can confirm a fix but can no longer

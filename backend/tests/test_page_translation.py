@@ -322,3 +322,43 @@ def test_the_citizen_is_told_what_to_do_when_voice_will_not_start():
                     "Voice typing is temporarily unavailable. "
                     "Please type your answer."):
         assert message in source, message
+
+
+# ---------------------------------------------------------------------------
+# Officer Login lives on the landing page only.
+#
+# A citizen filling in their petition saw a staff-door button two inches
+# from Submit. The request was to show it only on the home screen; the
+# generator and the saved-petitions screens must not advertise it.
+# ---------------------------------------------------------------------------
+
+
+class TestOfficerLoginIsHomeOnly:
+    def _navigation_js(self) -> str:
+        return (STATIC / "navigation.js").read_text(encoding="utf-8")
+
+    def _index_html(self) -> str:
+        return (STATIC / "index.html").read_text(encoding="utf-8")
+
+    def test_the_officer_login_anchor_exists_in_the_header(self):
+        """The link remains in the DOM so routing-into-home shows it
+        immediately without a layout shift. It is hidden by the
+        syncNavigation() guard when the route is anything else."""
+        html = self._index_html()
+        assert 'class="hbtn officer-login-link"' in html
+        assert 'href="/officer/login"' in html
+
+    def test_the_sync_hides_the_link_off_home(self):
+        """The guard reads `currentRoute` and sets `hidden`. If it is ever
+        dropped, the staff-door button comes back on the create screen."""
+        source = self._navigation_js()
+        # The guard, together on one logical line.
+        assert "querySelector(\".officer-login-link\")" in source
+        assert "officerLink.hidden = currentRoute !== \"home\"" in source
+
+    def test_the_new_petition_button_still_hides_off_the_generator(self):
+        """The sibling guard that the new one copies the shape of must
+        still be there; a regression that broke them both would otherwise
+        be invisible."""
+        source = self._navigation_js()
+        assert '$("new").hidden = currentRoute !== "generator"' in source

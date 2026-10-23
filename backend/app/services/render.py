@@ -25,9 +25,11 @@ import tempfile
 from pathlib import Path
 
 from docx import Document
+from docx.enum.table import WD_ALIGN_VERTICAL
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
-from docx.shared import Pt, RGBColor, Twips
+from docx.shared import Inches, Mm, Pt, RGBColor, Twips
 
 from ..config import Settings, get_settings
 from ..domain import languages
@@ -37,6 +39,37 @@ from . import enclosures as enclosure_service
 log = logging.getLogger(__name__)
 
 INDENT = Twips(420)      # ~0.3 inch
+
+def _enclosures_line_pattern() -> re.Pattern[str]:
+    """Pattern that moves the Enclosures count out of the body text and
+    into the signature block (where the brief says it belongs — opposite
+    the physical signature).
+
+    The ENGLISH / TAMIL / MALAYALAM / TELUGU / HINDI labels are read off
+    `app/domain/letter.py::LABELS["enclosures"]` so the two files stay in
+    sync: adding a sixth language updates both ends in one place. The
+    older hard-coded regex missed `संलग्नक` because the Hindi label was
+    the slightly different `संलग्न`, and a Hindi petition verified in
+    production but failed on the DOCX text-content check.
+    """
+    from ..domain.letter import LABELS
+    labels = sorted(set(LABELS.get("enclosures", {}).values()),
+                    key=len, reverse=True)
+    if not labels:
+        labels = ["Enclosures"]
+    joined = "|".join(re.escape(label) for label in labels)
+    return re.compile(rf"^\s*({joined})\s*:\s*(.+)$")
+
+
+_ENCLOSURES_LINE: re.Pattern[str] | None = None
+
+
+def _enclosures_match(stripped: str):
+    """Lazy-init cached compile. See `_enclosures_line_pattern`."""
+    global _ENCLOSURES_LINE
+    if _ENCLOSURES_LINE is None:
+        _ENCLOSURES_LINE = _enclosures_line_pattern()
+    return _ENCLOSURES_LINE.match(stripped)
 
 
 
@@ -153,6 +186,39 @@ _NOTE = re.compile(r"^(Note|குறிப்பு)\s*:", re.I)
 _SECTION_WORDS = re.compile(r"^(Encl|Enclosure|இணைப்புகள்)", re.I)
 
 
+def _localized_label_alternation(*keys: str) -> str:
+    """Build classifier patterns from the same labels used to assemble letters.
+
+    Translated letters are rendered from text too, so every supported language
+    must retain the same DOCX structure when it is read back for verification.
+    """
+    from ..domain.letter import LABELS
+
+    values = {
+        value.rstrip(" ,:").strip()
+        for key in keys
+        for value in LABELS.get(key, {}).values()
+        if value.strip()
+    }
+    return "|".join(re.escape(value) for value in sorted(values, key=len, reverse=True))
+
+
+_BLOCK = re.compile(rf"^(?:{_localized_label_alternation('from', 'to')})\s*,?\s*$", re.I)
+_SALUTATION = re.compile(rf"^(?:{_localized_label_alternation('salutation')})", re.I)
+_SUBJECT = re.compile(rf"^(?:{_localized_label_alternation('subject')})[^:]*:", re.I)
+_FOOT = re.compile(
+    rf"^(?:{_localized_label_alternation('date', 'place')})\s*:", re.I,
+)
+_SIGNOFF = re.compile(rf"^(?:{_localized_label_alternation('signoff')})", re.I)
+_THANKS = re.compile(
+    rf"^(?:{_localized_label_alternation('thanks')}|Thank you)", re.I,
+)
+_NOTE = re.compile(rf"^(?:{_localized_label_alternation('note')})\s*:", re.I)
+_SECTION_WORDS = re.compile(
+    rf"^(?:{_localized_label_alternation('enclosures')})", re.I,
+)
+
+
 # A short "label: value" line. Deliberately not "Date" or "Place": those words
 # are English, and a petition translated into a third language has to keep its
 # opening block on the right rather than quietly sliding back to the margin.
@@ -260,6 +326,166 @@ def _style_run(run, font: str, size: int = 11, *, bold: bool = False,
         rfonts.set(qn(attr), font)
 
 
+def _set_cell_border(cell, *, sides=("top", "left", "right", "bottom"),
+                     color="333333", size="6") -> None:
+    """Draw a solid border on the named sides of a DOCX table cell.
+
+    `size` is in eighths of a point (6 = 0.75pt), which is the python-docx
+    convention for `w:sz`. Done through OxmlElement because python-docx has
+    no high-level setter for per-side borders.
+    """
+    tc_pr = cell._tc.get_or_add_tcPr()
+    borders = tc_pr.find(qn("w:tcBorders"))
+    if borders is None:
+        borders = OxmlElement("w:tcBorders")
+        tc_pr.append(borders)
+    for side in sides:
+        tag = qn(f"w:{side}")
+        existing = borders.find(tag)
+        if existing is not None:
+            borders.remove(existing)
+        element = OxmlElement(f"w:{side}")
+        element.set(qn("w:val"), "single")
+        element.set(qn("w:sz"), str(size))
+        element.set(qn("w:color"), color)
+        borders.append(element)
+
+
+def _qr_png_bytes(payload: str, box: int = 4) -> bytes | None:
+    """A small QR encoding `payload` as PNG bytes, or None if qrcode is
+    unavailable or encoding fails. `box` is the module pixel count — 4
+    makes a ~1in square at 300 dpi."""
+    try:
+        import qrcode  # soft dependency, see requirements.txt
+    except Exception:  # noqa: BLE001
+        return None
+    try:
+        from io import BytesIO
+        image = qrcode.make(payload, box_size=box, border=1)
+        buffer = BytesIO()
+        image.save(buffer, format="PNG")
+        return buffer.getvalue()
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _add_official_header(document, reference: str, font: str) -> None:
+    """The three-cell header: Ref No + QR on the left, title centred, a
+    bordered "For Office Use" box on the right.
+
+    Rendered as a 1x3 DOCX table so LibreOffice lays it out at the top of
+    page 1 without pushing the body down a line each time another header
+    element is added. Autofits off; column widths are set explicitly so a
+    long reference does not squeeze the middle title into a wrap.
+    """
+    table = document.add_table(rows=1, cols=3)
+    table.autofit = False
+    table.allow_autofit = False
+    # Fixed widths that fit the A4 text area after the chosen margins.
+    widths = (Inches(1.95), Inches(2.95), Inches(1.8))
+    for cell, width in zip(table.rows[0].cells, widths, strict=True):
+        cell.width = width
+        cell.vertical_alignment = WD_ALIGN_VERTICAL.TOP
+
+    left, centre, right = table.rows[0].cells
+
+    # --- LEFT: reference number + QR ----------------------------------- #
+    ref_paragraph = left.paragraphs[0]
+    ref_paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    ref_paragraph.paragraph_format.space_after = Pt(2)
+    label_run = ref_paragraph.add_run("Petition Ref No: ")
+    _style_run(label_run, font, size=10, bold=True)
+    value_run = ref_paragraph.add_run(reference or "AP/—/—")
+    _style_run(value_run, font, size=10, bold=True)
+
+    qr_bytes = _qr_png_bytes(reference) if reference else None
+    if qr_bytes:
+        from io import BytesIO
+        qr_paragraph = left.add_paragraph()
+        qr_paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
+        qr_paragraph.paragraph_format.space_after = Pt(0)
+        qr_run = qr_paragraph.add_run()
+        qr_run.add_picture(BytesIO(qr_bytes), width=Inches(0.75))
+
+    # --- CENTRE: the title --------------------------------------------- #
+    centre_paragraph = centre.paragraphs[0]
+    centre_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    centre_paragraph.paragraph_format.space_before = Pt(3)
+    centre_paragraph.paragraph_format.space_after = Pt(0)
+    title_run = centre_paragraph.add_run("PUBLIC GRIEVANCE REDRESSAL PETITION")
+    _style_run(title_run, font, size=10, bold=True)
+    subtitle_paragraph = centre.add_paragraph()
+    subtitle_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    subtitle_paragraph.paragraph_format.space_after = Pt(0)
+    subtitle_run = subtitle_paragraph.add_run("Tamil Nadu — District Collectorate")
+    _style_run(subtitle_run, font, size=9, color="666666")
+
+    # --- RIGHT: the bordered "For Office Use" box ---------------------- #
+    _set_cell_border(right)
+    endorsement_paragraph = right.paragraphs[0]
+    endorsement_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    endorsement_paragraph.paragraph_format.space_before = Pt(2)
+    endorsement_paragraph.paragraph_format.space_after = Pt(2)
+    heading_run = endorsement_paragraph.add_run("FOR OFFICE USE")
+    _style_run(heading_run, font, size=9, bold=True)
+    sub = right.add_paragraph()
+    sub.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    sub.paragraph_format.space_after = Pt(2)
+    sub_run = sub.add_run("Collector Endorsement\n(Dept / Priority)")
+    _style_run(sub_run, font, size=8, italic=True, color="555555")
+    # Three blank lines leave the writing room the brief asked for.
+    for _ in range(3):
+        blank = right.add_paragraph()
+        blank.paragraph_format.line_spacing = Pt(10)
+        blank.paragraph_format.space_after = Pt(0)
+
+
+def _add_signature_block(document, name: str | None,
+                         enclosure_label: str, enclosure_value: str,
+                         font: str) -> None:
+    """A 1x2 table at the end of the letter: Enclosures count on the left,
+    signature space + typed name on the right. An 18pt top gap gives about
+    25px of room for a physical signature without adding extra blank lines.
+
+    `enclosure_label` and `enclosure_value` are the words captured off the
+    body-text "Enclosures:" / "இணைப்புகள்:" / "संलग्न:" line, so the signature
+    table always speaks the language the letter was composed in. The
+    English-hard-coded earlier version lost the Tamil word on a Tamil
+    petition and verification found the line missing from the DOCX."""
+    table = document.add_table(rows=1, cols=2)
+    table.autofit = False
+    for cell, width in zip(table.rows[0].cells,
+                           (Inches(2.8), Inches(4.0)), strict=True):
+        cell.width = width
+        cell.vertical_alignment = WD_ALIGN_VERTICAL.BOTTOM
+
+    left, right = table.rows[0].cells
+
+    # LEFT — enclosures count, opposite the signature.
+    enc_paragraph = left.paragraphs[0]
+    enc_paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    enc_paragraph.paragraph_format.space_before = Pt(0)
+    enc_label_run = enc_paragraph.add_run(f"{enclosure_label}: ")
+    _style_run(enc_label_run, font, size=11, bold=True)
+    enc_value_run = enc_paragraph.add_run(enclosure_value)
+    _style_run(enc_value_run, font, size=11)
+
+    # RIGHT — signature space, then (Signature) / Name.
+    #
+    # 18pt is approximately 25 CSS pixels of clear signing space.
+    # Applying it before the marker keeps the name and marker together and
+    # saves the spare blank lines that used to push the closing onto page 2.
+    marker = right.paragraphs[0]
+    marker.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    marker.paragraph_format.space_before = Pt(18)
+    marker.paragraph_format.space_after = Pt(0)
+    marker_run = marker.add_run("(Signature)")
+    _style_run(marker_run, font, size=10, italic=True, color="555555")
+    if name:
+        name_run = marker.add_run(f" / {name}")
+        _style_run(name_run, font, size=11, bold=True)
+
+
 def render_docx(
     text: str,
     destination: Path,
@@ -284,27 +510,91 @@ def render_docx(
 
     document = Document()
     section = document.sections[0]
-    section.top_margin = Twips(1134)
-    section.bottom_margin = Twips(1134)
-    section.left_margin = Twips(1440)
-    section.right_margin = Twips(1134)
+    # Word's default template is Letter on some Windows installations, so
+    # setting A4 explicitly is required for the printable layout to hold.
+    section.page_width = Mm(210)
+    section.page_height = Mm(297)
+    # Tighter A4 margins: ~1.4cm top/bottom and right, ~2.0cm left. Chosen
+    # so a standard 3-paragraph petition (sender block + three paragraphs
+    # + signature block) fits on a single A4 page. The brief's "Thanking
+    # you / Yours faithfully should not spill onto page 2" is the test
+    # case this is sized for.
+    section.top_margin = Twips(794)      # ~1.4 cm
+    section.bottom_margin = Twips(794)
+    section.left_margin = Twips(1134)    # ~2.0 cm, slightly wider for binding
+    section.right_margin = Twips(794)
 
     normal = document.styles["Normal"]
     normal.font.name = font
-    normal.font.size = Pt(11)
+    normal.font.size = Pt(10.5)
+    # Line-height 1.35 is within the requested range and keeps standard letters
+    # compact enough for a single A4 page without shrinking the signature gap.
+    paragraph_format = normal.paragraph_format
+    paragraph_format.line_spacing = 1.35
+
+    # Capture any body-line that would otherwise land in the running text
+    # — "Enclosures: Nil" or "இணைப்புகள்: இல்லை" — so it can be rendered
+    # next to the signature instead. The letter TEXT keeps the line so a
+    # plain-text preview and `verify` still see it; the DOCX moves it
+    # visually. Both the LABEL and the VALUE are captured so the signature
+    # table speaks the petition's own language — a Tamil petition keeps
+    # its Tamil word.
+    enclosure_label: str | None = None
+    enclosure_value: str | None = None
+    signature_name: str | None = None
+    disclaimer_note: str | None = None
+    closing_block = False
 
     _add_emblem_header(document, s, placement or Placement())
+    _add_official_header(document, reference, font)
 
     opening = opening_block(lines)
     for index, line in enumerate(lines):
         kind = "dateline" if index < opening else classify(line, index, len(lines))
         stripped = line.strip()
+
+        if kind == "signoff":
+            closing_block = True
+        elif kind == "note":
+            closing_block = False
+
+        # The original plain text reserves several blank lines for a
+        # handwritten signature. The signature table supplies that space, so
+        # omit those blank paragraphs from the running text to keep the A4
+        # closing together.
+        if not stripped and closing_block:
+            continue
+
+        # Enclosures line goes to the signature block. Capture its label
+        # AND value so the Tamil word stays Tamil, then skip the body
+        # rendering so the line does not appear twice.
+        enclosure_match = _enclosures_match(stripped)
+        if enclosure_match:
+            enclosure_label = enclosure_match.group(1).strip()
+            enclosure_value = enclosure_match.group(2).strip()
+            continue
+
+        # The citizen's name belongs beside the signature marker, not above
+        # the enclosure/signature row as a second, detached signature.
+        if kind == "signature":
+            signature_name = signature_name or stripped
+            continue
+
+        # Keep the short legal disclaimer at the very foot of the letter,
+        # after the signature/enclosure row. It remains in the extracted DOCX
+        # text and render round-trip check, without sitting between the
+        # sign-off and the place the citizen signs.
+        if kind == "note":
+            disclaimer_note = stripped
+            continue
+
         paragraph = document.add_paragraph()
         fmt = paragraph.paragraph_format
-        fmt.space_after = Pt(4)
+        fmt.space_after = Pt(1)
 
         if kind == "blank":
-            fmt.space_after = Pt(4)
+            fmt.space_after = Pt(0)
+            fmt.line_spacing = Pt(4)
             continue
 
         if kind == "dateline":
@@ -316,24 +606,24 @@ def render_docx(
 
         elif kind == "block":
             # "அனுப்புநர்," / "From," — a heading for the lines beneath it.
-            fmt.space_before = Pt(6)
-            fmt.space_after = Pt(2)
+            fmt.space_before = Pt(3)
+            fmt.space_after = Pt(1)
             _style_run(paragraph.add_run(stripped), font, bold=True)
 
         elif kind == "party":
             fmt.left_indent = INDENT
-            fmt.space_after = Pt(1)
+            fmt.space_after = Pt(0)
             _style_run(paragraph.add_run(stripped), font)
 
         elif kind == "salutation":
-            fmt.space_before = Pt(10)
-            fmt.space_after = Pt(8)
+            fmt.space_before = Pt(4)
+            fmt.space_after = Pt(2)
             _style_run(paragraph.add_run(stripped), font)
 
         elif kind == "subject":
             match = re.match(r"^([^:]+):\s*(.*)$", stripped)
-            fmt.space_before = Pt(6)
-            fmt.space_after = Pt(12)
+            fmt.space_before = Pt(3)
+            fmt.space_after = Pt(4)
             paragraph.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
             # The label is taken from the line rather than re-emitted in
             # English, so a Tamil letter keeps its Tamil "பொருள்".
@@ -341,48 +631,62 @@ def render_docx(
             _style_run(paragraph.add_run(match.group(2) if match else stripped), font, bold=True)
 
         elif kind == "foot":
-            fmt.space_after = Pt(2)
+            fmt.space_after = Pt(1)
             _style_run(paragraph.add_run(stripped), font)
 
         elif kind == "signoff":
-            fmt.space_before = Pt(10)
-            fmt.space_after = Pt(2)
+            fmt.space_before = Pt(4)
+            fmt.space_after = Pt(1)
             _style_run(paragraph.add_run(stripped), font)
 
         elif kind == "thanks":
-            fmt.space_before = Pt(10)
+            fmt.space_before = Pt(4)
+            fmt.space_after = Pt(1)
             _style_run(paragraph.add_run(stripped), font)
-
-        elif kind == "signature":
-            fmt.space_before = Pt(16)
-            fmt.space_after = Pt(10)
-            _style_run(paragraph.add_run(stripped), font, bold=True)
 
         elif kind == "numbered":
             fmt.left_indent = INDENT
             fmt.first_line_indent = Twips(-260)
+            fmt.space_after = Pt(1)
             _style_run(paragraph.add_run(stripped), font)
 
         elif kind == "section":
-            fmt.space_before = Pt(8)
-            fmt.space_after = Pt(4)
+            fmt.space_before = Pt(4)
+            fmt.space_after = Pt(2)
             _style_run(paragraph.add_run(stripped.rstrip(":")), font, bold=True)
 
         elif kind == "indented":
             fmt.left_indent = INDENT
-            fmt.space_after = Pt(8)
+            fmt.space_after = Pt(2)
             paragraph.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
             _style_run(paragraph.add_run(stripped), font)
-
-        elif kind == "note":
-            fmt.space_before = Pt(14)
-            _style_run(paragraph.add_run(stripped), font, size=10, italic=True, color="555555")
 
         else:
             fmt.first_line_indent = INDENT
-            fmt.space_after = Pt(8)
+            fmt.space_after = Pt(2)
             paragraph.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
             _style_run(paragraph.add_run(stripped), font)
+
+    # The Enclosures count + signature block at the foot of the letter.
+    # Rendered as a 1×2 table so Enclosures sits opposite the signature
+    # — the brief's layout, and the layout a receiving office counts
+    # attachments against. See `_add_signature_block`.
+    #
+    # The typed name is captured from the original text and printed beside
+    # the signature marker. A hand-edited letter without a name still gets
+    # the marker and the enclosure count.
+    if enclosure_label is not None and enclosure_value is not None:
+        _add_signature_block(document, name=signature_name,
+                             enclosure_label=enclosure_label,
+                             enclosure_value=enclosure_value,
+                             font=font)
+
+    if disclaimer_note:
+        paragraph = document.add_paragraph()
+        paragraph.paragraph_format.space_before = Pt(2)
+        paragraph.paragraph_format.space_after = Pt(0)
+        _style_run(paragraph.add_run(disclaimer_note), font, size=9,
+                   italic=True, color="555555")
 
     # The footer carries the reference, which is what an office files by. The
     # standard petition format has no reference line in the body, so this is

@@ -166,12 +166,57 @@ def test_grounding():
     )
     assert result["department"]["value"] == "Verified department"
     assert result["applicable_acts"] == []
-    assert (
-        officer.grounded(
-            {"department": result["department"], "conflicts": [{"resolution": "undetermined"}]}
-        ).get("department")
-        is None
-    )
+
+    # Per SRS §8.5, a conflict is EXPOSED and the grounded findings are
+    # still shown. The earlier rule withheld every finding behind one
+    # abstention flag, which on the live service hid the District
+    # Municipalities Act 1920 §136 (lighting of public streets) behind a
+    # ULB Act↔Rules timing conflict that had nothing to do with it.
+    conflicted = officer.grounded({
+        "department": result["document"]
+        if "document" in result else result["department"],
+        "conflicts": [{"resolution": "undetermined",
+                       "message": "ULB Rules 2023 and ULB Act 1998 both cover this"}],
+        "warnings": ["ULB Rules 2023 and ULB Act 1998 both cover this"],
+    })
+    assert conflicted["department"]["value"] == "Verified department"
+    # The analyst-emitted conflict warning rides through; the earlier
+    # officer-side append of a GENERIC "Conflicting sources were found"
+    # line is gone — on the live screen it rendered right next to the
+    # specific "'TN ULB Rules, 2023' and 'TN ULB Act, 1998' both cover
+    # this" paragraph and the user saw the same conflict said twice.
+    assert any("both cover this" in w for w in conflicted["warnings"])
+    assert not any(w.startswith("Conflicting sources were found")
+                   for w in conflicted["warnings"]), (
+        "the generic duplicate warning must not be appended")
+
+
+def test_grounding_dedupes_sources_that_cite_the_same_provision():
+    """A rule chunked across a page break came through as two separate
+    source cards for the same (title, section, page) — rule 312 and
+    rule 2 both appeared twice on the user's live screen. The dedup
+    keeps the first chunk and folds in the rest."""
+    sources = [
+        {"document_title": "ULB Rules 2023",
+         "section": "312 Removal of television cables from the street light poles",
+         "page_number": 275, "authority": "official",
+         "excerpt": "312. Removal of television cables..."},
+        {"document_title": "ULB Rules 2023",
+         "section": "312 Removal of television cables from the street light poles",
+         "page_number": 275, "authority": "official",
+         "excerpt": "cables should not be removed from the street light poles"},
+        {"document_title": "ULB Rules 2023",
+         "section": "314 Installation of brackets",
+         "page_number": 275, "authority": "official",
+         "excerpt": "314. Installation of brackets..."},
+    ]
+    result = officer.grounded({
+        "applicable_rules": [{"value": "ULB Rules 2023", "sources": sources}],
+    })
+    kept = result["applicable_rules"][0]["sources"]
+    assert len(kept) == 2
+    assert kept[0]["section"].startswith("312")
+    assert kept[1]["section"].startswith("314")
 
 
 # ---------------------------------------------------------------------------
@@ -283,11 +328,13 @@ async def before_any_officer_exists(graph, tmp_path, monkeypatch):
 class TestTheCatalogueNeverWidensToEverybody:
     """Listing and deleting are scoped to the calling browser at all times.
 
-    Before an officer account exists `citizen_scope` answers "do not restrict",
-    which is deliberate and still true for opening a petition by an id the
-    caller already holds. Applied to the catalogue it meant any caller could
-    enumerate every petition on the service and then delete all of them, which
-    takes the checkpoints, the documents and the attachments with no undo.
+    Before an officer account exists `can_access` grandfathers in sessions
+    with no owner row — pre-23-September bookmarks that would otherwise be
+    unreachable — but the catalogue has never used that carve-out. Listing
+    and deleting are and always were `owned_sessions`-scoped. Applied to the
+    catalogue, a wildcard scope meant any caller could enumerate every
+    petition on the service and then delete all of them, which takes the
+    checkpoints, the documents and the attachments with no undo.
     """
 
     async def test_a_stranger_is_shown_nothing(self, before_any_officer_exists):

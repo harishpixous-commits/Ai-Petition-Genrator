@@ -255,8 +255,8 @@ class TestThePreviewShowsIt:
             assert script.count(f"{key}:") >= 2, f"{key} is missing a translation"
 
     def test_the_tamil_strings_are_in_tamil(self, script):
-        line = next(l for l in script.splitlines() if "enclosuresHeading:" in l
-                    and any("஀" <= c <= "௿" for c in l))
+        line = next(ln for ln in script.splitlines() if "enclosuresHeading:" in ln
+                    and any("஀" <= c <= "௿" for c in ln))
         assert line
 
     def test_the_container_exists_on_the_page(self):

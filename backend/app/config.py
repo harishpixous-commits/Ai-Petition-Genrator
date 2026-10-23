@@ -171,6 +171,42 @@ class Settings(BaseSettings):
     # "read it to me" plays the whole thing on request.
     voice_long_readback_chars: int = 240
 
+    # -- limits on the voice socket ----------------------------------------- #
+    #
+    # `/ws/voice` is the most expensive endpoint this service has and was the
+    # only one with no throttle at any layer. These bound what one client can
+    # consume; `app/api/ws_limits.py` explains where each number comes from.
+    #
+    # ALL OF THEM ARE SIZED SO A REAL CITIZEN NEVER MEETS THEM. Audio arrives
+    # at `asr_sample_rate` x 2 bytes — 32 KB/s at 16 kHz, about 1.9 MB for a
+    # solid minute of speech — so the per-minute allowance is four times what
+    # continuous dictation actually uses. Lowering these to "tidy" numbers
+    # would start cutting off citizens mid-grievance, which is the one
+    # outcome worse than the abuse they prevent.
+    # -- reading a grievance that never names its subject -------------------- #
+    #
+    # The deterministic reader answers when a citizen uses the word for the
+    # thing they are complaining about, and has nothing to say when they do
+    # not — "the amount that used to come every month stopped" is a pension
+    # complaint with no pension word in it. Measured on a held-out set, those
+    # were eleven of twenty English failures.
+    #
+    # When it is switched on, a grievance the deterministic reader could not
+    # place is compared by MEANING against the exemplars in
+    # `app/services/semantic_category.py`. It never overrides a confident
+    # deterministic answer and never overrides a two-subject UNKNOWN.
+    #
+    # Off by default where no semantic embedder is configured: the hashed
+    # local embedder has no semantics, and using it here would produce
+    # confident nonsense.
+    semantic_category_enabled: bool = True
+
+    ws_max_connections: int = 64
+    ws_max_connections_per_client: int = 3
+    ws_max_message_bytes: int = 262_144
+    ws_max_bytes_per_minute: int = 8_000_000
+    ws_max_session_seconds: float = 1800.0
+
     # -- telling the citizen the room is too loud --------------------------- #
     #
     # ADVISORY ONLY. Nothing is rejected for being said in a noisy room — the

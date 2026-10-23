@@ -305,10 +305,79 @@ async def supersede(args: argparse.Namespace) -> int:
     return 1
 
 
+def _model(ingestor: Ingestor) -> str:
+    return ingestor._model_name()
+
+
+def _print_integrity(report) -> None:
+    print(f"  state              {report.state.upper()}")
+    print(f"  chunks             {report.chunks:,}")
+    print(f"  correct vectors    {report.correct:,}  ({report.coverage:.2%})")
+    for label, value in (("missing", report.missing), ("stale", report.stale),
+                         ("other model", report.model_mismatch),
+                         ("no provenance", report.unknown_provenance),
+                         ("orphaned", report.orphaned)):
+        if value:
+            print(f"  {label:<18} {value:,}")
+    print(f"  model / dimension  {report.configured_model} / "
+          f"{report.configured_dimension}")
+    for problem in report.problems:
+        print(f"  ! {problem}")
+
+
 async def reindex(_: argparse.Namespace) -> int:
+    """Re-embed everything. Non-destructive: a failed batch keeps its vectors."""
     ingestor, _store = _build()
-    print(f"Re-embedded {await ingestor.reindex()} chunks.")
-    return 0
+    written = await ingestor.reindex()
+    # The number printed is what was WRITTEN. It used to be the number of
+    # chunks attempted, and once printed "Re-embedded 8344 chunks." over an
+    # empty vector table.
+    print(f"Re-embedded {written} chunks.")
+    from app.knowledge.vector_integrity import inspect
+
+    report = inspect(_store, model=_model(ingestor),
+                     dimension=ingestor.provider.dimension)
+    _print_integrity(report)
+    return 0 if report.state == "healthy" else 1
+
+
+async def repair(args: argparse.Namespace) -> int:
+    """Embed only what is missing, stale, or from another model. Resumable."""
+    from app.knowledge.vector_integrity import JobLocked
+    from app.knowledge.vector_integrity import repair as run_repair
+
+    ingestor, store = _build()
+    reports = Path(store.path).parent / "reports"
+    try:
+        report = await run_repair(store, ingestor.provider, model=_model(ingestor),
+                                  batch_size=args.batch, max_batches=args.max_batches,
+                                  report_dir=reports)
+    except JobLocked as exc:
+        print(f"Refused: {exc}")
+        return 2
+    print(f"candidates {report.candidates:,}   written {report.written:,}   "
+          f"failed {report.failed:,}   orphans removed {report.orphans_removed:,}")
+    if report.interrupted:
+        print("Stopped early on purpose; run repair again to continue.")
+    for error in report.errors[:5]:
+        print(f"  ! {error}")
+    from app.knowledge.vector_integrity import inspect
+
+    after = inspect(store, model=_model(ingestor),
+                    dimension=ingestor.provider.dimension)
+    _print_integrity(after)
+    return 0 if after.state == "healthy" else 1
+
+
+async def integrity(_: argparse.Namespace) -> int:
+    """Count, row by row, whether every chunk has one correct vector."""
+    from app.knowledge.vector_integrity import inspect
+
+    ingestor, store = _build()
+    report = inspect(store, model=_model(ingestor),
+                     dimension=ingestor.provider.dimension)
+    _print_integrity(report)
+    return 0 if report.state == "healthy" else 1
 
 
 async def status(_: argparse.Namespace) -> int:
@@ -384,6 +453,14 @@ def main() -> int:
 
     sub.add_parser("reindex", help="re-embed everything after a provider change"
                    ).set_defaults(run=reindex)
+    p_repair = sub.add_parser(
+        "repair", help="embed only missing/stale vectors; resumable and safe")
+    p_repair.add_argument("--batch", type=int, default=32)
+    p_repair.add_argument("--max-batches", type=int, default=None,
+                          help="stop after this many batches; run again to continue")
+    p_repair.set_defaults(run=repair)
+    sub.add_parser("integrity", help="verify every chunk has one correct vector"
+                   ).set_defaults(run=integrity)
     sub.add_parser("status", help="corpus statistics").set_defaults(run=status)
 
     args = parser.parse_args()

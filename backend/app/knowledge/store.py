@@ -223,6 +223,7 @@ class KnowledgeStore:
         document: dict[str, Any],
         chunks: Sequence[dict[str, Any]],
         embeddings: Sequence[Sequence[float]] | None = None,
+        model: str | None = None,
     ) -> int:
         """Replace a document and all of its chunks, atomically.
 
@@ -290,6 +291,25 @@ class KnowledgeStore:
                             "INSERT INTO chunks_vec(chunk_rowid, embedding) VALUES(?, ?)",
                             (rowid, sqlite_vec.serialize_float32(list(embeddings[index]))),
                         )
+                        # PROVENANCE, written in the same transaction as the
+                        # vector. Without it `vector_integrity.inspect` cannot
+                        # tell a vector from this model and this text apart
+                        # from one left behind by an earlier model, and would
+                        # either trust a stale vector or re-embed a good one.
+                        if model:
+                            from .vector_integrity import ensure_sidecar, text_hash
+
+                            ensure_sidecar(db)
+                            db.execute(
+                                "INSERT INTO chunk_vectors(chunk_id, chunk_rowid, "
+                                "model, dimension, text_hash, embedded_at) "
+                                "VALUES(?,?,?,?,?,?) ON CONFLICT(chunk_id) DO UPDATE "
+                                "SET chunk_rowid=excluded.chunk_rowid, "
+                                "model=excluded.model, dimension=excluded.dimension, "
+                                "text_hash=excluded.text_hash, "
+                                "embedded_at=excluded.embedded_at",
+                                (chunk["chunk_id"], rowid, model, self.dimension,
+                                 text_hash(chunk["text"]), _now()))
                 db.execute("COMMIT")
             except Exception:
                 db.execute("ROLLBACK")
@@ -303,6 +323,12 @@ class KnowledgeStore:
     def _delete_chunks(db: sqlite3.Connection, document_id: str) -> None:
         rows = db.execute("SELECT rowid FROM chunks WHERE document_id = ?",
                           (document_id,)).fetchall()
+        try:
+            db.execute(
+                "DELETE FROM chunk_vectors WHERE chunk_id IN "
+                "(SELECT chunk_id FROM chunks WHERE document_id = ?)", (document_id,))
+        except sqlite3.OperationalError:
+            pass    # a corpus that predates the provenance table
         for row in rows:
             db.execute("DELETE FROM chunks_fts WHERE rowid = ?", (row["rowid"],))
             try:

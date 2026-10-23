@@ -69,6 +69,14 @@ class Source(BaseModel):
     # Reciprocal-rank-fusion score. Exposed because an officer deciding whether
     # to trust a thin result should be able to see that it was thin.
     relevance: float = 0.0
+    # WHETHER THIS PASSAGE IS STILL THE LAW. The corpus keeps the Rules as
+    # published beside the instruments that have since changed them, so a
+    # retrieved passage can be accurate to its document and wrong as law —
+    # rule 290(1) still says "three years" in the base text and has said ten
+    # since 3 September 2026. Computed by `legal_status` from amendments
+    # declared with quoted Gazette text; never from which file is newer.
+    # None when it could not be determined, which is not the same as current.
+    legal_status: dict | None = None
 
     @property
     def is_official(self) -> bool:
@@ -212,4 +220,22 @@ class Chunk(BaseModel):
             source_url=self.source_url,
             excerpt=excerpt,
             relevance=round(self.score, 4),
+            legal_status=_legal_status(self),
         )
+
+
+def _legal_status(chunk: Chunk) -> dict | None:
+    """The passage's legal status, or None. Never raises.
+
+    A citation is still worth showing without a status; an analysis that
+    failed because the amendment registry could not be read would show the
+    officer nothing at all.
+    """
+    try:
+        from .legal_status import status_for_chunk
+
+        result = status_for_chunk(chunk.source_url, chunk.section,
+                                  chunk.document_type)
+        return result.as_dict()
+    except Exception:  # noqa: BLE001
+        return None

@@ -93,6 +93,7 @@ from ..services import asr, speech_text, tts
 from ..services.commit_guard import SpeechCommitGuard, Verdict
 from ..services.mask import mask_for_display
 from ..services.voice import EndOfSpeech, Speech, VadSettings, VoiceActivityDetector
+from . import ws_limits
 from .views import session_view
 
 log = logging.getLogger(__name__)
@@ -333,14 +334,57 @@ class Phase(StrEnum):
     ERROR = "error"
 
 
+def _gate(app) -> ws_limits.Gate:
+    """The process-wide connection gate, made once and kept on app.state."""
+    gate = getattr(app.state, "ws_gate", None)
+    if gate is None:
+        settings = get_settings()
+        gate = ws_limits.Gate(ws_limits.Limits(
+            max_connections=settings.ws_max_connections,
+            max_per_client=settings.ws_max_connections_per_client,
+            max_message_bytes=settings.ws_max_message_bytes,
+            max_bytes_per_minute=settings.ws_max_bytes_per_minute,
+            max_session_seconds=settings.ws_max_session_seconds,
+        ))
+        app.state.ws_gate = gate
+    return gate
+
+
 @router.websocket("/ws/voice/{session_id}")
 async def voice(websocket: WebSocket, session_id: str, language: str = "en") -> None:
-    from ..services.officer_store import citizen_scope
+    from ..services.officer_store import can_access
 
-    allowed = citizen_scope(websocket)
-    if allowed is not None and session_id not in allowed:
+    if not can_access(websocket, session_id):
         await websocket.close(code=1008)
         return
+
+    # THE SLOT IS TAKEN BEFORE THE SOCKET IS ACCEPTED, which is the whole
+    # point: accepting first and then checking means the expensive thing has
+    # already happened. A refusal here costs one handshake.
+    gate = _gate(websocket.app)
+    client = ws_limits.client_key(websocket)
+    try:
+        gate.acquire(client)
+    except ws_limits.LimitExceeded as limit:
+        log.info("ws.refused",
+                 extra={"client": client, "reason": limit.reason[:120],
+                        "open": gate.open_connections})
+        # Accepted only so the reason can be sent. A citizen at a kiosk whose
+        # microphone simply stops working has no way to know why.
+        await websocket.accept()
+        with contextlib.suppress(Exception):
+            await websocket.send_json(
+                {"type": "error", "recoverable": True, "message": limit.reason})
+        await websocket.close(code=limit.code)
+        return
+
+    with gate.session(client) as budget:
+        await _voice_session(websocket, session_id, language, budget)
+
+
+async def _voice_session(websocket: WebSocket, session_id: str, language: str,
+                         budget: ws_limits.Session) -> None:
+    """The session proper, with its slot already held and released for it."""
     await websocket.accept()
     settings = get_settings()
     workflow = getattr(websocket.app.state, "workflow", None)
@@ -1773,11 +1817,29 @@ async def voice(websocket: WebSocket, session_id: str, language: str = "en") -> 
                 if message.get("type") == "websocket.disconnect":
                     break
 
-                if (chunk := message.get("bytes")) is not None:
+                # Every inbound frame is accounted for, audio and control
+                # alike. Sized so that continuous speech uses a quarter of the
+                # allowance — see `ws_limits` for where each number came from.
+                chunk = message.get("bytes")
+                raw = message.get("text")
+                try:
+                    budget.check(len(chunk or raw or ""))
+                except ws_limits.LimitExceeded as limit:
+                    log.info("ws.limit",
+                             extra={"reason": limit.reason[:120],
+                                    "frames": budget.frames_seen,
+                                    "bytes": budget.bytes_seen})
+                    with contextlib.suppress(Exception):
+                        await websocket.send_json(
+                            {"type": "error", "recoverable": True,
+                             "message": limit.reason})
+                    await websocket.close(code=limit.code)
+                    break
+
+                if chunk is not None:
                     await handle_audio(chunk)
                     continue
 
-                raw = message.get("text")
                 if not raw:
                     continue
                 try:

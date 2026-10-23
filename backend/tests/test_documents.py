@@ -13,6 +13,7 @@ import pytest
 from docx import Document
 
 from app.config import Settings
+from app.domain.fields import display_value
 from app.domain.letter import (
     LABELS,
     Composition,
@@ -117,7 +118,7 @@ class TestLetterText:
     def test_the_sender_block_carries_the_petitioner_details(self, english_letter, answers):
         block = english_letter.split("From,")[1].split("To,")[0]
         assert answers["applicant_name"] in block
-        assert answers["address"] in block
+        assert display_value("address", answers["address"], "en") in block
         assert "Age: 45" in block
         assert "Mobile number: +91 98765 43210" in block, "as it will be printed"
         assert "Aadhaar" not in block, "the form does not collect one any more"
@@ -280,6 +281,23 @@ class TestLineClassification:
     def test_structure_is_recovered_from_the_text(self, line, kind):
         assert classify(line, 5, 40) == kind
 
+    @pytest.mark.parametrize("language", ["en", "ta", "ml", "te", "hi"])
+    def test_all_supported_languages_keep_document_structure(self, language):
+        lines = [
+            (LABELS["from"][language], "block"),
+            (LABELS["to"][language], "block"),
+            (LABELS["salutation"][language], "salutation"),
+            (f"{LABELS['subject'][language]}: Service request", "subject"),
+            (f"{LABELS['date'][language]}: 22-10-2026", "foot"),
+            (f"{LABELS['place'][language]}: Theni", "foot"),
+            (LABELS["thanks"][language], "thanks"),
+            (LABELS["signoff"][language], "signoff"),
+            (f"{LABELS['note'][language]}: Prepared for submission", "note"),
+            (f"{LABELS['enclosures'][language]}: Nil", "section"),
+        ]
+        for line, expected in lines:
+            assert classify(line, 5, 40) == expected, (language, line)
+
     def test_a_sender_line_with_a_colon_is_still_a_sender_line(self):
         """`வயது: 45` sits inside the அனுப்புநர் block and must not be mistaken
         for a footer line just because it has a colon."""
@@ -298,6 +316,22 @@ class TestLineClassification:
 
 
 class TestDocx:
+    def test_a4_page_and_compact_petition_line_spacing(self, tmp_path, english_letter):
+        path = render_docx(english_letter, tmp_path / "a4.docx")
+        document = Document(str(path))
+        section = document.sections[0]
+        assert section.page_width.mm == pytest.approx(210, abs=0.1)
+        assert section.page_height.mm == pytest.approx(297, abs=0.1)
+        assert document.styles["Normal"].paragraph_format.line_spacing == 1.35
+
+    def test_official_reference_header_contains_a_qr_image(self, tmp_path, english_letter):
+        import zipfile
+
+        path = render_docx(english_letter, tmp_path / "qr.docx",
+                           reference="AP/2026/ABC123")
+        with zipfile.ZipFile(path) as archive:
+            assert any(name.startswith("word/media/") for name in archive.namelist())
+
     def test_every_required_value_reaches_the_file(self, tmp_path, english_letter, fields):
         path = render_docx(english_letter, tmp_path / "p.docx", reference="AP/2026/ABC123")
         produced = " ".join(extract_docx_text(path).split())
@@ -768,11 +802,13 @@ class TestTheDateAndPlaceAtTheTop:
         assert lines[1] == ""
 
     def test_an_address_that_is_only_a_town_still_names_it(self):
-        """Nothing is being guessed: it is the whole of what they wrote."""
+        """The citizen's own value survives; it is title-cased on the way
+        to the page per the 2026-10-22 UI brief ("theni" → "Theni"), so
+        the Place line matches the Collectorate it is addressed to."""
         lines = self._letter(fields={"address": "theni"}).splitlines()
 
         assert lines[1].startswith("Place:"), lines[1]
-        assert "theni" in lines[1]
+        assert "Theni" in lines[1]
 
     def test_the_tamil_letter_carries_tamil_labels_at_the_top(self):
         from app.domain.letter import LABELS

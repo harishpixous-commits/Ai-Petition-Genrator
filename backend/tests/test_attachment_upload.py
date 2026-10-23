@@ -99,10 +99,25 @@ async def _generate(api, sid) -> dict:
 
 
 async def _docx_parts(api_workflow, sid) -> tuple[str, list[str]]:
+    """The DOCX media list, with the header QR filtered out.
+
+    The 2026-10-22 UI brief adds an official header that prints the
+    petition reference both as text and as a scannable QR code — one
+    small PNG lives in `word/media/` on every petition from here on.
+    These tests count ENCLOSURE media (rasterised PDF pages, citizen
+    photographs — orders of magnitude larger). Filter by size so a
+    new header image doesn't force every attachment-page count up by
+    one for an unrelated reason."""
     snapshot = await api_workflow.snapshot(sid)
     with zipfile.ZipFile(snapshot["document"]["docx"]) as archive:
-        return (archive.read("word/document.xml").decode("utf-8", "replace"),
-                [n for n in archive.namelist() if n.startswith("word/media/")])
+        xml = archive.read("word/document.xml").decode("utf-8", "replace")
+        QR_UPPER_BOUND_BYTES = 4000      # a short-ref QR is ≈500–1500 B
+        media = [
+            n for n in archive.namelist()
+            if n.startswith("word/media/")
+            and len(archive.read(n)) > QR_UPPER_BOUND_BYTES
+        ]
+        return xml, media
 
 
 # --------------------------------------------------------------------------- #

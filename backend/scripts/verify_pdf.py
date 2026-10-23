@@ -186,7 +186,7 @@ def check_script(language: str, pdf: Path, expected: str) -> bool:
 
 def check_layout(pdf: Path) -> bool:
     try:
-        _, boxes = _rasterise(pdf)
+        pages, boxes = _rasterise(pdf)
     except ImportError:
         return record("5  page layout", False, "PyMuPDF not installed")
     if not boxes:
@@ -194,7 +194,16 @@ def check_layout(pdf: Path) -> bool:
     width, height = boxes[0]
     # A4 in points, with a tolerance for rounding by the converter.
     a4 = abs(width - 595) < 6 and abs(height - 842) < 6
-    return record("5  page layout", a4, f"{width:.0f}x{height:.0f}pt (A4 is 595x842)")
+    closing_on_first_page = bool(pages) and all(
+        label in pages[0] for label in ("Thanking you", "Yours faithfully", "(Signature)")
+    )
+    one_page_letter = len(pages) == 1
+    ok = a4 and closing_on_first_page and one_page_letter
+    detail = (
+        f"{width:.0f}x{height:.0f}pt; {len(pages)} page(s); "
+        f"closing/signature on page 1={closing_on_first_page}"
+    )
+    return record("5  page layout", ok, detail)
 
 
 def check_attachments(pdf: Path) -> bool:

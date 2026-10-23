@@ -1,0 +1,87 @@
+@font-face {
+  font-family: "Noto Sans Tamil";
+  src: url("/assets/fonts/NotoSansTamil-Regular.ttf") format("truetype");
+}
+@font-face {
+  font-family: "Noto Sans Malayalam";
+  src: url("/assets/fonts/NotoSansMalayalam-Regular.ttf") format("truetype");
+}
+@font-face {
+  font-family: "Noto Sans Telugu";
+  src: url("/assets/fonts/NotoSansTelugu-Regular.ttf") format("truetype");
+}
+@font-face {
+  font-family: "Noto Sans Devanagari";
+  src: url("/assets/fonts/NotoSansDevanagari-Regular.ttf") format("truetype");
+}
+
+@page {
+  size: A4;
+  margin: 14mm 14mm 14mm 20mm;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  color: #263c48;
+  font: 10.5pt/1.35 "Noto Sans Tamil", "Noto Sans Malayalam", "Noto Sans Telugu",
+    "Noto Sans Devanagari", "Segoe UI", serif;
+}
+.paper {
+  width: auto;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  font-size: 10.5pt;
+  line-height: 1.35;
+  color: #263c48;
+}
+.paper-official-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr) minmax(0, 1.05fr);
+  gap: 8px;
+  align-items: start;
+  margin: 0 0 10px;
+  line-height: 1.25;
+  break-inside: avoid;
+}
+.paper-header-ref { font-size: 9pt; overflow-wrap: anywhere; }
+.paper-header-ref strong { display: block; }
+.paper-header-qr { display: block; width: 64px; height: 64px; margin-top: 5px; }
+.paper-header-title { padding-top: 4px; text-align: center; font-size: 10pt; font-weight: 700; }
+.paper-office-box {
+  min-height: 72px;
+  padding: 6px;
+  border: 1px solid #59666b;
+  text-align: center;
+  font-size: 8pt;
+  font-weight: 700;
+  line-height: 1.35;
+  white-space: pre-line;
+}
+.paper-dateline { margin-bottom: 2px; white-space: pre-wrap; text-align: right; }
+.paper-body { white-space: normal; line-height: 1.35; }
+.paper-body-line { white-space: pre-wrap; line-height: inherit; }
+.paper-body-spacer { height: 4pt; }
+.paper-signature-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: end;
+  gap: 12px;
+  margin-top: 25px;
+  line-height: 1.35;
+  white-space: normal;
+  break-inside: avoid;
+}
+.paper-enclosures-count { font-size: 10pt; font-weight: 700; }
+.paper-signature-name { text-align: right; font-size: 10pt; font-weight: 600; }
+.paper-note {
+  margin-top: 7px;
+  font-size: 9pt;
+  line-height: 1.35;
+  font-style: italic;
+  color: #59666b;
+}

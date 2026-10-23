@@ -28,6 +28,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.requests import Request
 
 from .api import catalog, dictation, officer, operator, rest, ws
+from .api.middleware import CorrelationIdMiddleware
 from .config import get_settings
 from .domain.templates import load_templates
 from .graph.workflow import workflow_lifespan
@@ -130,6 +131,41 @@ def preflight() -> None:
     log.info("preflight.dictation",
              extra={"ok": dictation["ok"], "provider": dictation.get("provider")})
 
+    # WHETHER THIS DEPLOYMENT HAS AN OFFICER YET, said out loud at start-up.
+    #
+    # Until the first officer account exists, `can_access` grandfathers in
+    # sessions that have no owner row at all — pre-23-September bookmarks
+    # that nobody could reach otherwise. Provisioning the first officer
+    # closes that carve-out and every session must then be owned to be
+    # opened. That is the correct state for any public deployment, and this
+    # warning says so plainly on every start-up until the step has been
+    # taken.
+    #
+    # Logged at WARNING so it appears in the same place an operator is already
+    # looking, with the exact action that ends it. Nothing is changed here:
+    # altering the rule from inside a start-up probe, on a service that is
+    # already live, is how a working site stops answering.
+    try:
+        from .services import officer_store
+
+        with officer_store.database() as _db:
+            _has_officer = bool(
+                _db.execute("SELECT 1 FROM officers LIMIT 1").fetchone())
+        if _has_officer:
+            log.info("preflight.officers", extra={"provisioned": True})
+        else:
+            log.warning(
+                "preflight.officers",
+                extra={"provisioned": False,
+                       "effect": "a petition can be opened by anyone holding "
+                                 "its session id",
+                       "action": "run the 'Create Officer Account' workflow, "
+                                 "or scripts/create_officer.py in the "
+                                 "container"})
+    except Exception as exc:  # noqa: BLE001
+        log.warning("preflight.officers_unreadable",
+                    extra={"error": str(exc)[:160]})
+
     # The knowledge base. An empty corpus is a normal state, not a fault: the
     # analysis panel says it found nothing rather than inventing something, and
     # every petition is produced exactly as before. It is logged at warning so
@@ -197,7 +233,14 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    # OUTERMOST on purpose. The correlation id is set before any other
+    # middleware or the router runs, so an exception raised inside CORS, GZip
+    # or an endpoint still logs with a correlation id and the response going
+    # back carries it. See `app/api/middleware.py`.
+    app.add_middleware(CorrelationIdMiddleware)
+
     app.include_router(rest.router)
+    app.include_router(rest.public_router)
     app.include_router(catalog.router)
     app.include_router(officer.router)
     # The operator screen. Gated in `operator.authorise`: token required when
@@ -226,11 +269,69 @@ def create_app() -> FastAPI:
         return FileResponse(STATIC_DIR / "officer.html",
                             headers={"Cache-Control": "no-store"})
 
+    # A CONTENT SECURITY POLICY THE PAGE CAN ACTUALLY LIVE UNDER.
+    #
+    # Audited rather than guessed. Across index.html, officer.html and
+    # operator.html there are no inline <script> blocks, no on*= handlers and
+    # no external hosts of any kind: every script, style, font and image is
+    # served by this application. So `script-src 'self'` holds with NO
+    # exceptions, which is the clause that matters — it is what stops injected
+    # markup from executing, and the rendering path is ~100% innerHTML against
+    # a hand-rolled escaper, so that is a real risk and not a theoretical one.
+    #
+    # Styles are served from this application only. The static pages contain
+    # no inline style blocks or style attributes; the print window also loads
+    # its stylesheet from /static/print.css.
+    #
+    #   connect-src 'self'   also covers the WebSocket: a same-origin ws:// or
+    #                        wss:// connection matches 'self'. Naming wss:
+    #                        explicitly would permit every host on the internet.
+    #   media-src  blob:     the spoken read-back builds an Audio element from
+    #                        a Blob URL (app.js createObjectURL).
+    #   img-src    data:     previews and the print window inline small images.
+    #   object-src 'none'    nothing embeds a plugin; this blocks a whole class
+    #                        of legacy injection.
+    #   frame-ancestors      clickjacking. Belt and braces with the
+    #                        X-Frame-Options nginx already sets.
+    _CSP = "; ".join((
+        "default-src 'self'",
+        "script-src 'self'",
+        "style-src 'self'",
+        "img-src 'self' data:",
+        "font-src 'self'",
+        "media-src 'self' blob:",
+        "connect-src 'self'",
+        "object-src 'none'",
+        "base-uri 'self'",
+        "form-action 'self'",
+        "frame-ancestors 'none'",
+    ))
+
+    # The page asks for the microphone and nothing else. Everything a browser
+    # can expose is turned off by name, so a future dependency cannot quietly
+    # start using the camera or the location.
+    _PERMISSIONS = ", ".join((
+        "microphone=(self)",
+        "camera=()",
+        "geolocation=()",
+        "payment=()",
+        "usb=()",
+        "magnetometer=()",
+        "gyroscope=()",
+        "accelerometer=()",
+        "interest-cohort=()",
+    ))
+
     @app.middleware("http")
     async def response_headers(request: Request, call_next):
         response = await call_next(request)
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "no-referrer"
+        # Not set on the two endpoints that already send their own, stricter,
+        # sandboxing policy for untrusted document previews.
+        response.headers.setdefault("Content-Security-Policy", _CSP)
+        response.headers.setdefault("Permissions-Policy", _PERMISSIONS)
+        response.headers.setdefault("X-Frame-Options", "DENY")
         # Session recovery and document downloads contain citizen information.
         # Neither a shared browser cache nor a proxy should retain a copy.
         if request.url.path.startswith("/api/"):

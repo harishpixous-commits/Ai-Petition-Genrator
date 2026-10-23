@@ -134,14 +134,27 @@ class TestFreshPdf:
         assert "citizen''s petition.docx" in seen[-1]
 
     async def test_a_missing_reference_withholds_the_document(self, chat, answers, monkeypatch):
+        """The reference used to live only in the footer; stripping the
+        last line was enough to simulate a renderer that dropped it. The
+        2026-10-22 header prints the reference at the top of the DOCX too
+        (`Petition Ref No: AP/…`), so a credible "the reference went
+        missing" test now has to strip EVERY occurrence of it from the
+        extracted text, wherever the renderer put it."""
         from app.graph import nodes
 
         extract = render.extract_docx_text
 
-        def without_footer(path):
-            return "\n".join(extract(path).splitlines()[:-1])
+        def without_the_reference(path):
+            text = extract(path)
+            # Pull the reference out of every line that contains it. The
+            # specific pattern this test simulates is a renderer that
+            # produced a document with the reference missing or illegible —
+            # verify sees no `AP/…` string anywhere and refuses.
+            import re
+            return re.sub(r"\bAP/\d{4}/[A-Z0-9]+\b", "", text)
 
-        monkeypatch.setattr(nodes.render_service, "extract_docx_text", without_footer)
+        monkeypatch.setattr(nodes.render_service, "extract_docx_text",
+                            without_the_reference)
         conversation = chat()
         await conversation.answer_all(answers)
         state = await conversation.say("yes")

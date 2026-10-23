@@ -925,18 +925,30 @@ class TestTheOpeningBlockRuleIsTheSameInBothPlaces:
             f"preview {pattern.group(1)!r} vs renderer {render._LABELLED.pattern!r}")
         assert limit and int(limit.group(1)) == render._MAX_OPENING_LINES
 
-    def test_the_preview_splits_into_exactly_two_blocks(self):
-        """One element per line would look the same and quietly corrupt every
-        manual edit: `innerText` joins block children with a newline, so two
-        blocks reproduce the text and fifty blocks do not."""
+    def test_the_preview_has_a_separate_official_header_body_and_signature(self):
+        """Layout furniture must not split or rewrite the petition text.
+
+        The title, reference/QR block and office endorsement box have their
+        own elements, while the citizen's text is added through text nodes and
+        compact blank-line spacers; the signature/enclosure row stays separate.
+        """
         from pathlib import Path
 
         script = Path("app/static/app.js").read_text(encoding="utf-8")
         body = script[script.index("function drawLetter("):]
         body = body[:body.index(chr(10) + "}")]
 
-        assert body.count("createElement") == 2, body.count("createElement")
-        assert "paper-dateline" in body and "paper-body" in body
+        assert 'official.className = "paper-official-header"' in body
+        assert "Petition Ref No:" in body
+        assert 'title.textContent = "PUBLIC GRIEVANCE REDRESSAL PETITION"' in body
+        assert 'office.className = "paper-office-box"' in body
+        assert 'body.className = "paper-body"' in body
+        assert "bodyLines.forEach((line) =>" in body
+        assert 'row.className = "paper-body-line"' in body
+        assert 'row.className = "paper-body-spacer"' in body
+        assert "row.textContent = line" in body
+        assert 'closing.className = "paper-signature-row"' in body
+        assert 'enclosures.className = "paper-enclosures-count"' in body
 
 
 class TestTheVoiceLoopNeverAnswersWithSilence:
@@ -1359,3 +1371,85 @@ class TestTheWorkspaceKeepsItsColumns:
         css = (pathlib.Path(__file__).resolve().parent.parent
                / "app" / "static" / "app.css").read_text(encoding="utf-8")
         assert "grid-template-columns" in css[css.index(".workspace{"):css.index(".workspace{") + 400]
+
+
+# ---------------------------------------------------------------------------
+# The 2026-10-22 verify-after-title-case incident.
+#
+# A citizen typed "80/33 perumal kovil street , theni" at intake. The
+# render layer then Title Cased it to "80/33 Perumal Kovil Street, Theni"
+# per the operator brief, so the printed petition would read cleanly.
+# verify() built targets from the SAME Title Cased display_value — but
+# then compared them against DOCX text that could still be the OLD
+# lowercase rendering (a session that was composed before this change
+# but re-verified after it). "Required values are missing" said the UI,
+# and the whole petition failed on an address the citizen had typed
+# correctly from the start.
+#
+# The fix is a case-insensitive re.search in verify(). It is correct in
+# both directions: "harish" / "Harish" / "HARISH" are all one name, and
+# scripts without case (Tamil, Devanagari, Telugu, Malayalam) are
+# unaffected by re.IGNORECASE so the non-Latin petitions are unchanged.
+# ---------------------------------------------------------------------------
+
+
+class TestVerifyIsCaseInsensitive:
+    def test_a_lowercase_address_in_the_docx_matches_a_titlecase_target(self):
+        """The exact failure the user saw on 2026-10-22. Older stored
+        letter_text + fresh Title Case display_value → `missing_values:
+        [address]` with the citizen's real address inside the document.
+
+        The pre-fix verify() missed it on TWO axes — case ("perumal" vs
+        "Perumal") AND punctuation spacing ("street , theni" with a space
+        before the comma vs "Street, Theni" without). _normalise now
+        tightens punctuation spacing on both sides, and re.IGNORECASE
+        covers the case drift."""
+        import re
+
+        from app.graph.nodes import _normalise
+
+        target = _normalise("80/33 Perumal Kovil Street, Theni")
+        extracted_from_docx = _normalise(
+            "From, Harish 80/33 perumal kovil street , theni Age 23")
+        pattern = r"(?<!\w)" + re.escape(target) + r"(?!\w)"
+
+        # Case-sensitive still fails on case alone (post-normalise), which
+        # is the only mismatch that remained after the punctuation fix.
+        assert re.search(pattern, extracted_from_docx) is None
+        # Case-insensitive finds it — which is what the production
+        # verify() now does.
+        assert re.search(pattern, extracted_from_docx, re.IGNORECASE) is not None
+
+    def test_the_nodes_verify_passes_the_ignorecase_flag(self):
+        """The specific line in verify() that was changed. If a future
+        edit drops the flag, this test fails loudly."""
+        import pathlib
+        source = pathlib.Path("app/graph/nodes.py").read_text(encoding="utf-8")
+        # Just the verify's target-match block.
+        start = source.index("missing_values = [")
+        block = source[start:start + 400]
+        assert "re.IGNORECASE" in block, (
+            "verify() must do a case-insensitive target match, or a "
+            "lowercase-stored DOCX will fail against a title-cased target")
+
+
+class TestComposePrefersFullRebuildWhenNotManuallyEdited:
+    """2026-10-22 — a petition composed under old code never picked up new
+    template structure (district line in "To", Enclosures count beside
+    the signature) because the revision path kept doing in-place field
+    substitution on the stale letter_text. The citizen had made no manual
+    edit, so there was nothing to protect — a full rebuild is what should
+    happen on the next revision.
+
+    The source-level check: the `_revision_base` branch now gates on
+    `manually_edited` so the in-place path is reserved for sessions
+    that actually have hand edits to protect."""
+
+    def test_the_revision_branch_requires_manually_edited(self):
+        import pathlib
+        source = pathlib.Path("app/graph/nodes.py").read_text(encoding="utf-8")
+        start = source.index('if (state.get("_revision_base")')
+        block = source[start:start + 300]
+        assert 'state.get("manually_edited")' in block, (
+            "the revision branch must gate on manually_edited; without it "
+            "a stale letter_text never picks up template-level improvements")

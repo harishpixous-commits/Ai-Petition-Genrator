@@ -12,7 +12,10 @@ spoken sessions identical.
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import re
+import time
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
@@ -41,6 +44,7 @@ from ..services import (
     system_one,
     tts,
 )
+from ..services.mask import mask_pii
 from ..services.officer_store import require_citizen_session
 from ..services.render import pdf_status
 from ..services.speech_text import readable_sections, redact_for_speech, speech_for
@@ -50,6 +54,7 @@ from .views import session_view
 log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", dependencies=[Depends(require_citizen_session)])
+public_router = APIRouter(prefix="/api", tags=["public tracking"])
 
 #: Stamped once, when this module is imported, which is when the process read
 #: the code it is going to serve.
@@ -195,9 +200,50 @@ def _require_confirmable(state: LetterState | None) -> bool:
 # --------------------------------------------------------------------------- #
 
 
+#: The health payload is cached process-wide for this many seconds.
+#:
+#: `llm.available` makes a live HTTP call to each configured provider (up to
+#: five, each with a 6-second timeout), `document_intelligence.status` walks
+#: the xberg format table, and `credential_check.summary` reads the operator
+#: store. One call every 30s per worker is cheap; one call per unauthenticated
+#: visitor-second is a DoS surface. Fresh enough for a kiosk badge, cold
+#: enough that a scripted hit cannot keep every provider under probe load.
+#:
+#: Deliberately short. A longer window delays the operator seeing a provider
+#: come back after a quota reset or a credential change, and that pair of
+#: events is why the badge exists.
+_HEALTH_TTL = 30.0
+
+_health_cache: dict | None = None
+_health_cached_at: float = 0.0
+_health_lock = asyncio.Lock()
+
+
 @router.get("/health")
 async def health() -> dict:
-    """What is actually working, including whether citizen text leaves the box."""
+    """What is actually working, including whether citizen text leaves the box.
+
+    The result is cached for `_HEALTH_TTL` seconds. One coroutine refreshes
+    it when it is stale; concurrent callers either see the stale value or
+    wait for the single refresh and share its result. Nothing probes the
+    providers on every call any more.
+    """
+    global _health_cache, _health_cached_at
+
+    now = time.monotonic()
+    if _health_cache is not None and now - _health_cached_at < _HEALTH_TTL:
+        return _health_cache
+
+    async with _health_lock:
+        now = time.monotonic()
+        if _health_cache is not None and now - _health_cached_at < _HEALTH_TTL:
+            return _health_cache
+        _health_cache = await _build_health()
+        _health_cached_at = time.monotonic()
+        return _health_cache
+
+
+async def _build_health() -> dict:
     settings = get_settings()
     language_status = await llm.available(settings)
     pdf = pdf_status(settings)
@@ -731,12 +777,13 @@ async def translate_document(session_id: str, body: TranslateRequest,
     """Produce the finished petition in another language.
 
     What is translated is the letter the service wrote. What is NOT translated
-    is the citizen's own text — their name, their address and their grievance
-    come through exactly as they were entered, in whatever language they chose
-    to write them. That is not a nicety: a petition whose complaint has been
-    reworded is a different petition, and a translator has already been seen to
-    turn Coimbatore into the name of a locality in Chennai. A document naming
-    the wrong town does not get acted on.
+    is the citizen's own text — their name, their address and their grievance.
+    The name and address may be formatted for the document's script, but only
+    deterministic display rules can change them; the grievance stays word for
+    word. A petition whose complaint has been reworded is a different petition,
+    and a translator has already been seen to turn Coimbatore into the name of
+    a locality in Chennai. A document naming the wrong town does not get acted
+    on.
 
     The translated text then takes the same path a hand edit takes — remade,
     versioned and verified — so the downloads carry it and the previous
@@ -750,7 +797,6 @@ async def translate_document(session_id: str, body: TranslateRequest,
             raise HTTPException(409, "There is no finished petition to translate yet.")
 
         target = body.language
-        keep = verbatim_lines(state.get("fields") or {}, protect_grievance=False)
         version = int(state.get("document_version") or 0)
 
         # THE ORIGIN: the petition as the service last WROTE it, which is what
@@ -766,11 +812,18 @@ async def translate_document(session_id: str, body: TranslateRequest,
         if origin.get("version") != version or not str(origin.get("text") or "").strip():
             origin = {
                 "text": text,
-                "language": language_of(text.split("\n"), keep),
+                "language": language_of(
+                    text.split("\n"),
+                    verbatim_lines(state.get("fields") or {},
+                                   protect_grievance=False,
+                                   language=state.get("language", "en")),
+                ),
                 "version": version,
             }
 
         source = str(origin["language"])
+        keep = verbatim_lines(state.get("fields") or {},
+                              protect_grievance=False, language=source)
         log.info("session.translate", extra={"source": source, "target": target,
                                              "showing": language_of(text.split("\n"), keep)})
 
@@ -923,6 +976,84 @@ async def submit_petition(session_id: str, request: Request) -> dict:
         return session_view(state)
 
 
+def _tracking_text(value: object, state: LetterState, limit: int = 240) -> str:
+    fields = state.get("fields") or {}
+    private_values = [fields.get("applicant_name"), fields.get("address")]
+    text = mask_pii(" ".join(str(value or "").split()), names=private_values)
+    return text[:limit]
+
+
+@public_router.get("/petitions/track/{reference_no:path}")
+async def track_petition(reference_no: str, request: Request) -> dict:
+    """Public, reference-number-only status view with citizen data excluded."""
+    from ..services import officer_store
+    from .catalog import _catalog
+
+    reference = str(reference_no or "").strip().upper().replace("-", "/")
+    if not re.fullmatch(r"AP/\d{4}/[A-Z0-9]{6}", reference):
+        raise HTTPException(404, "Petition reference not found.")
+
+    catalog = _catalog(request)
+    async with catalog._lock:
+        await catalog._refresh()
+        candidates = [
+            session_id for session_id, (_, item) in catalog._generated.items()
+            if str(item.get("reference") or "").upper() == reference
+        ]
+    if not candidates:
+        raise HTTPException(404, "Petition reference not found.")
+
+    session_id = candidates[0]
+    state = await _workflow(request).snapshot(session_id)
+    if not state or not (state.get("submitted_at") or _is_acknowledged(session_id)):
+        raise HTTPException(404, "Petition reference not found.")
+
+    with officer_store.database() as db:
+        review = db.execute(
+            "SELECT status,assigned_department,assigned_authority,sla_target,reply "
+            "FROM officer_reviews WHERE session_id=?", (session_id,),
+        ).fetchone()
+    review = dict(review) if review else {}
+    raw_status = str(review.get("status") or "")
+    if raw_status in ("New", "Pending", "Needs Review"):
+        raw_status = "New / Pending"
+    status = (
+        "Submitted — Pending Collectorate Review"
+        if raw_status in ("", "New / Pending") else raw_status
+    )
+    progress = {
+        "Acknowledged": 1,
+        "Routed to Department": 2,
+        "Under Review": 3,
+        "Field Inspection Scheduled": 3,
+        "Resolved": 4,
+        "Rejected": 3,
+    }.get(raw_status, 0)
+    item = catalog._generated[session_id][1]
+    # Do not describe the AI's suggested routing as an officer assignment.
+    department = review.get("assigned_department") or ""
+    return {
+        "reference": reference,
+        "date": state.get("submitted_at") or item.get("created_at") or "",
+        "subject": _tracking_text(item.get("subject"), state),
+        "status": status,
+        "progress_step": progress,
+        "assigned_department": _tracking_text(department, state, 160),
+        "assigned_authority": _tracking_text(review.get("assigned_authority"), state, 200),
+        "sla_target": review.get("sla_target") or "Portal target: 15–30 working days",
+        "official_reply": _tracking_text(review.get("reply"), state, 1000),
+    }
+
+
+def _is_acknowledged(session_id: str) -> bool:
+    from ..services import officer_store
+
+    with officer_store.database() as db:
+        return db.execute(
+            "SELECT 1 FROM officer_acknowledgements WHERE session_id=?", (session_id,)
+        ).fetchone() is not None
+
+
 @router.post("/sessions/{session_id}/cancel")
 async def cancel_session(session_id: str, request: Request) -> dict:
     with session_context(session_id):
@@ -940,6 +1071,22 @@ async def cancel_session(session_id: str, request: Request) -> dict:
 # --------------------------------------------------------------------------- #
 # Documents
 # --------------------------------------------------------------------------- #
+
+
+@router.get("/sessions/{session_id}/document/qr.png")
+async def document_qr(session_id: str, request: Request) -> Response:
+    """Return the current petition reference as a scannable QR image."""
+    state = await _require_state(request, session_id)
+    document = state.get("document") or {}
+    reference = str(document.get("reference") or state.get("petition_reference") or "")
+    if not reference:
+        raise HTTPException(404, "This petition has no reference number yet.")
+    from ..services.render import _qr_png_bytes
+    image = _qr_png_bytes(reference)
+    if image is None:
+        raise HTTPException(503, "QR generation is unavailable.")
+    return Response(content=image, media_type="image/png",
+                    headers={"Cache-Control": "no-store"})
 
 
 async def _letter_only(state: LetterState, kind: str) -> Path:

@@ -1,0 +1,669 @@
+# The source directory this service LOOKS AT. Not the corpus itself.
+#
+# WHAT THIS FILE IS. A catalogue of official and discovery URLs the petition
+# review assistant may use to find Acts, Rules, Government Orders, Gazette
+# notifications, departmental circulars, court orders, and grievance-routing
+# information for Tamil Nadu. Compiled from the operator brief dated 14
+# October 2026.
+#
+# WHAT IT IS NOT. It is not a crawler schedule, it is not a cached snapshot of
+# anybody's site, and it is NOT itself a legal citation. Rows below are
+# addresses, nothing more. A document only enters the corpus (`tamil_nadu.yaml`)
+# after a human curator has read it, verified its instrument type and legal
+# status, and recorded the exact URL to the underlying PDF or signed order.
+#
+# WHY TIERS. The brief sets the controlling-source priority. The assistant must
+# prefer tier_1 (Gazette or signed PDF) over tier_2 (current repository), over
+# tier_3 (department website), over tier_4 (court portal), over tier_5
+# (grievance portal — routing only), and never cite tier_6 (discovery) as the
+# legal basis when any higher tier is available. Encoded here so the policy is
+# machine-readable: the discovery script and the officer UI can both read it.
+#
+# ACCESS POLICY. Every entry declares how the source may be touched. `polite`
+# means human-rate HTTP with the service's own User-Agent header, respecting
+# robots.txt, no concurrent fetches. `manual` means a human curator must open
+# the page in a browser (JS, CAPTCHA, session, pagination). `discovery_only`
+# means the URL may be used to find search terms and nothing else.
+
+version: 1
+compiled_on: "2026-10-22"
+notes: |
+  THIS FILE DECIDES ONLY WHAT IS LOOKED AT.
+  The corpus (`tamil_nadu.yaml`) decides what is cited.
+  Nothing in this file is a legal source on its own.
+
+# ------------------------------------------------------------------------- #
+# Source-priority tiers. See `source_registry.py::SOURCE_PRIORITY`.
+# ------------------------------------------------------------------------- #
+tiers:
+  - id: tier_1_gazette
+    priority: 1
+    name: "Gazette or signed PDF"
+    description: >
+      Original Gazette (ordinary, extraordinary, judicial) or an official
+      signed government PDF for promulgation, notification, rule, amendment
+      or commencement. The strongest evidence of a published statute,
+      notification or Government Order.
+
+  - id: tier_2_repository
+    priority: 2
+    name: "Current Act/Rule repository"
+    description: >
+      Current official repository for operative Act, Rule or regulation
+      text — e.g. India Code, Legislative Department. Verify every item
+      against the Gazette and later amendments.
+
+  - id: tier_3_department
+    priority: 3
+    name: "Issuing department or authority website"
+    description: >
+      Issuing Tamil Nadu department, directorate, commissionerate or
+      competent authority website for current procedures, forms, circulars,
+      Citizen Charters and contacts.
+
+  - id: tier_4_court
+    priority: 4
+    name: "Official court portal"
+    description: >
+      Madras High Court, Supreme Court or eCourts for judgments, final
+      orders, daily orders, case status and procedural directions. Online
+      status is not a certified copy.
+
+  - id: tier_5_grievance
+    priority: 5
+    name: "Grievance/petition routing"
+    description: >
+      Official petition portals, grievance channels and CM Helpline. For
+      intake, acknowledgement, routing and status only. NOT proof of a
+      statutory right, appeal, limitation extension or final remedy.
+
+  - id: tier_6_discovery
+    priority: 6
+    name: "Discovery only"
+    description: >
+      Wikipedia, blogs, commercial legal databases and non-governmental
+      indexes. May be used to find search terms, instrument names and
+      cross-check candidates. MUST NEVER be the controlling citation when
+      any higher tier is available.
+
+# ------------------------------------------------------------------------- #
+# The source directory. Every row is a URL from the operator brief dated
+# 14 October 2026. Fields:
+#
+#   id            Stable identifier, used by the discovery script and the
+#                 officer UI to refer back to this entry.
+#   name          Human-readable description.
+#   url           The exact URL from the brief.
+#   tier          Which priority tier (above).
+#   kind          document | index | hub | search | directory | discovery
+#   access        polite | manual | discovery_only
+#   departments   Which departments this address covers, or ["all"].
+#   captures      What the URL yields in practice (used by the discovery
+#                 script to decide whether to download or just HEAD-check).
+#   notes         Human notes — pagination quirks, JS requirements, scope.
+# ------------------------------------------------------------------------- #
+
+sources:
+
+  # ===================================================================== #
+  # A. Tamil Nadu — central portals, Acts, Rules, Government Orders.
+  # ===================================================================== #
+
+  - id: tn-portal
+    name: "Government of Tamil Nadu — central portal"
+    url: "https://www.tn.gov.in/"
+    tier: tier_3_department
+    kind: hub
+    access: polite
+    departments: [all]
+    captures: ["navigation"]
+    notes: >
+      Entry point to the state portal. Not itself a document source;
+      follow links from here to Acts, Rules and G.O. indexes.
+
+  - id: tn-godept-list
+    name: "Tamil Nadu Government Orders — department index"
+    url: "https://www.tn.gov.in/godept_list.php"
+    tier: tier_3_department
+    kind: index
+    access: manual
+    departments: [all]
+    captures: ["go_pdfs"]
+    notes: >
+      G.O. index by department, then by year. Each year page lists G.O.
+      numbers with PDF links. Pagination and department selection are
+      interactive; a curator picks the subset to ingest.
+
+  - id: tn-acts-ordinances
+    name: "Tamil Nadu Acts and Ordinances"
+    url: "https://www.tn.gov.in/act_ordinances.php"
+    tier: tier_3_department
+    kind: index
+    access: manual
+    departments: [all]
+    captures: ["act_pdfs", "ordinance_pdfs"]
+    notes: >
+      State Acts and Ordinances index. Must be cross-checked against the
+      Gazette for amendments and later publications.
+
+  - id: tn-rules-index
+    name: "Tamil Nadu Rules and Regulations"
+    url: "https://www.tn.gov.in/rules.php"
+    tier: tier_3_department
+    kind: index
+    access: manual
+    departments: [all]
+    captures: ["rules_pdfs", "service_rules_pdfs"]
+    notes: >
+      Department-wise and A–Z rules index. Dynamic page; the list of
+      links is rendered live by the portal.
+
+  - id: tn-circulars
+    name: "Tamil Nadu Circulars and Notifications"
+    url: "https://www.tn.gov.in/circular_notifications_dept_list.php"
+    tier: tier_3_department
+    kind: index
+    access: manual
+    departments: [all]
+    captures: ["circular_pdfs", "notification_pdfs"]
+    notes: >
+      Implementation instructions and departmental circulars. A circular
+      does not override an Act, Rule or Gazette; the officer UI must
+      display circular findings as administrative guidance.
+
+  - id: tn-forms
+    name: "Tamil Nadu Forms directory"
+    url: "https://www.tn.gov.in/formdept_list.php"
+    tier: tier_3_department
+    kind: index
+    access: manual
+    departments: [all]
+    captures: ["form_pdfs"]
+    notes: >
+      Official application and petition forms. The current form, not an
+      archive copy, is what a citizen must file.
+
+  - id: tn-contact-directory
+    name: "Tamil Nadu Contact Directory"
+    url: "https://www.tn.gov.in/contact_directory.php"
+    tier: tier_3_department
+    kind: directory
+    access: manual
+    departments: [all]
+    captures: ["authority_contacts"]
+    notes: >
+      Secretaries, District Collectors, Heads of Department. Re-check
+      contact details before service of a petition.
+
+  - id: tn-departments-html
+    name: "Tamil Nadu Government Departments Directory"
+    url: "https://www.tn.gov.in/departments.html"
+    tier: tier_3_department
+    kind: directory
+    access: polite
+    departments: [all]
+    captures: ["department_index"]
+    notes: >
+      Flat department index. Starting point for department discovery.
+
+  - id: tn-law-dept-profile
+    name: "Tamil Nadu Law Department profile"
+    url: "https://www.tn.gov.in/dept_profile.php?dep_id=MTk="
+    tier: tier_3_department
+    kind: hub
+    access: manual
+    departments: [law]
+    captures: ["navigation"]
+    notes: >
+      Law Department identity and links. `MTk=` is base64 for `19`
+      (department id). URL params may change — if so, re-discover from
+      `tn-departments-html`.
+
+  - id: tn-law-dept-acts
+    name: "Law Department — Acts and Ordinances"
+    url: "https://www.tn.gov.in/act_ordinances.php?dep_id=MTk="
+    tier: tier_3_department
+    kind: index
+    access: manual
+    departments: [law]
+    captures: ["act_pdfs", "ordinance_pdfs"]
+
+  - id: tn-law-dept-rules
+    name: "Law Department — Rules Viewer"
+    url: "https://www.tn.gov.in/rulesviewer.php?dep_id=MTk="
+    tier: tier_3_department
+    kind: index
+    access: manual
+    departments: [law]
+    captures: ["rule_pdfs", "service_rules_pdfs"]
+
+  - id: nic-tn-websites
+    name: "NIC Tamil Nadu Government Websites Directory"
+    url: "https://tn.nic.in/publication/list-of-websites/"
+    tier: tier_3_department
+    kind: directory
+    access: polite
+    departments: [all]
+    captures: ["department_urls"]
+
+  - id: nic-tn-centre
+    name: "NIC Tamil Nadu State Centre"
+    url: "https://tn.nic.in/"
+    tier: tier_3_department
+    kind: hub
+    access: polite
+    departments: [all]
+    captures: ["navigation"]
+
+  - id: tn-districts
+    name: "Tamil Nadu District Portals"
+    url: "https://tndistricts.nic.in/"
+    tier: tier_3_department
+    kind: directory
+    access: polite
+    departments: [all]
+    captures: ["district_urls"]
+    notes: >
+      District Collectorate index. Each district has its own site with
+      local notifications, G.O.s and schemes.
+
+  - id: chennai-acts-rules-gos
+    name: "Chennai District — Acts, Rules, Guidelines and Government Orders"
+    url: "https://chennai.nic.in/acts-rules-guidelines-and-government-orders/"
+    tier: tier_3_department
+    kind: index
+    access: polite
+    departments: [chennai]
+    captures: ["act_pdfs", "rule_pdfs", "go_pdfs"]
+
+  # ===================================================================== #
+  # B. Tamil Nadu Gazette and publication evidence (tier 1 — primary).
+  # ===================================================================== #
+
+  - id: tn-gazette-hub
+    name: "Stationery and Printing Department"
+    url: "https://www.stationeryprinting.tn.gov.in/"
+    tier: tier_1_gazette
+    kind: hub
+    access: polite
+    departments: [stationery_and_printing]
+    captures: ["navigation"]
+
+  - id: tn-gazette-publications
+    name: "Tamil Nadu Gazette publications"
+    url: "https://www.stationeryprinting.tn.gov.in/gazette.php"
+    tier: tier_1_gazette
+    kind: index
+    access: manual
+    departments: [stationery_and_printing]
+    captures: ["gazette_pdfs"]
+    notes: >
+      Regular Gazette issues including statutory rules, notifications,
+      orders and judicial notifications. Preserve: Gazette type, issue
+      number, part/section, date, page, department, instrument number.
+
+  - id: tn-gazette-eo-2026
+    name: "Extraordinary Gazette — 2026"
+    url: "https://www.stationeryprinting.tn.gov.in/extra_ordinary_lists.php?id=MjAyNg%3D%3D"
+    tier: tier_1_gazette
+    kind: index
+    access: manual
+    departments: [stationery_and_printing]
+    captures: ["gazette_pdfs"]
+    notes: >
+      `MjAyNg%3D%3D` is base64 for `2026`. For a different year, change
+      the base64 segment or navigate from the hub.
+
+  - id: tn-gazette-2025
+    name: "Tamil Nadu Gazette Archives — 2025"
+    url: "https://www.stationeryprinting.tn.gov.in/Gazette_Publications_2008.php?id=MjAyNQ%3D%3D"
+    tier: tier_1_gazette
+    kind: index
+    access: manual
+    departments: [stationery_and_printing]
+    captures: ["gazette_pdfs"]
+
+  - id: tn-gazette-2024
+    name: "Tamil Nadu Gazette Archives — 2024"
+    url: "https://www.stationeryprinting.tn.gov.in/Gazette_Publications_2008.php?id=MjAyNA%3D%3D"
+    tier: tier_1_gazette
+    kind: index
+    access: manual
+    departments: [stationery_and_printing]
+    captures: ["gazette_pdfs"]
+
+  - id: tn-gazette-archives
+    name: "Gazette archives"
+    url: "https://stationeryprinting.tn.gov.in/archives.php"
+    tier: tier_1_gazette
+    kind: index
+    access: manual
+    departments: [stationery_and_printing]
+    captures: ["gazette_pdfs"]
+
+  - id: tn-gazette-search
+    name: "Search Gazette"
+    url: "https://www.stationeryprinting.tn.gov.in/search_gazette.php"
+    tier: tier_1_gazette
+    kind: search
+    access: manual
+    departments: [stationery_and_printing]
+    captures: ["gazette_pdfs"]
+    notes: >
+      Search by year, issue/date, part, department, G.O. number or
+      keyword. The curator's preferred entry point for a known case.
+
+  - id: tn-service-to-public
+    name: "Tamil Nadu Gazette Publication Information"
+    url: "https://www.stationeryprinting.tn.gov.in/servicetopublic.html"
+    tier: tier_1_gazette
+    kind: hub
+    access: polite
+    departments: [stationery_and_printing]
+    captures: ["navigation"]
+
+  - id: tn-it-dept-gos
+    name: "Tamil Nadu IT Department Government Orders"
+    url: "https://it.tn.gov.in/en/government_order"
+    tier: tier_3_department
+    kind: index
+    access: manual
+    departments: [information_technology]
+    captures: ["go_pdfs"]
+
+  # ===================================================================== #
+  # C. India / Central Acts and Rules (tier 2 primary; tier 1 for Gazette).
+  # ===================================================================== #
+
+  - id: indiacode-root
+    name: "India Code — Main Portal"
+    url: "https://www.indiacode.nic.in/"
+    tier: tier_2_repository
+    kind: hub
+    access: polite
+    departments: [central]
+    captures: ["navigation"]
+
+  - id: indiacode-home
+    name: "India Code — Official Legislation Database"
+    url: "https://www.indiacode.nic.in/indiacode/home.jsp"
+    tier: tier_2_repository
+    kind: index
+    access: polite
+    departments: [central]
+    captures: ["act_pdfs", "rule_pdfs"]
+
+  - id: indiacode-tn
+    name: "India Code — Tamil Nadu Legislation Collection"
+    url: "https://www.indiacode.nic.in/handle/123456789/2507/"
+    tier: tier_2_repository
+    kind: index
+    access: polite
+    departments: [all]
+    captures: ["act_pdfs"]
+    notes: >
+      TN state legislation entry on India Code. Cross-check with the
+      Gazette for promulgation and exact legal status.
+
+  - id: india-portal-acts
+    name: "National Portal of India — Acts and Rules"
+    url: "https://www.india.gov.in/my-government/acts-and-rules"
+    tier: tier_2_repository
+    kind: index
+    access: polite
+    departments: [central]
+    captures: ["act_pdfs"]
+
+  - id: india-portal-directory
+    name: "National Portal of India — Government Web Directory"
+    url: "https://www.india.gov.in/directory/web-directory"
+    tier: tier_3_department
+    kind: directory
+    access: polite
+    departments: [central]
+    captures: ["department_urls"]
+
+  - id: india-services
+    name: "National Government Services Portal"
+    url: "https://services.india.gov.in/"
+    tier: tier_5_grievance
+    kind: hub
+    access: polite
+    departments: [central]
+    captures: ["navigation"]
+
+  - id: egazette-india
+    name: "e-Gazette of India"
+    url: "https://egazette.gov.in/"
+    tier: tier_1_gazette
+    kind: index
+    access: manual
+    departments: [central]
+    captures: ["gazette_pdfs"]
+    notes: >
+      Central Gazette publication evidence. The source for notification,
+      Act commencement and Rule publication at the Union level.
+
+  - id: legislative-dept
+    name: "Legislative Department, Ministry of Law and Justice"
+    url: "https://legislative.gov.in/"
+    tier: tier_2_repository
+    kind: hub
+    access: polite
+    departments: [central]
+    captures: ["navigation"]
+
+  - id: legislative-dept-acts-policies
+    name: "Legislative Department — Acts and Policies"
+    url: "https://www.legislative.gov.in/documents/acts-and-policies"
+    tier: tier_2_repository
+    kind: index
+    access: polite
+    departments: [central]
+    captures: ["act_pdfs"]
+
+  # ===================================================================== #
+  # D. Department-specific resources (tier 3 — primary for procedure).
+  # ===================================================================== #
+
+  - id: tnrd
+    name: "Rural Development and Panchayat Raj Department, Tamil Nadu"
+    url: "https://www.tnrd.tn.gov.in/"
+    tier: tier_3_department
+    kind: hub
+    access: polite
+    departments: [rural_development]
+    captures: ["navigation", "circular_pdfs"]
+
+  - id: tn-nalsa
+    name: "Tamil Nadu State Legal Services Authority"
+    url: "https://tamilnadu.nalsa.gov.in/"
+    tier: tier_3_department
+    kind: hub
+    access: polite
+    departments: [legal_services]
+    captures: ["navigation"]
+
+  - id: tn-nalsa-directory
+    name: "Tamil Nadu State Legal Services Authority Directory"
+    url: "https://tamilnadu.nalsa.gov.in/directory/"
+    tier: tier_3_department
+    kind: directory
+    access: polite
+    departments: [legal_services]
+    captures: ["authority_contacts"]
+
+  - id: nalsa-india
+    name: "National Legal Services Authority"
+    url: "https://nalsa.gov.in/"
+    tier: tier_3_department
+    kind: hub
+    access: polite
+    departments: [legal_services]
+    captures: ["navigation"]
+
+  # ===================================================================== #
+  # E. Courts and judgments (tier 4).
+  # ===================================================================== #
+
+  - id: madras-hc
+    name: "Madras High Court"
+    url: "https://hcmadras.tn.gov.in/"
+    tier: tier_4_court
+    kind: hub
+    access: polite
+    departments: [judiciary]
+    captures: ["navigation"]
+
+  - id: supreme-court
+    name: "Supreme Court of India"
+    url: "https://www.sci.gov.in/"
+    tier: tier_4_court
+    kind: hub
+    access: polite
+    departments: [judiciary]
+    captures: ["navigation"]
+
+  - id: ecourts
+    name: "eCourts Services"
+    url: "https://ecourts.gov.in/"
+    tier: tier_4_court
+    kind: hub
+    access: polite
+    departments: [judiciary]
+    captures: ["case_status"]
+
+  - id: njdg
+    name: "National Judicial Data Grid"
+    url: "https://njdg.ecourts.gov.in/"
+    tier: tier_4_court
+    kind: hub
+    access: polite
+    departments: [judiciary]
+    captures: ["case_status"]
+    notes: >
+      Pendency statistics. Not a judgment source — a case present here is
+      not proof of a specific order.
+
+  # ===================================================================== #
+  # D. District grievance intake, departmental routing and citizen charters.
+  # ===================================================================== #
+
+  - id: tn-cra-department-portal
+    name: "Commissionerate of Revenue Administration - Official Department Portal"
+    url: "https://cra.tn.gov.in/"
+    tier: tier_5_grievance
+    kind: hub
+    access: polite
+    departments: [revenue, collectorate]
+    captures: ["district_administration", "revenue_services", "grievance_links"]
+    notes: >
+      The current department homepage links to the public grievance centre,
+      revenue services and district administration. Navigation context only;
+      it does not state a petition workflow or a service deadline.
+
+  - id: tn-rd-citizen-charter-2024
+    name: "Rural Development and Panchayat Raj Department Citizen Charter - 2024"
+    url: "https://tnrd.tn.gov.in/rdweb_newsite/project/reports/Public/public_page_table_content_getpdf.php?pdf_download_id=NDY1"
+    tier: tier_3_department
+    kind: document
+    access: polite
+    departments: [rural_development, panchayat_raj]
+    captures: ["citizen_charter", "rural_water", "rural_roads", "street_lights", "sanitation"]
+    notes: >
+      Official 2024 departmental charter; service and duty descriptions apply
+      to the scope the charter states.
+
+  - id: tn-urban-madurai-charter
+    name: "Madurai Corporation Citizen Charter"
+    url: "https://www.tnurbantree.tn.gov.in/madurai/citizen-charter/"
+    tier: tier_3_department
+    kind: hub
+    access: polite
+    departments: [municipal_administration]
+    captures: ["citizen_charter", "urban_water", "roads", "street_lights", "drainage"]
+    notes: >
+      City-specific service charter. Deadlines shown by it must not be
+      generalized to another local body.
+
+  - id: tn-edistrict-services
+    name: "Tamil Nadu e-District Service List"
+    url: "https://it.tn.gov.in/en/TNEGA/e-District"
+    tier: tier_3_department
+    kind: hub
+    access: polite
+    departments: [revenue, social_security, civil_supplies, police]
+    captures: ["certificates", "pensions", "patta_transfer", "pds", "police_csr"]
+    notes: >
+      Department and service names for district-level e-District services;
+      the page is not itself a service guarantee.
+
+  - id: tn-tnega-csc-revenue-services
+    name: "Tamil Nadu e-Sevai Common Service Centre Revenue Services"
+    url: "https://it.tn.gov.in/en/TNEGA/common_service_centres"
+    tier: tier_3_department
+    kind: hub
+    access: polite
+    departments: [revenue]
+    captures: ["certificates", "pensions", "patta_transfer", "subdivision", "grievance_day_petition"]
+    notes: >
+      Current IT Department directory of e-Sevai services and access points.
+      Use it to identify services and channels, not as proof of a current
+      service-level deadline; several rows carry historic durations.
+
+  - id: tn-police-standing-orders-grievance
+    name: "Tamil Nadu Police Standing Orders - Grievance Petition Procedure"
+    url: "https://eservices.tnpolice.gov.in/content/publications/pso.pdf"
+    tier: tier_3_department
+    kind: document
+    access: manual
+    departments: [police]
+    captures: ["police_grievance", "csr", "petition_disposal"]
+    notes: >
+      Official police publication. Automatic retrieval is paused because the
+      host certificate fails validation; it is not included in the searchable
+      corpus until a verified copy is available.
+
+  - id: tnpdcl-cgrf-guidelines
+    name: "Tamil Nadu Power Distribution - Consumer Grievance Redressal Forum Guidelines"
+    url: "https://www.tnebltd.gov.in/cgrfonline/guidelines.xhtml"
+    tier: tier_3_department
+    kind: hub
+    access: polite
+    departments: [electricity, energy]
+    captures: ["electricity_complaints", "cgrf", "acknowledgement", "appeal"]
+
+  - id: tn-rd-org-chart
+    name: "Rural Development and Panchayat Raj Department - District and Block Organization Chart"
+    url: "https://tnrd.tn.gov.in/rdweb_newsite/project/reports/Public/Organization_chart.php"
+    tier: tier_3_department
+    kind: hub
+    access: polite
+    departments: [rural_development, panchayat_raj]
+    captures: ["district_hierarchy", "block_development_officer", "engineering"]
+
+  - id: tn-rd-housing-schemes
+    name: "Rural Development and Panchayat Raj Department - Housing Scheme Administration"
+    url: "https://www.tnrd.tn.gov.in/schemes/st_cmspghs.php"
+    tier: tier_3_department
+    kind: hub
+    access: polite
+    departments: [rural_development, housing]
+    captures: ["rural_housing", "district_collector", "project_director", "bdo"]
+
+  # ===================================================================== #
+  # E. Discovery only — NEVER cited, cross-reference only.
+  # ===================================================================== #
+
+  - id: wikipedia-tn-laws
+    name: "Wikipedia — List of Government of Tamil Nadu Laws and Rules"
+    url: "https://en.wikipedia.org/wiki/List_of_government_of_Tamil_Nadu_laws_and_rules"
+    tier: tier_6_discovery
+    kind: discovery
+    access: discovery_only
+    departments: [all]
+    captures: ["instrument_names"]
+    notes: >
+      Discovery only. The brief is explicit: Wikipedia may suggest search
+      terms. Nothing from here is a legal source and nothing from here is
+      allowed into the corpus.

@@ -26,6 +26,13 @@ python-multipart>=0.0.9
 # reported as unreadable rather than guessed at.
 PyMuPDF>=1.24
 
+# QR codes on the petition. The reference number is printed in the header
+# both as plain text and as a scannable code, so a receiving office can
+# bring the petition up by phone without typing. Soft dependency: if the
+# package is missing, the header still prints the reference text and the
+# QR cell is simply left blank.
+qrcode[pil]>=7.4
+
 # Document reading for attachments. A citizen brings a photograph of an
 # acknowledgement slip, a scanned petition, a ward's complaint spreadsheet, or
 # a .doc from a department that has not changed template since 2003. Measured

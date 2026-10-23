@@ -421,3 +421,80 @@ class TestTheOldBehaviourIsStillIntact:
         "one hundred and five" is a cardinal and not three digits."""
         assert validate_age("twenty three").value == 23
         assert validate_age("\u0b87\u0bb0\u0bc1\u0baa\u0ba4\u0bcd\u0ba4\u0bc1 \u0bae\u0bc2\u0ba9\u0bcd\u0bb1\u0bc1").value == 23
+
+
+# ---------------------------------------------------------------------------
+# Title Case display — 2026-10-22 UI brief: a petition should read
+# "80/33, Perumal Kovil Street, Theni" instead of the citizen's raw
+# keyboard input "80/33 perumal kovil street , theni".
+# ---------------------------------------------------------------------------
+
+
+class TestSmartTitleCase:
+    def test_lowercase_latin_text_becomes_title_case(self):
+        from app.domain.fields import smart_titlecase
+        assert smart_titlecase("perumal kovil street") == "Perumal Kovil Street"
+        assert smart_titlecase("theni") == "Theni"
+        assert smart_titlecase("ravi kumar") == "Ravi Kumar"
+
+    def test_short_filler_words_stay_lowercase_mid_string(self):
+        """A petition is not a nineteenth-century schoolbook."""
+        from app.domain.fields import smart_titlecase
+        assert smart_titlecase("house of representatives") == "House of Representatives"
+        assert smart_titlecase("church near the hospital") == "Church near the Hospital"
+        # But the FIRST word is capitalised even if it would otherwise be a filler.
+        assert smart_titlecase("the national assembly") == "The National Assembly"
+
+    def test_door_numbers_are_left_exactly_as_typed(self):
+        """80/33 is a door number, not something to Title Case."""
+        from app.domain.fields import smart_titlecase
+        assert smart_titlecase("80/33 perumal kovil street") == \
+               "80/33 Perumal Kovil Street"
+        assert smart_titlecase("Door No 7, 2nd Cross") == "Door No 7, 2nd Cross"
+
+    def test_commas_are_normalised_without_dropping_spaces(self):
+        from app.domain.fields import smart_titlecase
+        assert smart_titlecase("80/33 perumal kovil street , theni") == \
+               "80/33 Perumal Kovil Street, Theni"
+
+    def test_non_latin_scripts_are_left_unchanged(self):
+        """Tamil / Hindi / Telugu / Malayalam have their own case rules.
+        smart_titlecase must not touch them."""
+        from app.domain.fields import smart_titlecase
+        assert smart_titlecase("ராஜா குமார்") == "ராஜா குமார்"
+        assert smart_titlecase("राजा कुमार") == "राजा कुमार"
+
+    def test_short_tokens_that_look_like_uppercase_abbreviations_are_lifted(self):
+        from app.domain.fields import smart_titlecase
+        assert smart_titlecase("tn house") == "TN House"
+        assert smart_titlecase("lic office road") == "LIC Office Road"
+
+
+class TestDisplayValuePluggedInTitleCase:
+    def test_english_person_name_becomes_title_case(self):
+        from app.domain.fields import display_value
+        assert display_value("person_name", "ravi kumar", "en") == "Ravi Kumar"
+
+    def test_english_address_becomes_title_case(self):
+        from app.domain.fields import display_value
+        assert display_value("address", "80/33 perumal kovil street , theni",
+                             "en") == "80/33, Perumal Kovil Street, Theni"
+
+    def test_tamil_display_is_not_touched_by_title_case(self):
+        """The Tamil dispatcher owns Tamil rendering; title case must not
+        interfere with the script conversion."""
+        from app.domain.fields import display_value
+        # The Tamil script dispatcher returns a Tamil string, and the title
+        # case guard refuses non-Latin text, so the final value stays Tamil.
+        result = display_value("person_name", "ராஜா குமார்", "ta")
+        assert all(ord(c) > 0x7F or c in " ." for c in result if c.strip())
+
+    def test_non_english_language_falls_through_to_indic_script(self):
+        """When the Indic dispatcher transliterates to its own script, that
+        wins — Title Case does not run on Devanagari/Tamil/Telugu/Malayalam
+        output, because those scripts have no notion of case."""
+        from app.domain.fields import display_value
+        result = display_value("person_name", "ravi kumar", "hi")
+        # Either the dispatcher produced Devanagari (one non-ASCII char),
+        # or returned the Latin unchanged — in which case Title Case ran.
+        assert any(ord(c) > 0x7F for c in result) or result == "Ravi Kumar"

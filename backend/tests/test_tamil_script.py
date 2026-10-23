@@ -110,10 +110,14 @@ class TestTheStoredValueIsNeverChanged:
         assert fields["address"] == "82/33 perumal kovil street, theni"
 
     def test_english_shows_the_citizens_own_spelling(self):
-        """Their name still matches the card in their pocket."""
+        """Their name still matches the card in their pocket — Title Case
+        is applied for display (per the 2026-10-22 UI brief: a petition
+        should read "80/33, Perumal Kovil Street, Theni" rather than the
+        citizen's raw keyboard input) but the LETTERS are the citizen's.
+        A citizen with "Harish" on their card still sees "Harish"."""
         assert display_value("person_name", "Harish", "en") == "Harish"
         assert display_value("address", "82/33 perumal kovil street, theni",
-                             "en") == "82/33 perumal kovil street, theni"
+                             "en") == "82/33, Perumal Kovil Street, Theni"
 
     def test_switching_language_is_reversible(self):
         tamil = display_value("person_name", "Harish", "ta")
@@ -170,13 +174,19 @@ class TestTheWholeLetterIsOneLanguage:
 
         assert "Harish" in closing
 
-    def test_the_english_petition_is_unchanged(self):
+    def test_the_english_petition_shows_the_citizens_letters_titlecased(self):
+        """Per the 2026-10-22 brief, name and address are Title Cased in
+        the English petition. The letters are the citizen's own — this is
+        display formatting, not re-spelling."""
         text = build_letter_text(template=the_template(), fields=dict(FIELDS),
                                  language="en", composition=None,
                                  session_id="abc-123")
 
         assert "Harish" in text
-        assert "82/33 perumal kovil street, theni" in text
+        assert "82/33, Perumal Kovil Street, Theni" in text
+        # The lowercase variant must not appear anywhere; otherwise the
+        # citizen's own display would be inconsistent across the letter.
+        assert "82/33 perumal kovil street, theni" not in text
         assert "ஹரிஷ்" not in text
 
 

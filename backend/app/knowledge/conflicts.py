@@ -60,12 +60,20 @@ def topic_of(chunk: Chunk) -> str | None:
     """What a passage is ABOUT, coarsely, for spotting two takes on one rule.
 
     Deliberately coarse. The purpose is to notice that two documents address the
-    same instrument, not to classify them: an Act name, a Rule name or a G.O.
+    same instrument, not to classify them: a Rule name, an Act name or a G.O.
     number is enough, and a document carrying none of those is not compared at
     all — better to miss a conflict than to invent one between two unrelated
     circulars that happen to share a department.
+
+    RULE_NAME COMES FIRST, deliberately. A Rules document often carries the
+    parent Act's name in `act_name` as metadata ("made under the TN ULB Act,
+    1998"); picking the Act name there groups the Rules into a bucket with
+    the actual Act and reports the pair as a conflict — but an Act and the
+    Rules made under it are two different instruments, not two versions of
+    the same one. The more SPECIFIC field, when both are set, is the right
+    bucket key.
     """
-    for value in (chunk.act_name, chunk.rule_name):
+    for value in (chunk.rule_name, chunk.act_name):
         if value and value.strip():
             return _normalise(value)
     if chunk.government_order_number:
@@ -208,31 +216,46 @@ def corpus_conflicts(documents: list[dict]) -> list[dict]:
     time rather than the first time a citizen's grievance happens to retrieve
     both.
 
+    REGISTRY-AWARE. `corpus/legal_relationships.yaml` declares amendment
+    chains: G.O. 164 amends TN ULB Rules 2023, G.O. 480 amends it too, and
+    so on. A group where every "extra" document is a declared amendment of
+    one root is NOT a conflict — it is the amendment chain working as
+    intended. Those groups are filtered out here, so the operator panel
+    only lights up for genuine unexplained overlap.
+
     Takes the document rows `KnowledgeStore.documents()` returns, so it reads no
     chunk text and costs nothing to call on a status page.
     """
     by_topic: dict[str, list[dict]] = {}
     for row in documents:
-        name = (row.get("act_name") or row.get("rule_name") or "").strip()
+        name = (row.get("rule_name") or row.get("act_name") or "").strip()
         topic = _normalise(name) if name else (
             f"go:{_normalise(row['government_order_number'])}"
             if row.get("government_order_number") else None)
         if topic:
             by_topic.setdefault(topic, []).append(row)
 
+    url_to_manifest = _manifest_ids_by_url()
     out: list[dict] = []
     for topic, group in by_topic.items():
         if len(group) < 2:
             continue
         live = [r for r in group if not r.get("superseded")]
-        dated = [r for r in live if _parsed(r.get("date")) or _year_in(r.get("version"))
-                 or _year_in(r.get("title"))]
-
         if len(live) < 2:
             # One live document and some retired ones: that is version history
             # working, not a conflict.
             continue
 
+        # REGISTRY FILTER. Map each live document to its manifest id by URL,
+        # then ask: does the relationships registry declare how these fit
+        # together? If every non-root document is a declared amendment of
+        # one shared root in the group, this is an amendment chain, not a
+        # conflict. The operator panel is not the place to flag it.
+        if _is_declared_amendment_chain(live, url_to_manifest):
+            continue
+
+        dated = [r for r in live if _parsed(r.get("date")) or _year_in(r.get("version"))
+                 or _year_in(r.get("title"))]
         resolvable = len(dated) == len(live) and len({
             (_parsed(r.get("date")) or date(_year_in(r.get("title")) or 1900, 1, 1))
             for r in live}) == len(live)
@@ -249,3 +272,58 @@ def corpus_conflicts(documents: list[dict]) -> list[dict]:
                    "which is in force — retrieval will show both and warn.")),
         })
     return out
+
+
+def _manifest_ids_by_url() -> dict[str, str]:
+    """Deferred import so this module stays import-cheap for tests that do
+    not need the relationships registry."""
+    try:
+        from .legal_status import manifest_ids_by_url
+        return manifest_ids_by_url()
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def _is_declared_amendment_chain(live: list[dict],
+                                 url_to_manifest: dict[str, str]) -> bool:
+    """True when the whole group is a root instrument plus its declared
+    amendments, every amendment pointing at the same root.
+
+    If every non-root document is declared as amending/substituting/inserting
+    into one single root in this group, the relationships registry explains
+    the overlap and nothing is in conflict. If any document in the group has
+    no declared relationship to any other, the overlap is genuine and the
+    group is reported normally.
+    """
+    try:
+        from .legal_status import registry
+        reg = registry()
+    except Exception:  # noqa: BLE001
+        return False
+
+    manifest_ids: list[str] = []
+    for row in live:
+        manifest_id = url_to_manifest.get(row.get("source_url", "") or "")
+        if not manifest_id:
+            return False  # some document is outside the manifest; cannot explain
+        manifest_ids.append(manifest_id)
+    if len(set(manifest_ids)) != len(manifest_ids):
+        return False  # a duplicate manifest id — treat as a conflict
+
+    # For each candidate root, every OTHER document must declare at least
+    # one change that targets this root.
+    for root_candidate in manifest_ids:
+        all_point_here = True
+        for other in manifest_ids:
+            if other == root_candidate:
+                continue
+            targets_root = any(
+                c.source == other and c.target == root_candidate
+                for c in reg.changes
+            )
+            if not targets_root:
+                all_point_here = False
+                break
+        if all_point_here:
+            return True
+    return False

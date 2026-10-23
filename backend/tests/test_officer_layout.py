@@ -265,3 +265,106 @@ class TestTheDashboardDoesNotWaitTwice:
 
         assert 'await api("/petitions")' not in body
         assert 'await api("/acknowledgements")' not in body
+
+
+class TestDashboardSortIsStoredPerTab:
+    """Phase 2026-10-15 UI upgrade.
+
+    Clicking a column header toggles its sort direction and the choice
+    persists across page loads because it is written to localStorage.
+    Two tabs (petitions / acknowledgements) each keep their own sort
+    order — a search by "Date desc" on petitions must not spill onto
+    acknowledgements."""
+
+    def _officer_js(self):
+        return pathlib.Path("app/static/officer.js").read_text(encoding="utf-8")
+
+    def test_the_sort_state_is_persisted(self):
+        js = self._officer_js()
+        assert "officer:dashboard-sort" in js
+        assert "writeSort" in js and "readSort" in js
+
+    def test_the_sort_state_is_per_tab(self):
+        js = self._officer_js()
+        # The persisted shape is {<tab>: {key, dir}}, keyed by `tab`.
+        assert "all[tab] = order" in js
+        assert "[tab] || null" in js
+
+
+class TestDetailPageHasPrevNext:
+    def _officer_js(self):
+        return pathlib.Path("app/static/officer.js").read_text(encoding="utf-8")
+
+    def test_the_filtered_dashboard_ids_are_passed_to_the_detail_page(self):
+        """Prev/Next must walk the FILTERED list, not every petition in the
+        system. Written to sessionStorage from table()."""
+        js = self._officer_js()
+        assert "recordNeighbours(filtered.map" in js
+        assert "readNeighbours" in js
+
+    def test_prev_and_next_are_hidden_when_the_officer_arrived_from_a_bookmark(self):
+        """`here` is -1 when the current petition is not in the stored
+        list. Both buttons must stay hidden to avoid fake navigation."""
+        js = self._officer_js()
+        assert "here !== -1 && here < neighbours.length - 1" in js
+
+
+class TestOfficerNotesAutosave:
+    def _officer_js(self):
+        return pathlib.Path("app/static/officer.js").read_text(encoding="utf-8")
+
+    def test_notes_are_persisted_per_petition_id(self):
+        """A single key per petition so one draft does not blow away
+        another. Cleared only on a successful save."""
+        js = self._officer_js()
+        assert "officer:note-draft:" in js
+        assert "store.del(noteKey(id))" in js
+
+    def test_notes_restore_when_the_textarea_was_empty(self):
+        """A restored draft must not overwrite a review the officer has
+        already typed in this session."""
+        js = self._officer_js()
+        assert "if (draft && !noteBox.value)" in js
+
+    def test_a_dirty_draft_shows_a_visible_indicator(self):
+        js = self._officer_js()
+        assert 'noteDraftTag.dataset.state = "dirty"' in js
+        assert 'noteDraftTag.dataset.state = "saved"' in js
+
+
+class TestSuccessAndErrorToastsAreDistinguished:
+    def _officer_js(self):
+        return pathlib.Path("app/static/officer.js").read_text(encoding="utf-8")
+
+    def _officer_css(self):
+        return pathlib.Path("app/static/officer.css").read_text(encoding="utf-8")
+
+    def test_notify_takes_a_kind(self):
+        js = self._officer_js()
+        assert 'notify("Could not save: " +' in js
+        assert '"success"' in js and '"error"' in js
+
+    def test_the_notice_colour_differs_by_kind(self):
+        css = self._officer_css()
+        assert '[data-kind="success"]' in css
+        assert '[data-kind="error"]' in css
+
+
+class TestKeyboardShortcutsSkipInputs:
+    """`/` to focus search and `j/k/n/p` to walk the detail page must NOT
+    hijack keystrokes while the officer is typing into a textarea or
+    input. If they did, pressing `n` inside the notes textarea would
+    jump away."""
+
+    def _officer_js(self):
+        return pathlib.Path("app/static/officer.js").read_text(encoding="utf-8")
+
+    def test_the_shortcut_handler_ignores_input_focus(self):
+        js = self._officer_js()
+        # The guard sits at the top of the handler.
+        assert "/^(input|textarea|select)$/i.test(e.target.tagName)" in js
+
+    def test_slash_focuses_search(self):
+        js = self._officer_js()
+        assert 'if (e.key === "/")' in js
+        assert "search.focus()" in js

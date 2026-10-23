@@ -385,6 +385,8 @@ def session_view(state: LetterState) -> dict[str, Any]:
 
     versions = revisions.history(state)
     version = int(state.get("document_version") or (versions[-1]["version"] if versions else 0))
+    from ..domain.lifecycle import srs_label
+
     return {
         "session_id": state.get("session_id"),
         # When the citizen pressed Submit, or null. Recorded rather than
@@ -394,6 +396,10 @@ def session_view(state: LetterState) -> dict[str, Any]:
         "started_at": state.get("created_at"),
         "updated_at": state.get("updated_at"),
         "status": state.get("status", "collecting"),
+        # SRS-aligned lifecycle view, derived from the internal status plus
+        # the "has a document" and "pressed Submit" flags. Officers and
+        # audit consumers read this label; the citizen UI reads `status`.
+        "lifecycle": srs_label(state),
         "version": version,
         "updated_by": versions[-1].get("source") if versions else None,
         "editing": {"active": ready, "pending": state.get("pending_edit")},
@@ -441,7 +447,7 @@ def session_view(state: LetterState) -> dict[str, Any]:
         "document_language": (
             translate_service.language_of(
                 str(state.get("letter_text") or "").splitlines(),
-                verbatim_lines(state.get("fields") or {}),
+                verbatim_lines(state.get("fields") or {}, language=None),
             ) if ready and state.get("letter_text") else language
         ),
         # What the model wrote, if anything. Null means the petition carries

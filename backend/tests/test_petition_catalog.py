@@ -12,9 +12,8 @@ from app.api.catalog import router
 from app.config import Settings
 from app.graph.state import new_state
 from app.graph.workflow import Workflow, workflow_lifespan
-from app.services.petition_catalog import PetitionCatalog
 from app.services import officer_store
-
+from app.services.petition_catalog import PetitionCatalog
 
 # The browser these tests are. Every seeded petition is recorded against it,
 # because listing and deleting are scoped to the browser that created the

@@ -29,9 +29,40 @@ from langgraph.graph import END, START, StateGraph
 
 from ..config import Settings, get_settings
 from ..domain.phrasing import phrase
+from ..logging_setup import current_correlation_id
 from . import nodes
 from .routing import route_after_compose, route_after_validate
 from .state import LetterState
+
+#: Keep the audit log bounded so a long-lived session cannot grow the
+#: checkpoint without a stop. 200 entries is well beyond any realistic
+#: petition — the record is kept to answer "when did this petition become X",
+#: not to replay every state the service ever walked through.
+_TRANSITIONS_LIMIT = 200
+
+
+def _transition_entry(previous: str | None, new: str, *,
+                      reason: str, actor: str,
+                      correlation_id: str | None,
+                      source: str) -> dict[str, Any]:
+    """One row of the state transition audit log.
+
+    `source` is where the transition came from — "invoke" for a graph turn,
+    "update" for an out-of-band patch, "recover" for the interrupted-render
+    recovery, "submit" for the submission timestamp, "export" for the
+    export-completed marker. Added so an operator reading the log can tell
+    an officer action from a provider timeout from a citizen click, even
+    when the status change itself is the same.
+    """
+    return {
+        "at": datetime.now(UTC).isoformat(timespec="seconds"),
+        "from": previous,
+        "to": new,
+        "actor": actor,
+        "reason": reason[:200],
+        "source": source,
+        "correlation_id": correlation_id,
+    }
 
 log = logging.getLogger(__name__)
 
@@ -117,7 +148,60 @@ class Workflow:
                     if state is None:
                         raise ValueError("A skipped invocation requires an existing session.")
                     return state
-            return await self._compiled.ainvoke(patch, config=self.config(session_id))
+            previous_status = (state or {}).get("status")
+            result = await self._compiled.ainvoke(patch, config=self.config(session_id))
+            await self._record_transition(
+                session_id, previous_status, result,
+                reason=str(patch.get("intent") or patch.get("utterance") or "")[:120],
+                actor=str(patch.get("_actor") or "citizen"),
+                source="invoke",
+            )
+            return result or {}
+
+    async def _record_transition(self, session_id: str,
+                                 previous_status: str | None,
+                                 state_after: dict | None,
+                                 *, reason: str, actor: str, source: str) -> dict | None:
+        """Append one transition entry to the persisted state when status moved.
+
+        A SRS §10.4 audit requirement: an officer must be able to reconstruct
+        when a petition reached a given status, through which action, and
+        under which request-level correlation id. The reducer-less append
+        pattern — read, append, write — is safe here because the session
+        lock is held for the whole invoke/update block, so no concurrent
+        write can slip in between the read and the write.
+
+        Returns the updated state when a transition was recorded, or None if
+        nothing changed.
+        """
+        if state_after is None:
+            return None
+        new_status = state_after.get("status")
+        if not new_status or new_status == previous_status:
+            return None
+        entry = _transition_entry(
+            previous_status, new_status,
+            reason=reason, actor=actor,
+            correlation_id=current_correlation_id(),
+            source=source,
+        )
+        existing = list(state_after.get("transitions") or [])
+        existing.append(entry)
+        existing = existing[-_TRANSITIONS_LIMIT:]
+        # `as_node` is required when the key being written has not been
+        # written by any node yet. `validate` runs on every real turn and
+        # already owns most of the keys the record carries, so attributing
+        # the metadata write to it keeps the LangGraph update-inference
+        # engine happy without inventing a new graph node for an append.
+        await self._compiled.aupdate_state(
+            self.config(session_id), {"transitions": existing},
+            as_node="validate",
+        )
+        log.info("state.transition",
+                 extra={"from": previous_status, "to": new_status,
+                        "actor": actor, "source": source})
+        state_after["transitions"] = existing
+        return state_after
 
     async def peek(self, session_id: str) -> LetterState | None:
         """The persisted state WITHOUT taking the session lock.
@@ -159,20 +243,49 @@ class Workflow:
                 "reply": phrase("render_failed", values.get("language", "en")),
                 "updated_at": datetime.now(UTC).isoformat(),
             }
-            await self._compiled.aupdate_state(self.config(session_id), recovery)
+            # `as_node="verify"` keeps LangGraph's update-inference happy on
+            # a state that was written by multiple nodes before the process
+            # died. Verify is the last node of the generate->render->verify
+            # chain and attributing the recovery row to it reads correctly
+            # in the audit log.
+            await self._compiled.aupdate_state(
+                self.config(session_id), recovery, as_node="verify")
             values = {**values, **recovery}
+            # The recovery IS a transition and must be in the audit log, or an
+            # officer reading the record will see a "failed" status with no
+            # explanation. Logged with the system actor; there is no citizen
+            # action behind it.
+            await self._record_transition(
+                session_id, "generating", values,
+                reason="interrupted generation recovered",
+                actor="system", source="recover",
+            )
             log.warning("workflow.interrupted_generation_recovered")
         return values if values else None
 
-    async def update(self, session_id: str, patch: dict[str, Any]) -> None:
+    async def update(self, session_id: str, patch: dict[str, Any],
+                     *, actor: str = "citizen", source: str = "update",
+                     reason: str = "") -> None:
         """Write a patch into a session's checkpoint without running a turn.
 
         Used for out-of-band edits — a citizen correcting one field in a text UI
         rather than by speaking — so those edits are checkpointed the same way
-        conversational ones are.
+        conversational ones are. A status change in the patch is logged to the
+        transition audit the same way an `invoke` would be: an out-of-band
+        update that moves a petition to `ready` is as auditable as a turn.
         """
         async with self._lock(session_id):
+            previous = await self._compiled.aget_state(self.config(session_id))
+            previous_status = (getattr(previous, "values", None) or {}).get("status")
             await self._compiled.aupdate_state(self.config(session_id), patch)
+            new_state = getattr(
+                await self._compiled.aget_state(self.config(session_id)),
+                "values", None) or {}
+            await self._record_transition(
+                session_id, previous_status, new_state,
+                reason=reason or ", ".join(sorted(patch.keys()))[:120],
+                actor=actor, source=source,
+            )
 
 
 @asynccontextmanager

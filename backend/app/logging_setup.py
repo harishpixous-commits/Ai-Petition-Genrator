@@ -23,6 +23,7 @@ from contextvars import ContextVar
 from typing import Any
 
 _session_id: ContextVar[str | None] = ContextVar("session_id", default=None)
+_correlation_id: ContextVar[str | None] = ContextVar("correlation_id", default=None)
 
 _RESERVED = {
     "args", "asctime", "created", "exc_info", "exc_text", "filename", "funcName",
@@ -57,6 +58,9 @@ class JsonFormatter(logging.Formatter):
         session = _session_id.get()
         if session:
             payload["session_id"] = session
+        correlation = _correlation_id.get()
+        if correlation:
+            payload["correlation_id"] = correlation
         for key, value in record.__dict__.items():
             if key not in _RESERVED and not key.startswith("_"):
                 payload[key] = value
@@ -68,7 +72,13 @@ class JsonFormatter(logging.Formatter):
 class TextFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         session = _session_id.get()
-        prefix = f"[{session[:8]}] " if session else ""
+        correlation = _correlation_id.get()
+        parts = []
+        if correlation:
+            parts.append(f"cid={correlation}")
+        if session:
+            parts.append(f"sid={session[:8]}")
+        prefix = ("[" + " ".join(parts) + "] ") if parts else ""
         extras = " ".join(
             f"{k}={v}"
             for k, v in record.__dict__.items()
@@ -106,6 +116,30 @@ def session_context(session_id: str) -> Iterator[None]:
         yield
     finally:
         _session_id.reset(token)
+
+
+@contextmanager
+def correlation_context(correlation_id: str) -> Iterator[None]:
+    """Attach a correlation id to every log line emitted inside the block.
+
+    SRS §10.4 asks for an actor/action/target/outcome/timestamp/correlation
+    audit. A correlation id lets an officer follow a reported bug through
+    attachment upload → extraction → classification → compose → export, which
+    today is impossible: an operator reading the log cannot tell which
+    `knowledge.timed_out` matches which citizen's session, because the only
+    thread is `session_id` and some operations do not have one yet (anonymous
+    `POST /sessions`, `/api/health`).
+    """
+    token = _correlation_id.set(correlation_id)
+    try:
+        yield
+    finally:
+        _correlation_id.reset(token)
+
+
+def current_correlation_id() -> str | None:
+    """The correlation id set by `correlation_context`, or None outside one."""
+    return _correlation_id.get()
 
 
 @contextmanager

@@ -39,7 +39,7 @@ def setup(monkeypatch):
     app.include_router(dictation.router)
     workflow = SimpleNamespace(snapshot=AsyncMock(return_value={'language':'ta'}), invoke=AsyncMock())
     app.state.workflow = workflow
-    monkeypatch.setattr(dictation, 'citizen_scope', lambda _: None)
+    monkeypatch.setattr(dictation, 'can_access', lambda _r, _sid: True)
     monkeypatch.setattr(dictation.asr, 'choose_provider', lambda _: 'deepgram')
     stream = Stream()
     monkeypatch.setattr(dictation.asr, 'open_stream', AsyncMock(return_value=stream))
@@ -184,7 +184,7 @@ class TestASpokenNumberIsWrittenAsFigures:
                                              "status": "collecting",
                                              "fields": dict(fields)}),
             invoke=AsyncMock())
-        monkeypatch.setattr(dictation, "citizen_scope", lambda _: None)
+        monkeypatch.setattr(dictation, "can_access", lambda _r, _sid: True)
         monkeypatch.setattr(dictation.asr, "choose_provider", lambda _: "deepgram")
         monkeypatch.setattr(dictation.asr, "open_stream", AsyncMock(return_value=Said()))
         return TestClient(app)

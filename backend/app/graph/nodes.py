@@ -79,7 +79,7 @@ from ..logging_setup import timed
 from ..services import render as render_service
 from ..services.llm import chat_json, enhance
 from ..services.translate import translate_lines
-from .state import LetterState, turn
+from .state import LetterState, reset_marker_turn, turn
 
 log = logging.getLogger(__name__)
 
@@ -465,6 +465,24 @@ async def validate(state: LetterState) -> dict[str, Any]:
 
     if intent == "restart":
         reply = phrasing.phrase("restarted", language)
+        # EVERY piece of the previous petition goes, including the files on
+        # disk. The attachment list without the file deletion was the shape
+        # of the earlier bug: a stored attachment survived a Start Over, the
+        # next citizen's petition inherited it, and an officer saw somebody
+        # else's Aadhaar scan on an unrelated grievance. The frontend has
+        # already asked the citizen "Are you sure?" — the backend's job here
+        # is to actually do what was confirmed.
+        try:
+            from ..services import attachment_store
+
+            session_id = state.get("session_id")
+            if session_id:
+                attachment_store.discard_session(session_id)
+        except Exception as exc:  # noqa: BLE001
+            # Deleting is best-effort because a storage glitch must not block
+            # the restart itself. The attempt is still logged.
+            log.warning("restart.attachment_discard_failed",
+                        extra={"error": str(exc)[:200]})
         return {
             "fields": {}, "field_sources": {}, "attempts": {},
             # Recomputed, not hard-coded to []: an empty `missing` on an empty
@@ -478,7 +496,20 @@ async def validate(state: LetterState) -> dict[str, Any]:
             "petition_reference": None, "pending_edit": None, "document_edited": False,
             "manually_edited": False, "_revision_base": None, "_revision_fields": {},
             "_version_source": None, "_version_summary": None,
-            "turns": turns + [turn("assistant", reply)], "updated_at": now,
+            # The leak class: the previous petition's attachments, its emblem
+            # choice, its knowledge-layer findings, its submission timestamp
+            # and the stored translation origin all belong to that petition
+            # and must not survive Start Over.
+            "attachments": [], "attachments_offered": False, "attachments_done": False,
+            "analysis": None, "emblem": None,
+            "submitted_at": None, "translation_origin": None,
+            # The reset sentinel is read by `merge_turns`: everything before
+            # it in the stored transcript is discarded. Without it, Start
+            # Over would append onto the previous chat and the next petition
+            # would show the previous citizen's conversation above the fresh
+            # prompt.
+            "turns": [reset_marker_turn()] + turns + [turn("assistant", reply)],
+            "updated_at": now,
         }
 
     if intent == "emblem" and state.get("_emblem"):
@@ -1059,8 +1090,16 @@ async def compose(state: LetterState) -> dict[str, Any]:
     settings = get_settings()
 
     # A factual correction updates the last saved text in place. Rebuilding
-    # from the template here would discard earlier manual and chat edits.
-    if state.get("_revision_base") and state.get("document_versions"):
+    # from the template here would discard earlier manual and chat edits —
+    # so the in-place substitution path runs ONLY when the citizen has
+    # actually edited the letter by hand. When they have not, a full
+    # rebuild is correct and is what lets a template-level improvement
+    # (a new "To" address line, a new signature-block layout) reach
+    # existing petitions on the next regenerate. Checked here rather than
+    # in `revise`, which would need to reason about every chain of edits.
+    if (state.get("_revision_base")
+            and state.get("document_versions")
+            and state.get("manually_edited")):
         current = str(state["_revision_base"])
         previous = state.get("_revision_fields") or {}
         for spec in template.fields:
@@ -1505,7 +1544,8 @@ async def translate(state: LetterState) -> dict[str, Any]:
             result = await translate_lines(
                 text.split("\n"), language,
                 keep=verbatim_lines(state.get("fields") or {},
-                                    protect_grievance=False),
+                                    protect_grievance=False,
+                                    language=language),
             )
             carry["engine"] = result.engine
             carry["lines"] = result.translated_count
@@ -1592,7 +1632,13 @@ async def render(state: LetterState) -> dict[str, Any]:
 
 
 def _normalise(text: str) -> str:
-    return re.sub(r"\s+", " ", str(text or "")).strip()
+    """Collapse whitespace AND tighten spacing around commas / periods so a
+    verify-time comparison is not defeated by punctuation drift between a
+    citizen's intake typing (`street , theni`) and the Title-Cased render
+    (`Street, Theni`). Applied to BOTH sides of the comparison, so no case
+    gets quietly favoured by a one-sided normalisation."""
+    collapsed = re.sub(r"\s+", " ", str(text or "")).strip()
+    return re.sub(r"\s*([,.])\s*", r"\1 ", collapsed).strip()
 
 
 async def verify(state: LetterState) -> dict[str, Any]:
@@ -1644,10 +1690,16 @@ async def verify(state: LetterState) -> dict[str, Any]:
                 "reply": phrasing.phrase("verify_failed", language),
                 "verification": {"ok": False, "reason": "unreadable"}, "updated_at": _now()}
 
+    # Target match is case-insensitive. A citizen who typed "harish" at
+    # intake and sees "Harish" on the printed petition — because the
+    # display layer Title Cases their name — must still verify. Scripts
+    # without case (Tamil, Devanagari, Telugu, Malayalam) are unaffected
+    # by re.IGNORECASE, so the Tamil petition is unchanged.
     missing_values = [
         name for name, expected in targets.items()
         if expected and re.search(
-            r"(?<!\w)" + re.escape(_normalise(expected)) + r"(?!\w)", produced
+            r"(?<!\w)" + re.escape(_normalise(expected)) + r"(?!\w)",
+            produced, re.IGNORECASE,
         ) is None
     ]
     size = docx_path.stat().st_size if docx_path.exists() else 0

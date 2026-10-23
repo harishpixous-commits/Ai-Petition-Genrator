@@ -15,7 +15,14 @@ import pytest
 
 from app.knowledge.analyst import Analyst, grounded, plan_queries
 from app.knowledge.embeddings import LocalEmbeddings
-from app.knowledge.ingest import Ingestor, chunk_document, clean, detect_metadata, extract
+from app.knowledge.ingest import (
+    Ingestor,
+    _extract_html,
+    chunk_document,
+    clean,
+    detect_metadata,
+    extract,
+)
 from app.knowledge.retrieve import Retriever, keywords
 from app.knowledge.schema import UNVERIFIED, Chunk, PetitionAnalysis
 from app.knowledge.store import KnowledgeStore, document_id_for
@@ -102,6 +109,37 @@ def retriever(corpus, provider):
 # --------------------------------------------------------------------------- #
 
 class TestIngestion:
+    def test_html_with_an_xml_encoding_declaration_is_decoded(self):
+        source = (
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            '<html><head><title>Electricity grievance guide</title></head>'
+            '<body><main><h1>Consumer Grievance Forum</h1>'
+            '<p>Submit the complaint to the electricity distribution circle.</p>'
+            '</main></body></html>'
+        )
+
+        result = _extract_html(source, url="https://example.gov.in/guide.xhtml")
+
+        assert result.title == "Electricity grievance guide"
+        assert "Consumer Grievance Forum" in result.text
+        assert "electricity distribution circle" in result.text
+        assert result.meta["source_url"] == "https://example.gov.in/guide.xhtml"
+
+    def test_html_selects_the_substantive_main_region(self):
+        source = (
+            '<html><head><title>Forum guide</title></head><body>'
+            '<main id="main"><p>Navigation shell</p></main>'
+            '<main id="about"><form><h1>Consumer Grievance Forum</h1>'
+            '<p>Complaints are acknowledged within seven working days.</p></form>'
+            '</main></body></html>'
+        )
+
+        result = _extract_html(source)
+
+        assert "Consumer Grievance Forum" in result.text
+        assert "seven working days" in result.text
+        assert "Navigation shell" not in result.text
+
     async def test_a_document_is_indexed_with_its_sections(self, tmp_path, ingestor, store):
         path = tmp_path / "act.txt"
         path.write_text(ENCROACHMENT, encoding="utf-8")
@@ -200,6 +238,45 @@ class TestIngestion:
         assert len(chunks) > 1
         assert all(len(c["text"]) <= 900 for c in chunks)
         assert all(c["section"] and "Section 9" in c["section"] for c in chunks)
+
+    def test_a_section_that_crosses_a_page_break_keeps_its_label(self):
+        """ON THE REAL CORPUS, 966 chunks lost their section label this way.
+        The heading of rule 290 sits on page 5, the rest of its body on page 6
+        — and page 6 opens with no heading, which `_sections` reads as a
+        preamble. The last section seen must carry across page boundaries.
+        """
+        from app.knowledge.ingest import Extracted, Page
+
+        page_1 = ("Rule 290. Trade licence.\n"
+                  + "The validity of a trade licence shall be the period specified. " * 10)
+        page_2 = "the applicable fee under the schedule, provided that the renewal fee shall be. " * 10
+        extracted = Extracted(pages=[Page(number=1, text=page_1),
+                                     Page(number=2, text=page_2)])
+        chunks = chunk_document(extracted, document_id="d")
+
+        on_page_two = [c for c in chunks if c["page_number"] == 2]
+        assert on_page_two, "the test needs chunks on page 2"
+        assert all(c["section"] and "Rule 290" in c["section"] for c in on_page_two)
+
+    def test_a_pages_preamble_before_the_first_section_stays_unlabelled(self):
+        """A title page before any heading is NOT retroactively labelled with
+        whatever section appears below. Carry-forward only runs after a
+        section has been seen — else chunks get a label they do not belong
+        under."""
+        from app.knowledge.ingest import Extracted, Page
+
+        preamble = ("GOVERNMENT OF TAMIL NADU\nMunicipal Administration "
+                    "Department. Published for general information under the "
+                    "authority of the Government. ") * 2
+        body = ("Rule 1\n"
+                + "These rules may be cited as the illustrative rules of this test. " * 5)
+        extracted = Extracted(pages=[Page(number=1, text=preamble + "\n" + body)])
+        chunks = chunk_document(extracted, document_id="d")
+
+        preamble_chunks = [c for c in chunks if c["section"] is None]
+        rule_1_chunks = [c for c in chunks if c["section"] and "Rule 1" in c["section"]]
+        assert preamble_chunks, "the preamble must stay unlabelled"
+        assert rule_1_chunks, "Rule 1 must still be labelled"
 
 
 # --------------------------------------------------------------------------- #
@@ -342,6 +419,45 @@ class TestGrounding:
 
     def test_nothing_is_grounded_without_a_citation(self):
         assert not grounded("The Tamil Nadu Land Encroachment Act, 1905", [], strict=True)
+
+    # A number in a citation must match the hay number WHOLE, not as a prefix.
+    # Before the fix, "rule 29" passed against a passage containing "rule 290"
+    # and "G.O. Ms. No. 16" passed against one containing "No. 164" — because
+    # the digit presence check was `number in hay` (substring), not whole-token
+    # membership. A citizen reads the citation and files against the wrong rule.
+    @staticmethod
+    def _rule_chunk() -> Chunk:
+        return Chunk(
+            chunk_id="r1", document_id="d2",
+            text=("Under rule 290(1) of the Tamil Nadu Urban Local Bodies "
+                  "Rules, 2023, the trade licence is valid for a period of one "
+                  "year from the date of grant. See G.O. Ms. No. 164 of 2026 "
+                  "for the current form of the rule."),
+            document_title="Tamil Nadu Urban Local Bodies Rules, 2023",
+            act_name="Tamil Nadu Urban Local Bodies Rules, 2023",
+            department="MAWS", authority="official")
+
+    def test_a_rule_number_that_is_only_a_prefix_of_the_real_one_is_rejected(self):
+        assert not grounded("rule 29", [self._rule_chunk()],
+                            strict=True, verbatim=True)
+        assert not grounded("under rule 29 the trade licence is valid",
+                            [self._rule_chunk()], strict=True)
+        assert not grounded("under rule 29 the trade licence is valid",
+                            [self._rule_chunk()], strict=False)
+
+    def test_a_government_order_number_whose_digits_are_a_prefix_is_rejected(self):
+        assert not grounded("G.O. Ms. No. 16 of 2026",
+                            [self._rule_chunk()], strict=True, verbatim=True)
+        assert not grounded("See G.O. Ms. No. 16 of 2026 for the current form",
+                            [self._rule_chunk()], strict=True)
+
+    def test_the_actual_rule_and_order_numbers_are_still_accepted(self):
+        assert grounded("rule 290", [self._rule_chunk()],
+                        strict=True, verbatim=True)
+        assert grounded("under rule 290 the trade licence is valid",
+                        [self._rule_chunk()], strict=True)
+        assert grounded("G.O. Ms. No. 164 of 2026",
+                        [self._rule_chunk()], strict=True, verbatim=True)
 
 
 # --------------------------------------------------------------------------- #
@@ -708,7 +824,6 @@ class TestALocalBodyDirectoryIsAFirstClassDocument:
         assert "local_body_directory" in typing.get_args(DocumentType)
 
     def test_the_command_line_offers_it(self):
-        import importlib.util
         from pathlib import Path
 
         path = Path(__file__).resolve().parent.parent / "scripts" / "ingest.py"

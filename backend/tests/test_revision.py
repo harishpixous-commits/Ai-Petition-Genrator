@@ -16,6 +16,7 @@ from __future__ import annotations
 import pytest
 
 from app.domain import revisions
+from app.domain.fields import display_value
 from app.domain.templates import the_template
 from app.graph.nodes import understand, validate
 
@@ -283,7 +284,8 @@ class TestEditingTheTextDirectly:
         """Verification exists to catch the SYSTEM corrupting a document. A
         citizen deleting their own address from their own letter is not that."""
         sid, state = await self._ready(api, answers)
-        without = state["letter_text"].replace(answers["address"], "elsewhere")
+        address = display_value("address", answers["address"], "en")
+        without = state["letter_text"].replace(address, "elsewhere")
 
         result = (await api.post(f"/api/sessions/{sid}/document/text",
                                  json={"text": without})).json()

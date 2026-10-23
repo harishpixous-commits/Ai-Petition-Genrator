@@ -281,7 +281,14 @@ class TestUploads:
 
         assert state["attachments"]["items"] == []
         state = await _generate(api, sid)
-        assert "Enclosures" not in (state["letter_text"] or "")
+        letter = state["letter_text"] or ""
+        # Per the 2026-10-22 UI brief, "Enclosures: Nil" DOES print beside
+        # the signature when nothing is enclosed. What must go when the
+        # attachment is removed is the ITEMISED list (which only prints
+        # with real files) and the specific filename.
+        assert "Enclosures: Nil" in letter
+        assert "ack.pdf" not in letter
+        assert "Enclosures:\n" not in letter   # no itemised block
 
 
 # --------------------------------------------------------------------------- #
@@ -423,13 +430,22 @@ class TestPrecedence:
 # --------------------------------------------------------------------------- #
 
 class TestTheEnclosureList:
-    async def test_no_attachments_means_no_enclosure_section(self, api, answers):
-        """The template's list used to print on every petition ever produced."""
+    async def test_no_attachments_means_a_nil_count_but_no_itemised_list(self, api, answers):
+        """The template's suggestion list ("Copy of proof of residence",
+        "Copies of any earlier petition") must NOT print on every petition
+        — that was the earlier bug a receiving officer could read as the
+        citizen withholding documents they never had.
+
+        Per the 2026-10-22 UI brief, there IS one Enclosures line even
+        when no files are attached: "Enclosures: Nil" so an office taking
+        delivery counts attachments against a stated total. What is
+        forbidden is the ITEMISED list in that case."""
         sid = await _collected(api, answers)
         state = await _generate(api, sid)
         letter = state["letter_text"] or ""
 
-        assert "Enclosures" not in letter
+        assert "Enclosures: Nil" in letter
+        assert "Enclosures:\n" not in letter   # no itemised block
         assert "Copy of Aadhaar card" not in letter
         assert "Copy of proof of residence" not in letter
 

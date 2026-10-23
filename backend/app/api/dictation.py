@@ -12,7 +12,8 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from ..config import get_settings
 from ..domain.fields import digits_from_speech
 from ..services import asr
-from ..services.officer_store import citizen_scope
+from ..services.officer_store import can_access
+from . import ws_limits
 
 log = logging.getLogger(__name__)
 
@@ -54,16 +55,60 @@ def as_dictated(text: str, digit_field: bool) -> str:
     return digits if len(digits) >= _ENOUGH_DIGITS else text
 
 
+def _dictation_gate(app) -> ws_limits.Gate:
+    """A process-wide connection gate for `/ws/dictation`.
+
+    SEPARATE FROM THE VOICE GATE on purpose. Both run through `ws_limits`
+    but a citizen may legitimately open a dictation socket at the same time
+    as a voice socket (one is push-to-talk field entry, the other was the
+    live-agent path), and a shared counter would refuse the second connection
+    for a user who has done nothing wrong. Settings carry over from the voice
+    gate because the per-frame audio shape is the same.
+    """
+    gate = getattr(app.state, "dictation_gate", None)
+    if gate is None:
+        settings = get_settings()
+        gate = ws_limits.Gate(ws_limits.Limits(
+            max_connections=settings.ws_max_connections,
+            max_per_client=settings.ws_max_connections_per_client,
+            max_message_bytes=settings.ws_max_message_bytes,
+            max_bytes_per_minute=settings.ws_max_bytes_per_minute,
+            max_session_seconds=settings.ws_max_session_seconds,
+        ))
+        app.state.dictation_gate = gate
+    return gate
+
+
 @router.websocket("/ws/dictation/{session_id}")
 async def dictation(socket: WebSocket, session_id: str):
-    allowed = citizen_scope(socket)
-    if allowed is not None and session_id not in allowed:
+    if not can_access(socket, session_id):
         await socket.close(code=1008)
         return
     origin = socket.headers.get("origin")
     if origin and origin.split("://", 1)[-1].rstrip("/") != socket.headers.get("host"):
         await socket.close(code=1008)
         return
+
+    gate = _dictation_gate(socket.app)
+    client = ws_limits.client_key(socket)
+    try:
+        gate.acquire(client)
+    except ws_limits.LimitExceeded as limit:
+        log.info("dictation.refused",
+                 extra={"client": client, "reason": limit.reason[:120],
+                        "open": gate.open_connections})
+        await socket.accept()
+        with contextlib.suppress(Exception):
+            await socket.send_json(
+                {"type": "error", "recoverable": True, "message": limit.reason})
+        await socket.close(code=limit.code)
+        return
+
+    with gate.session(client):
+        await _dictation_session(socket, session_id)
+
+
+async def _dictation_session(socket: WebSocket, session_id: str) -> None:
     await socket.accept()
     adapter = None
     tasks = []

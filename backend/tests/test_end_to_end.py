@@ -191,7 +191,15 @@ class TestTheWholeJourney:
 
         letter = state["letter_text"]
         assert answers["grievance"] in letter
-        assert "Enclosures" not in letter, "nothing was enclosed"
+        # Per the 2026-10-22 UI brief, the petition carries an Enclosures
+        # count beside the signature even when there is nothing enclosed:
+        # a receiving office counts attachments against the printed total,
+        # and "Enclosures: Nil" prints what the officer needs to see.
+        assert "Enclosures: Nil" in letter
+        # The itemised list stays conditional on real attachments existing
+        # — a bare "Enclosures:" heading with no files under it would read
+        # as a document that lost its appendices.
+        assert "Enclosures:\n" not in letter
         assert "previously submitted" not in letter
 
     async def test_the_tamil_journey(self, api, tamil_answers, corpus):

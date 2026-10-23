@@ -44,6 +44,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from ..domain.languages import has_indic as _has_indic
+from ..domain.taxonomy import taxonomy as _taxonomy
 
 log = logging.getLogger(__name__)
 
@@ -52,9 +53,15 @@ log = logging.getLogger(__name__)
 # party's petition becomes the citizen's own.
 UNKNOWN = "UNKNOWN"
 
-CATEGORIES = ("WATER", "ROAD", "STREET_LIGHT", "SANITATION", "PENSION",
-              "WELFARE", "LICENCE", "CERTIFICATE", "PROPERTY", "ELECTRICITY",
-              "OTHER", UNKNOWN)
+# Read from `app/taxonomy/grievance.yaml`, which is loaded and validated at
+# import. A malformed file stops the service starting, which is where an
+# administrator sees it — rather than halfway through a citizen's interview.
+#
+# OTHER and UNKNOWN are appended here rather than listed in the file: they
+# are not things to complain about, they are what this module says when the
+# text names something else or names nothing.
+_TAXONOMY = _taxonomy()
+CATEGORIES = (*_TAXONOMY.names, "OTHER", UNKNOWN)
 
 RELATIONSHIPS = ("OWN_PREVIOUS_PETITION", "THIRD_PARTY_SUPPORTING_DOCUMENT",
                  "ACKNOWLEDGEMENT", "GOVERNMENT_RESPONSE", "CERTIFICATE",
@@ -110,53 +117,7 @@ class Decision:
 # translations of the English list, because the complaint a citizen states is
 # not a translation of the complaint somebody else stated.
 
-_CATEGORY_WORDS: dict[str, tuple[str, ...]] = {
-    # THE THIRD SCRIPT. A citizen at a kiosk types "thanni varala", not
-    # "தண்ணீர்" and not "water". Held-out cases scored 1/3 on romanised
-    # Tamil because neither of the other two tables contains it. These are
-    # the forms that actually get typed, spelling variants included.
-    "WATER": ("water", "drinking water", "tap", "pipeline", "borewell", "bore well", "tank",
-              "supply", "thanni", "thanneer", "kudineer",
-              "தண்ணீர்", "தண்ணி", "குடிநீர்", "குழாய்", "விநியோக", "தொட்டி",
-              "വെള്ളം", "കുടിവെള്ള", "പൈപ്പ്", "ടാങ്ക്", "വിതരണ", "నీరు", "నీటి", "తాగునీ", "పైపు", "ట్యాంక్", "సరఫరా", "पानी", "पेयजल", "नल", "पाइपलाइन", "टंकी", "आपूर्ति"),
-    # NEITHER "street" NOR "தெரு" IS HERE, and that is the point. Almost
-    # every grievance in Tamil Nadu contains the word for street, because
-    # that is where people live — "no water in our street", "the light in
-    # our street". Read as ROAD it tied with WATER on a water complaint and
-    # with STREET_LIGHT on a light complaint, which the benchmark caught on
-    # three cases at once. A road complaint says road, or சாலை, or names a
-    # pothole.
-    "ROAD": ("road", "pothole", "tar road", "damaged road", "tar", "footpath",
-             "saalai", "kuzhi",
-             "சாலை", "ரோடு", "பாதை", "குழி", "நடைபாதை",
-              "റോഡ്", "കുഴി", "നടപ്പാത", "പാത", "రహదారి", "రోడ్డు", "గుంత", "కాలిబాట", "सड़क", "गड्ढ", "मार्ग", "फुटपाथ"),
-    "STREET_LIGHT": ("street light", "streetlight", "lamp", "light post",
-                     "light", "தெருவிளக்கு", "விளக்கு", "மின்விளக்கு",
-              "തെരുവുവിളക്ക്", "വിളക്ക്", "వీధి దీపం", "వీధిదీపం", "దీపం", "स्ट्रीट लाइट", "स्ट्रीटलाइट", "बत्ती"),
-    "SANITATION": ("garbage", "drain", "drainage", "sewage", "sewerage",
-                   "toilet", "cleaning", "rubbish", "குப்பை", "கழிவு", "வடிகால்",
-                   "kuppai", "saakkadai", "chakkadai",
-                   "சாக்கடை", "கழிப்பறை", "தூய்மை",
-              "മാലിന്യ", "ഓട", "മലിനജല", "ശുചിമുറി", "ശുചീകരണ", "చెత్త", "మురుగు", "కాలువ", "మరుగుదొడ్డి", "పారిశుధ్య", "कूड़ा", "कचरा", "नाली", "सीवर", "शौचालय", "सफाई"),
-    "PENSION": ("pension", "old age", "widow", "oivoothiyam",
-                "ஓய்வூதிய", "முதியோர்", "விதவை",
-              "പെൻഷൻ", "വാർദ്ധക്യ", "വിധവ", "పింఛను", "పెన్షన్", "వృద్ధాప్య", "వితంతు", "पेंशन", "वृद्धावस्था", "विधवा"),
-    "WELFARE": ("ration", "scheme", "allowance", "thogai", "urimai",
-                "ரேஷன்", "திட்டம்", "உதவித்தொகை", "நிதி", "தொகை",
-              "റേഷൻ", "പദ്ധതി", "ധനസഹായ", "ആനുകൂല്യ", "రేషన్", "పథకం", "భత్యం", "ఉపకారవేతనం", "राशन", "योजना", "भत्ता", "छात्रवृत्ति"),
-    "LICENCE": ("licence", "license", "permit", "renewal", "உரிமம்",
-                "அனுமதி", "புதுப்பி",
-              "ലൈസൻസ്", "അനുമതി", "പുതുക്ക", "లైసెన్సు", "అనుమతి", "పునరుద్ధరణ", "लाइसेंस", "अनुमति", "परमिट", "नवीनीकरण"),
-    "CERTIFICATE": ("certificate", "community certificate", "income certificate",
-                    "birth certificate", "சான்றிதழ்", "சான்று",
-              "സർട്ടിഫിക്കറ്റ്", "ജാതി സർട്ടിഫിക്കറ്റ്", "വരുമാന", "ధృవీకరణ పత్రం", "సర్టిఫికెట్", "కుల ధృవీకరణ", "प्रमाण पत्र", "प्रमाणपत्र", "जाति प्रमाण", "आय प्रमाण"),
-    "PROPERTY": ("patta", "land", "encroachment", "encroach", "survey number", "title",
-                 "பட்டா", "நிலம்", "ஆக்கிரமிப்பு", "சர்வே",
-              "പട്ടയം", "ഭൂമി", "കൈയേറ്റം", "സർവേ", "పట్టా", "భూమి", "ఆక్రమణ", "సర్వే", "पट्टा", "भूमि", "जमीन", "अतिक्रमण"),
-    "ELECTRICITY": ("electricity", "power cut", "transformer", "voltage", "power supply", "eb ",
-                    "மின்சார", "கரண்ட்", "மின்வெட்டு", "மின்மாற்றி",
-              "വൈദ്യുതി", "കറന്റ്", "ട്രാൻസ്ഫോർമർ", "విద్యుత్", "కరెంటు", "ట్రాన్స్‌ఫార్మర్", "बिजली", "विद्युत", "ट्रांसफार्मर"),
-}
+_CATEGORY_WORDS: dict[str, tuple[str, ...]] = _TAXONOMY.words()
 
 # A document that says it is a reply from an office. Checked before the
 # petition markers, because a government response quotes the petition it is
@@ -202,7 +163,7 @@ _CERTIFICATE_WORDS = ("certificate", "certified that", "certify that",
 # speaker says street light ("street la light eriyala"), but it is also how
 # anyone says a household light. Weak, it wins when nothing else is present
 # and loses to மின்சாரம் when that is.
-_WEAK_WORDS = frozenset({"road", "சாலை", "saalai", "light", "தொட்டி",                         "റോഡ്", "రహదారి", "రోడ్డు", "सड़क"})
+_WEAK_WORDS = _TAXONOMY.weak
 
 # TWO COMPLAINTS, OR ONE COMPLAINT IN A PLACE? Weighted scoring answers
 # "sewage overflowing onto the road" correctly and then answers "both the
@@ -215,16 +176,33 @@ _WEAK_WORDS = frozenset({"road", "சாலை", "saalai", "light", "தொட�
 # noun; Malayalam's ഉം is the same device; Telugu and Hindi use separate words.
 # Without these a two-subject complaint in Malayalam is answered confidently
 # with one of its two subjects, which is the one failure this rule exists for.
-_COORDINATION = (" both ", "both the ", " as well as ", " and also ",
-                 " are also ", " is also ", " neither ", "ும் ",
-                 "ും ", " കൂടാതെ ", " ഒപ്പം ",
-                 " మరియు ", " కూడా ", " అలాగే ",
-                 " और ", " भी ", " तथा ", " दोनों ")
-_STRONG, _WEAK = 2, 1
+_COORDINATION = _TAXONOMY.coordination
+_STRONG, _WEAK = _TAXONOMY.strong_weight, _TAXONOMY.weak_weight
+_CONFIDENCE_BASE = _TAXONOMY.confidence_base
+_CONFIDENCE_PER_POINT = _TAXONOMY.confidence_per_point
+_CONFIDENCE_CEILING = _TAXONOMY.confidence_ceiling
+# How much to trust each kind of UNKNOWN. Not zero: see the file.
+_UNKNOWN_CONFIDENCE = _TAXONOMY.unknown_confidence
 
 
-def _weight(found: list[str]) -> int:
-    return sum(_WEAK if word in _WEAK_WORDS else _STRONG for word in found)
+def _weight(found: list[str], text: str = "",
+            spans: list[tuple[int, int]] | None = None) -> int:
+    """How much evidence these matches really are.
+
+    A term listed as scenery counts half. So does a term that only ever
+    appears inside a landmark phrase — half rather than nothing, because
+    "near the overflowing drain" really is about a drain.
+    """
+    spans = spans or []
+    total = 0
+    for word in found:
+        if word in _WEAK_WORDS:
+            total += _WEAK
+        elif text and _only_scenery(word, text, spans):
+            total += _WEAK
+        else:
+            total += _STRONG
+    return total
 
 
 _WORD = re.compile(r"[^\W\d_]+", re.UNICODE)
@@ -300,15 +278,7 @@ def fold_roman(text: str) -> str:
 # Romanised Tamil roots, kept apart from the English and Tamil tables because
 # they are matched by a different rule. English stays word-bounded: "ration"
 # must not be found inside "corporation", and folding would not save it.
-_ROMANISED_WORDS: dict[str, tuple[str, ...]] = {
-    "WATER": ("thanni", "thanneer", "kudineer", "thanni"),
-    "ROAD": ("saalai", "kuzhi", "rodu"),
-    "SANITATION": ("kuppai", "saakkadai", "chakkadai", "kazhivu"),
-    "PENSION": ("oivoothiyam", "pension"),
-    "WELFARE": ("thogai", "urimai"),
-    "STREET_LIGHT": ("theruvilakku",),
-    "ELECTRICITY": ("minsaram", "current"),
-}
+_ROMANISED_WORDS: dict[str, tuple[str, ...]] = _TAXONOMY.romanised()
 _ROMANISED_FOLDED: dict[str, tuple[tuple[str, str], ...]] = {
     category: tuple((word, fold_roman(word)) for word in words
                     if len(fold_roman(word)) >= _MIN_ROMAN)
@@ -318,6 +288,127 @@ _ROMANISED_FOLDED: dict[str, tuple[tuple[str, str], ...]] = {
 # sequence was corrupted once by a shell heredoc into a literal 0x08,
 # which silently matched nothing and took every Latin word with it.
 _BOUNDARY = chr(92) + "b"
+
+_CONTRAST = _TAXONOMY.contrast
+_SATISFIED = _TAXONOMY.satisfied
+
+#: Sentence ends, plus the contrast words. Built from the taxonomy so a
+#: department adding "ஆனாலும்" gets clause splitting for free.
+_CLAUSE_BREAK = re.compile(
+    "|".join([r"[.;!?\n]"] + [re.escape(marker) for marker in _CONTRAST]),
+    re.IGNORECASE)
+
+
+def _clauses(text: str) -> list[str]:
+    """The text cut at sentence ends and contrast words."""
+    return [part.strip() for part in _CLAUSE_BREAK.split(text) if part.strip()]
+
+
+def _reports_satisfaction(clause: str) -> bool:
+    """Does this clause say something is FINE rather than wrong?
+
+    "the street light is working", "the drain is clear", "ठीक है". A clause
+    like this names a category and is not a complaint about it, and counting
+    it is how a one-subject grievance became a tie.
+    """
+    return any(marker in clause for marker in _SATISFIED)
+
+
+_SCENERY = _TAXONOMY.scenery
+_SCENERY_WINDOW = _TAXONOMY.scenery_window
+
+
+def _scenery_spans(text: str) -> list[tuple[int, int]]:
+    """Where in `text` a landmark or a piece of background is being given.
+
+    Indian addresses are built from landmarks — opposite the temple, near the
+    bus stand, behind the school — because that is how a place is found here.
+    A category word inside one of those is saying WHICH thing, not WHAT is
+    wrong, and counted as evidence it outvoted the actual subject: "the street
+    light opposite the water tank" was filed under water supply.
+    """
+    spans: list[tuple[int, int]] = []
+    for marker in _SCENERY:
+        # THE SAME INFLECTION PROBLEM THE CATEGORY WORDS HAD, and it was
+        # silently halving this rule's reach. Malayalam writes "അടുത്ത്" on
+        # its own and "അടുത്തുള്ള" in a phrase — the suffix REPLACES the
+        # pure-consonant mark, so the plain needle does not occur in the
+        # inflected form at all. Measured: the landmark rule fired on English
+        # and Tamil and never once on Malayalam, Telugu or Hindi.
+        #
+        # `_hits` already solves this for terms. Doing it here rather than
+        # calling `_hits` because what is needed is the POSITION, which
+        # `_hits` does not return.
+        needles = [marker]
+        if marker[-1:] in _VIRAMAS:
+            needles.append(marker[:-1])
+        for needle in needles:
+            start = text.find(needle)
+            while start != -1:
+                spans.append((start, start + len(needle) + _SCENERY_WINDOW))
+                start = text.find(needle, start + 1)
+    return spans
+
+
+def _only_scenery(needle: str, text: str, spans: list[tuple[int, int]]) -> bool:
+    """True when EVERY occurrence of `needle` sits inside a landmark phrase.
+
+    Every, not any: a word that appears once as a landmark and once as the
+    complaint is still the complaint.
+    """
+    if not spans:
+        return False
+    position = text.find(needle)
+    if position == -1:
+        return False
+    while position != -1:
+        if not any(start <= position < end for start, end in spans):
+            return False
+        position = text.find(needle, position + 1)
+    return True
+
+
+_COMPLAINT_MARKERS = _TAXONOMY.complaint_markers
+_COMPLAINT_MIN_WORDS = _TAXONOMY.complaint_min_words
+
+
+def _looks_like_a_complaint(text: str) -> bool:
+    """Is this a grievance about something unlisted, or is it nothing?
+
+    Two signals, and BOTH are required, because either alone is wrong:
+
+        length   a four-word plea is not a complaint about an unlisted
+                 subject, it is a plea.
+        a marker saying something is wrong or missing. Polite formulas are
+                 deliberately excluded — "kindly", "request" and "please"
+                 appear in every petition ever written, including the ones
+                 that name nothing at all.
+
+    Erring towards UNKNOWN on purpose. UNKNOWN sends the petition to a human
+    who asks the citizen what it is about, which is recoverable. OTHER says
+    "we understood you, there is simply no category", which closes that
+    question — and closing it wrongly leaves a citizen unasked.
+    """
+    if len(text.split()) < _COMPLAINT_MIN_WORDS:
+        return False
+    return bool(_hits(f" {text} ", _COMPLAINT_MARKERS))
+
+
+def _complaint_scope(text: str) -> str:
+    """The part of the text that is actually complaining.
+
+    Falls back to the whole text when every clause reports satisfaction:
+    a citizen who wrote only good news has not filed a grievance, and
+    guessing which clause was secretly the complaint is worse than reading
+    the sentence whole.
+    """
+    clauses = _clauses(text)
+    if len(clauses) < 2:
+        return text
+    complaining = [c for c in clauses if not _reports_satisfaction(c)]
+    if not complaining or len(complaining) == len(clauses):
+        return text
+    return " ".join(complaining)
 
 
 def _normalise(text: str) -> str:
@@ -396,11 +487,17 @@ class DeterministicProvider:
     name = "deterministic"
 
     def classify_grievance(self, *, grievance: str, language: str = "en") -> Decision:
-        text = _normalise(grievance)
-        if len(text) < 8:
-            return Decision(UNKNOWN, 0.0, "too little text to classify")
+        whole = _normalise(grievance)
+        if len(whole) < 8:
+            return Decision(UNKNOWN, _UNKNOWN_CONFIDENCE["nothing_said"],
+                            "too little text to classify")
 
-        folded = fold_roman(grievance)
+        # Clauses reporting that something is FINE are not complaints about it.
+        # See `_complaint_scope`: this is what stops "the light is working but
+        # the drain is blocked" being read as two subjects.
+        text = _normalise(_complaint_scope(whole))
+        folded = fold_roman(text)
+        spans = _scenery_spans(text)
         scored: list[tuple[int, str, list[str]]] = []
         for category, words in _CATEGORY_WORDS.items():
             found = _hits(text, words)
@@ -410,9 +507,24 @@ class DeterministicProvider:
             found += [word for word, key in _ROMANISED_FOLDED.get(category, ())
                       if key in folded and word not in found]
             if found:
-                scored.append((_weight(found), category, found))
+                scored.append((_weight(found, text, spans), category, found))
         if not scored:
-            return Decision(UNKNOWN, 0.0, "no category words present")
+            # TWO DIFFERENT SILENCES, and they need opposite handling.
+            #
+            # "Sir, kindly do the needful" names no subject: a human has to
+            # ask the citizen what it is about. "There are stray dogs and two
+            # children have been bitten" names a subject perfectly clearly —
+            # it is just not one of the ten this service has words for.
+            #
+            # Both used to come back UNKNOWN, and OTHER was never returned by
+            # any code path at all despite being in CATEGORIES and displayed
+            # by the officer portal. So a real grievance about an unlisted
+            # subject was indistinguishable from an empty one.
+            if _looks_like_a_complaint(text):
+                return Decision("OTHER", _UNKNOWN_CONFIDENCE["no_terms"],
+                                "a grievance, but not one of the known subjects")
+            return Decision(UNKNOWN, _UNKNOWN_CONFIDENCE["no_terms"],
+                            "no category words present")
 
         scored.sort(reverse=True)
         best, runner = scored[0], (scored[1] if len(scored) > 1 else None)
@@ -432,14 +544,15 @@ class DeterministicProvider:
         # below: these markers are explicit. A citizen who writes "both",
         # "as well as", or puts உம் on two nouns is saying there are two.
         if runner and _hits(f" {text} ", _COORDINATION):
-            return Decision(UNKNOWN, 0.3,
+            return Decision(UNKNOWN, _UNKNOWN_CONFIDENCE["coordinated"],
                             f"two complaints are coordinated: {best[1]}, {runner[1]}",
                             {"candidates": [best[1], runner[1]]})
         if runner and runner[0] == best[0]:
-            return Decision(UNKNOWN, 0.3,
+            return Decision(UNKNOWN, _UNKNOWN_CONFIDENCE["tied"],
                             f"two categories match equally: {best[1]}, {runner[1]}",
                             {"candidates": [best[1], runner[1]]})
-        confidence = min(0.95, 0.55 + 0.08 * best[0])
+        confidence = min(_CONFIDENCE_CEILING,
+                         _CONFIDENCE_BASE + _CONFIDENCE_PER_POINT * best[0])
         return Decision(best[1], confidence,
                         f"matched {', '.join(best[2][:3])}",
                         {"matched": best[2][:5]})
@@ -676,6 +789,85 @@ def engine(settings: Any | None = None) -> SystemOneEngine:
 # to somebody else, not on absence of evidence that it belongs to them. The
 # citizen's own confirmation still gates it, as it always has.
 WITHHELD_FROM_FIRST_PERSON = frozenset({"THIRD_PARTY_SUPPORTING_DOCUMENT"})
+
+
+#: A decision at or below this confidence rests on nothing but a weak word —
+#: one that names where something happened rather than what it was. Derived,
+#: not chosen: the confidence formula gives base + per_point for a single weak
+#: match, and anything with one strong word scores above it.
+_WEAK_EVIDENCE_CEILING = _CONFIDENCE_BASE + _CONFIDENCE_PER_POINT * _WEAK
+
+
+async def classify_grievance(*, grievance: str, language: str = "en",
+                             settings: Any = None) -> Decision:
+    """The category, using meaning only where words were not enough.
+
+    THE ORDER IS THE WHOLE DESIGN. The deterministic reader runs first and
+    keeps everything it is confident about: it is free, instant, offline, and
+    it can tell a citizen WHICH WORD it read. A cosine similarity cannot
+    explain itself to anybody.
+
+    The semantic step is asked only when the deterministic reader found
+    nothing — not when it found too much. A grievance naming two subjects is
+    answered UNKNOWN on purpose, because picking one silently drops the other,
+    and a similarity score is exactly the wrong tool for overruling that.
+    `candidates` in the evidence is how that case is recognised.
+
+    Every failure here is silent and safe: no embedder, no network, nothing
+    similar enough, or two meanings too close to separate, and the
+    deterministic answer stands unchanged.
+    """
+    decision = engine(settings=settings).classify_grievance(
+        grievance=grievance, language=language)
+
+    # Two subjects were found, not none. Leave it for a human; a similarity
+    # score is exactly the wrong tool for overruling that.
+    if decision.evidence.get("candidates"):
+        return decision
+
+    # WHEN A SECOND OPINION IS WORTH ASKING FOR. Not only when the reader
+    # found nothing, but also when all it found was a word that usually names
+    # a PLACE rather than a subject.
+    #
+    # Measured: "stray cattle are being left on the main road at night" and
+    # "the bins at the end of our road overflow" were both answered ROAD, both
+    # on the single weak word "road", both at 0.63 — and the semantic reader
+    # was never consulted because the lexical one had technically answered.
+    # A complaint identified only by the word for where it happened is the
+    # weakest evidence this reader produces, and it is exactly the case a
+    # reading of the whole sentence settles.
+    weak_only = decision.confidence <= _WEAK_EVIDENCE_CEILING
+    if decision.value not in (UNKNOWN, "OTHER") and not weak_only:
+        return decision
+
+    try:
+        from . import semantic_category
+
+        reader = semantic_category.build(settings)
+        if reader is None:
+            return decision
+        answer = await reader.classify(grievance)
+    except Exception as exc:  # noqa: BLE001
+        log.info("system_one.semantic_unavailable",
+                 extra={"error": str(exc)[:160]})
+        return decision
+
+    if answer is None:
+        return decision
+
+    category, confidence, reason = answer
+    if category == decision.value:
+        # They agree. Keep the DETERMINISTIC decision: it carries the word it
+        # matched, which is something a citizen or an officer can be shown,
+        # and a cosine distance is not.
+        return decision
+
+    log.info("system_one.semantic_placed",
+             extra={"was": decision.value, "now": category,
+                    "confidence": confidence})
+    return Decision(category, confidence, reason,
+                    {"source": "semantic",
+                     "deterministic": decision.value})
 
 
 def describe_attachment(

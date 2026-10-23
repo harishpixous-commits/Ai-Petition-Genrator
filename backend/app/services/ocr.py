@@ -128,6 +128,25 @@ class TesseractEngine:
         # whitespace to everything downstream that does not care.
         return "\n\f\n".join(pages)
 
+    def pdf_pages(self, path: Path, numbers: list[int]) -> dict[int, str]:
+        """OCR only these pages (1-based). For PDFs that are partly typeset.
+
+        Reading only the pages that need it is both faster and correct: an
+        OCR pass over a page that already has a text layer produces a noisier
+        copy of text the PDF states exactly.
+        """
+        import pymupdf
+
+        out: dict[int, str] = {}
+        with pymupdf.open(path) as document:
+            for number in numbers:
+                if not 1 <= number <= document.page_count:
+                    continue
+                out[number] = document[number - 1].get_textpage_ocr(
+                    flags=0, language=self._language_argument(), full=True
+                ).extractText()
+        return out
+
 
 # The registry. A list rather than one slot so a deployment can install a
 # preferred engine ahead of the default without removing it.

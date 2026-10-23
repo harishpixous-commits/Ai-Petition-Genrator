@@ -333,3 +333,137 @@ class TestProvenance:
         assert len(required) == 1
         assert required[0]["value"] == "Patta copy"
         assert "TEST DATA Act" in required[0]["source"]
+
+
+# ---------------------------------------------------------------------------
+# Operator-panel conflict reporting is REGISTRY-AWARE.
+#
+# THE INCIDENT behind these tests. The operator status page on 2026-10-22
+# reported 2 "active conflicts" for 18 indexed documents. One group named
+# the Tamil Nadu ULB Rules 2023 and all five of its declared amendments
+# (G.O. 104, 162, 164, 433, 480) as "7 live documents cover the same
+# instrument. None of them carries a date or version that establishes
+# which is in force." That is wrong: the amendments ARE declared in
+# `corpus/legal_relationships.yaml`, each with Gazette evidence, and the
+# whole point of the relationships registry is to say which document
+# modifies which. The other group named the TN Combined Development and
+# Building Rules 2019 beside the TN Town and Country Planning Act 1971,
+# because the Rules doc carries its parent Act's name in `act_name`
+# metadata — picking Act name before Rule name grouped a Rules doc with
+# an unrelated Act.
+# ---------------------------------------------------------------------------
+
+
+class TestTopicOfPrefersTheMoreSpecificField:
+    def test_rule_name_wins_when_both_are_set(self):
+        """A Rules doc that carries its parent Act's name in act_name is
+        still a Rules doc. Grouping by Act name conflates the Rules with
+        the Act they were made under."""
+        from app.knowledge.conflicts import topic_of
+        from app.knowledge.schema import Chunk
+        chunk = Chunk(
+            chunk_id="r", document_id="d", text="",
+            document_title="Rules under the Act",
+            rule_name="TN Combined Development and Building Rules, 2019",
+            act_name="TN Town and Country Planning Act, 1971",
+            authority="official",
+        )
+        topic = topic_of(chunk)
+        assert topic is not None
+        assert "building rules" in topic
+        assert "planning act" not in topic
+
+
+class TestCorpusConflictsAreRegistryAware:
+    def test_an_amendment_chain_declared_in_the_registry_is_not_a_conflict(
+            self, monkeypatch):
+        """Mock the registry to declare three amendments of one root. The
+        corpus-level conflict detector must not report the group as a
+        conflict — that is the amendment chain working."""
+        from app.knowledge import conflicts
+        from app.knowledge import legal_status as ls
+
+        class StubChange:
+            def __init__(self, source, target):
+                self.source = source
+                self.target = target
+                self.relation = "amends"
+
+        class StubRegistry:
+            instruments = {}
+            changes = [
+                StubChange("amend-104", "rules-2023"),
+                StubChange("amend-162", "rules-2023"),
+                StubChange("amend-164", "rules-2023"),
+            ]
+
+        monkeypatch.setattr(ls, "registry", lambda: StubRegistry())
+        monkeypatch.setattr(ls, "manifest_ids_by_url", lambda: {
+            "https://x/rules.pdf": "rules-2023",
+            "https://x/amend-104.pdf": "amend-104",
+            "https://x/amend-162.pdf": "amend-162",
+            "https://x/amend-164.pdf": "amend-164",
+        })
+        monkeypatch.setattr(conflicts, "_manifest_ids_by_url",
+                            ls.manifest_ids_by_url)
+
+        docs = [
+            {"document_id": "r1", "title": "Rules 2023", "date": "2023-07-11",
+             "rule_name": "TN ULB Rules, 2023", "act_name": "", "superseded": 0,
+             "source_url": "https://x/rules.pdf"},
+            {"document_id": "a1", "title": "Amendment G.O. 104", "date": "2025-06-17",
+             "rule_name": "TN ULB Rules, 2023", "act_name": "", "superseded": 0,
+             "source_url": "https://x/amend-104.pdf"},
+            {"document_id": "a2", "title": "Amendment G.O. 162", "date": "2024-11-06",
+             "rule_name": "TN ULB Rules, 2023", "act_name": "", "superseded": 0,
+             "source_url": "https://x/amend-162.pdf"},
+            {"document_id": "a3", "title": "Amendment G.O. 164", "date": "2026-09-09",
+             "rule_name": "TN ULB Rules, 2023", "act_name": "", "superseded": 0,
+             "source_url": "https://x/amend-164.pdf"},
+        ]
+        assert conflicts.corpus_conflicts(docs) == []
+
+    def test_two_undated_live_versions_with_no_declared_relationship_are_still_a_conflict(
+            self, monkeypatch):
+        """The registry filter must NOT swallow a genuine overlap. If two
+        documents claim the same rule name but the registry does not
+        declare a relationship between them, the operator panel should
+        still see the conflict."""
+        from app.knowledge import conflicts
+        from app.knowledge import legal_status as ls
+
+        class EmptyRegistry:
+            instruments = {}
+            changes: list = []
+
+        monkeypatch.setattr(ls, "registry", lambda: EmptyRegistry())
+        monkeypatch.setattr(ls, "manifest_ids_by_url", lambda: {})
+        monkeypatch.setattr(conflicts, "_manifest_ids_by_url", lambda: {})
+
+        docs = [
+            {"document_id": "A", "title": "Fictional Rules, Draft I",
+             "rule_name": "Fictional Rules", "superseded": 0,
+             "source_url": "https://x/A.pdf"},
+            {"document_id": "B", "title": "Fictional Rules, Draft II",
+             "rule_name": "Fictional Rules", "superseded": 0,
+             "source_url": "https://x/B.pdf"},
+        ]
+        result = conflicts.corpus_conflicts(docs)
+        assert len(result) == 1
+        assert result[0]["resolution"] == "undetermined"
+
+    def test_two_docs_on_different_instruments_are_not_a_conflict(self):
+        """A Rules doc + its parent Act, after the topic_of fix, go into
+        different buckets. The operator panel should see zero conflicts.
+        """
+        from app.knowledge import conflicts
+        docs = [
+            {"document_id": "A", "title": "TN Combined Development and Building Rules, 2019",
+             "rule_name": "TN Combined Development and Building Rules, 2019",
+             "act_name": "TN Town and Country Planning Act, 1971",
+             "superseded": 0, "source_url": "https://x/rules.pdf"},
+            {"document_id": "B", "title": "TN Town and Country Planning Act, 1971",
+             "rule_name": "", "act_name": "TN Town and Country Planning Act, 1971",
+             "superseded": 0, "source_url": "https://x/act.pdf"},
+        ]
+        assert conflicts.corpus_conflicts(docs) == []

@@ -1,0 +1,854 @@
+# What a citizen is complaining about, and who deals with it.
+#
+# WHY THIS IS A FILE AND NOT A PYTHON DICT. These words are the service's
+# working vocabulary for five languages, and they change for reasons that have
+# nothing to do with code: a department is renamed, a scheme is introduced, a
+# clerk notices that everybody in one district says a word nobody listed. A
+# departmental officer can read this file and say "that is wrong, we call it
+# this" without being able to read Python, which is the whole point.
+#
+# HOW IT IS USED. `app/domain/taxonomy.py` loads it once, at import, and fails
+# loudly if it is malformed — at start-up, where an administrator sees it,
+# rather than halfway through a citizen's interview.
+#
+# THE CATEGORY IS A HINT AND NEVER ROUTES ANYTHING. It is shown to an officer
+# as a suggestion and used to shape retrieval. It does not choose a department,
+# it does not address the petition, and an AST-walking test in
+# `tests/test_attachment_relationship_flow.py` fails if the value is referenced
+# outside `app/services/system_one.py`. The `routing:` block below is read the
+# same way: a CANDIDATE to be confirmed against a retrieved government
+# document, never a fact to print. Nothing in this file is evidence.
+#
+# THE RULES THE WORD LISTS FOLLOW, each learned by getting it wrong:
+#
+#   A word that names the SETTING rather than the SUBJECT goes in `weak`.
+#   Almost every grievance in Tamil Nadu contains the word for street, because
+#   that is where people live. Read as a road complaint it tied with water on
+#   a water complaint and with street light on a light complaint.
+#
+#   A word is only listed if it is the thing being complained about. "office",
+#   "application" and "problem" appear in every grievance ever written and
+#   separate nothing.
+#
+#   Romanised forms go under `roman` and are matched by a different rule —
+#   folded, so that thanni/thanneer/thaneer collapse to one form — because
+#   there is no correct romanisation of an Indian language and a word list
+#   can only ever chase the spellings.
+#
+#   Native-script terms are matched as substrings, because these languages
+#   inflect by suffix and a word boundary cannot see the script.
+
+version: 1
+
+# --------------------------------------------------------------------------- #
+# Scoring
+# --------------------------------------------------------------------------- #
+weights:
+  # A term that names the subject.
+  strong: 2
+  # A term that is usually the setting. Listed in `weak` below.
+  weak: 1
+
+# Confidence is reported, not invented: it is a function of how much evidence
+# was found, capped so that a keyword match never claims certainty.
+confidence:
+  base: 0.55
+  per_point: 0.08
+  ceiling: 0.95
+  # Below this, the answer is reported as UNKNOWN with the candidates attached
+  # so a human can decide. Raising it trades coverage for safety.
+  floor: 0.0
+
+  # CONFIDENCE IN AN UNKNOWN, which is not the same thing as no confidence.
+  #
+  # These used to be 0.0 and 0.3, meaning "no confidence in a category". But
+  # the number is read as "how likely is this answer right", and UNKNOWN is an
+  # answer — on the development set it was the CORRECT answer every time the
+  # text named nothing. Reporting 0.0 for a decision that is almost always
+  # right made the calibration error the largest single contribution in the
+  # whole set.
+  #
+  # Each value below is the measured accuracy of that branch on the
+  # development set, rounded down. They are not guesses, and they move when
+  # the measurement moves.
+  unknown_nothing_said: 0.85    # text too short to carry a subject
+  unknown_no_terms: 0.80        # no category word anywhere
+  unknown_coordinated: 0.70     # explicit "and also" between two subjects
+  unknown_tied: 0.60            # two categories with equal evidence
+
+# --------------------------------------------------------------------------- #
+# "I am reporting more than one thing"
+# --------------------------------------------------------------------------- #
+#
+# A citizen who complains about the road AND the street light has made two
+# complaints, and picking one is worse than admitting there are two, because
+# the one not picked is the one that never gets fixed.
+#
+# Each language marks this its own way. Tamil's உம் and Malayalam's ഉം are
+# clitics attached to each noun; Telugu and Hindi use separate words; English
+# uses a handful of fixed phrases.
+coordination:
+  - " both "
+  - "both the "
+  - " as well as "
+  - " and also "
+  - " are also "
+  - " is also "
+  - " has also "
+  - " have also "
+  - " was also "
+  - " were also "
+  - " neither "
+  - " along with "
+  - " besides "
+  - "ும் "
+  - "ும்,"
+  - "ും "
+  - " കൂടാതെ "
+  - " ഒപ്പം "
+  - " മാത്രമല്ല "
+  - " మరియు "
+  - " కూడా "
+  - " అలాగే "
+  - " और "
+  - " भी "
+  - " तथा "
+  - " दोनों "
+  - " साथ ही "
+
+# --------------------------------------------------------------------------- #
+# "That part is fine, this part is not"
+# --------------------------------------------------------------------------- #
+#
+# A citizen who writes "the street light is working but the drain beside it is
+# blocked" has made ONE complaint, about the drain. Counting both nouns makes
+# it look like two, and the tie rule then sends a perfectly clear complaint to
+# a human.
+#
+# `contrast` splits the sentence; `satisfied` says which side is not the
+# complaint. Both are needed: "but" alone does not mean the first clause was
+# fine, and "is working" alone does not say where the clause ends.
+contrast:
+  - " but "
+  - " however "
+  - " whereas "
+  - " though "
+  - " although "
+  - "ஆனால்"
+  - "എന്നാൽ"
+  - "പക്ഷേ"
+  - "కానీ"
+  - "కాని"
+  - "लेकिन"
+  - "परंतु"
+  - "मगर"
+
+satisfied:
+  - "is fine"
+  - "are fine"
+  - "is working"
+  - "are working"
+  - "works fine"
+  - "working fine"
+  - "no problem"
+  - "no issue"
+  - "is ok"
+  - "is okay"
+  - "is alright"
+  - "has been repaired"
+  - "was repaired"
+  - "is clear"
+  - "சரியாக உள்ளது"
+  - "நன்றாக உள்ளது"
+  - "பிரச்சனை இல்லை"
+  - "ശരിയാണ്"
+  - "പ്രശ്നമില്ല"
+  - "ബാഗുണ്ട്"
+  - "బాగుంది"
+  - "సమస్య లేదు"
+  - "ठीक है"
+  - "कोई समस्या नहीं"
+
+# --------------------------------------------------------------------------- #
+# "Something is wrong" — without saying which of the ten subjects it is
+# --------------------------------------------------------------------------- #
+#
+# TELLING TWO DIFFERENT SILENCES APART. "Sir, kindly do the needful" names no
+# subject: a human has to ask the citizen what it is about. "There are stray
+# dogs and two children have been bitten" names a subject perfectly clearly —
+# it is simply not one of the ten this service has words for.
+#
+# Both used to come back UNKNOWN, which told an officer the same thing about
+# two petitions that need opposite handling. A text carrying one of these
+# markers, and long enough to be saying something, is reported as OTHER.
+#
+# Kept to words that mean SOMETHING IS WRONG OR MISSING, not to polite
+# formulas: "kindly", "request" and "please" appear in every petition ever
+# written, including the ones that name nothing.
+complaint_markers:
+  - "not "
+  - "no one"
+  - "nobody"
+  - "never"
+  - "without"
+  - "stopped"
+  - "pending"
+  - "refused"
+  - "delay"
+  - "obstruct"
+  - "has been"
+  - "have been"
+  - "இல்லை"
+  - "இல்ல"
+  - "நிறுத்த"
+  - "தொல்லை"
+  - "ഇല്ല"
+  - "നിർത്ത"
+  - "ശല്യ"
+  - "లేదు"
+  - "ఆపే"
+  - "నిలిచి"
+  - "नहीं"
+  - "बंद"
+  - "रुक"
+
+#: Below this many words, a text that names nothing is treated as naming
+#: nothing — not as a grievance about something unlisted. A four-word plea is
+#: not a complaint about an unlisted subject, it is a plea.
+complaint_min_words: 8
+
+# --------------------------------------------------------------------------- #
+# Phrases that introduce a landmark or a piece of background
+# --------------------------------------------------------------------------- #
+#
+# "The street light OPPOSITE THE WATER TANK has not been repaired." The tank is
+# how the citizen says WHICH light. It is not what they are complaining about,
+# and read as evidence it outweighed the light and filed a lighting complaint
+# under water supply.
+#
+# Indian addresses are built from landmarks, because that is how places are
+# found here — opposite the temple, near the bus stand, behind the school. So
+# this is not an edge case; it is the ordinary way a location is given.
+#
+# A term found ONLY inside one of these phrases is scored at half weight rather
+# than discarded. Half weight, because a landmark is weak evidence and not no
+# evidence: "near the overflowing drain" really is about a drain.
+scenery:
+  - "opposite "
+  - "near "
+  - "beside "
+  - "behind "
+  - "in front of "
+  - "next to "
+  - "close to "
+  - "adjacent to "
+  - "onto the "
+  - "on to the "
+  - "towards the "
+  - "since the "
+  - "after the "
+  - "during the "
+  - "following the "
+  - "அருகே"
+  - "எதிரே"
+  - "பின்னால்"
+  - "முன்னால்"
+  - "അടുത്ത്"
+  - "എതിർവശത്ത്"
+  - "പിന്നിൽ"
+  - "దగ్గర"
+  - "ఎదురుగా"
+  - "వెనుక"
+  - " पास"
+  - " सामने"
+  - " पीछे"
+
+#: How far past the marker the landmark runs. Three or four words is what an
+#: address landmark actually takes — "opposite the government school" — and a
+#: longer window starts swallowing the complaint itself.
+scenery_window: 32
+
+# --------------------------------------------------------------------------- #
+# Words that are scenery
+# --------------------------------------------------------------------------- #
+#
+# Scored at half weight. These are the words that name where something is
+# rather than what is wrong with it.
+weak:
+  - "road"
+  - "saalai"
+  - "light"
+  - "சாலை"
+  - "தொட்டி"
+  - "റോഡ്"
+  - "രഹദാരി"
+  - "రహదారి"
+  - "రోడ్డు"
+  - "సడక్"
+  - "सड़क"
+  - "रोड"
+  - "street"
+  - "area"
+  - "ward"
+
+# --------------------------------------------------------------------------- #
+# The categories
+# --------------------------------------------------------------------------- #
+categories:
+
+  WATER:
+    label:
+      en: "Drinking water supply"
+      ta: "குடிநீர் விநியோகம்"
+      ml: "കുടിവെള്ള വിതരണം"
+      te: "తాగునీటి సరఫరా"
+      hi: "पेयजल आपूर्ति"
+    routing:
+      requires_evidence: true
+      urban_department_candidate: "Municipal Administration and Water Supply Department"
+      rural_department_candidate: "Rural Development and Panchayat Raj Department"
+    terms:
+      en:
+        - "water"
+        - "drinking water"
+        - "tap"
+        - "pipeline"
+        - "borewell"
+        - "bore well"
+        - "tank"
+        - "supply"
+        - "water supply"
+        - "water connection"
+        - "tanker"
+        - "water tanker"
+        - "hand pump"
+        - "handpump"
+        - "overhead tank"
+        - "drinking water supply"
+      ta:
+        - "தண்ணீர்"
+        - "தண்ணி"
+        - "குடிநீர்"
+        - "குழாய்"
+        - "விநியோக"
+        - "தொட்டி"
+        - "கைப்பம்பு"
+        - "ஆழ்துளை"
+      ml:
+        - "വെള്ളം"
+        - "കുടിവെള്ള"
+        - "പൈപ്പ്"
+        - "ടാങ്ക്"
+        - "വിതരണ"
+        - "ടാപ്പ്"
+        - "ജലവിതരണ"
+        - "കുഴൽക്കിണർ"
+      te:
+        - "నీరు"
+        - "నీటి"
+        - "తాగునీ"
+        - "పైపు"
+        - "ట్యాంక్"
+        - "సరఫరా"
+        - "నల్లా"
+        - "బోరు"
+        - "చేతిపంపు"
+      hi:
+        - "पानी"
+        - "पेयजल"
+        - "नल"
+        - "पाइपलाइन"
+        - "टंकी"
+        - "आपूर्ति"
+        - "जलापूर्ति"
+        - "बोरवेल"
+        - "हैंडपंप"
+      roman:
+        - "thanni"
+        - "thanneer"
+        - "kudineer"
+        - "kuzhai"
+        - "vellam"
+        - "kudivellam"
+        - "thaguneeru"
+        - "peyjal"
+
+  ROAD:
+    label:
+      en: "Roads and footpaths"
+      ta: "சாலைகள்"
+      ml: "റോഡുകൾ"
+      te: "రహదారులు"
+      hi: "सड़कें"
+    routing:
+      requires_evidence: true
+      urban_department_candidate: "Municipal Administration and Water Supply Department"
+      rural_department_candidate: "Rural Development and Panchayat Raj Department"
+    terms:
+      # NEITHER "street" NOR "தெரு" IS HERE, and that is the point. A road
+      # complaint says road, or சாலை, or names a pothole.
+      en:
+        - "road"
+        - "pothole"
+        - "pot hole"
+        - "tar road"
+        - "damaged road"
+        - "tar"
+        - "footpath"
+        - "culvert"
+        - "road laying"
+        - "speed breaker"
+        - "pavement"
+      ta:
+        - "சாலை"
+        - "ரோடு"
+        - "பாதை"
+        - "குழி"
+        - "நடைபாதை"
+        - "தார்"
+      ml:
+        - "റോഡ്"
+        - "കുഴി"
+        - "നടപ്പാത"
+        - "പാത"
+        - "ടാർ"
+      te:
+        - "రహదారి"
+        - "రోడ్డు"
+        - "గుంత"
+        - "కాలిబాట"
+        - "తారు"
+      hi:
+        - "सड़क"
+        - "गड्ढ"
+        - "मार्ग"
+        - "फुटपाथ"
+        - "तारकोल"
+      roman:
+        - "saalai"
+        - "kuzhi"
+        - "rodu"
+        - "sadak"
+        - "gunta"
+
+  STREET_LIGHT:
+    label:
+      en: "Street lighting"
+      ta: "தெருவிளக்கு"
+      ml: "തെരുവുവിളക്ക്"
+      te: "వీధి దీపం"
+      hi: "स्ट्रीट लाइट"
+    routing:
+      requires_evidence: true
+      urban_department_candidate: "Municipal Administration and Water Supply Department"
+      rural_department_candidate: "Rural Development and Panchayat Raj Department"
+    terms:
+      en:
+        - "street light"
+        - "streetlight"
+        - "street lamp"
+        - "lamp"
+        - "light post"
+        - "light"
+        - "lamp post"
+        - "public lighting"
+        - "tube light"
+      ta:
+        - "தெருவிளக்கு"
+        - "விளக்கு"
+        - "மின்விளக்கு"
+        - "விளக்குக் கம்பம்"
+      ml:
+        - "തെരുവുവിളക്ക്"
+        - "വിളക്ക്"
+        - "തെരുവ് വിളക്ക്"
+      te:
+        - "వీధి దీపం"
+        - "వీధిదీపం"
+        - "దీపం"
+        - "లైటు"
+      hi:
+        - "स्ट्रीट लाइट"
+        - "स्ट्रीटलाइट"
+        - "बत्ती"
+        - "रोशनी"
+      roman:
+        - "theruvilakku"
+        - "vilakku"
+        - "deepam"
+        - "batti"
+
+  SANITATION:
+    label:
+      en: "Sanitation and drainage"
+      ta: "துப்புரவு மற்றும் வடிகால்"
+      ml: "ശുചീകരണവും ഓടയും"
+      te: "పారిశుధ్యం మరియు మురుగు"
+      hi: "सफाई और नाली"
+    routing:
+      requires_evidence: true
+      urban_department_candidate: "Municipal Administration and Water Supply Department"
+      rural_department_candidate: "Rural Development and Panchayat Raj Department"
+    terms:
+      en:
+        - "garbage"
+        - "drain"
+        - "drainage"
+        - "sewage"
+        - "sewerage"
+        - "toilet"
+        - "cleaning"
+        - "rubbish"
+        - "waste"
+        - "solid waste"
+        - "septic tank"
+        - "septage"
+        - "open defecation"
+        - "mosquito"
+        - "dustbin"
+        - "manhole"
+      ta:
+        - "குப்பை"
+        - "கழிவு"
+        - "வடிகால்"
+        - "சாக்கடை"
+        - "கழிப்பறை"
+        - "தூய்மை"
+        - "கொசு"
+      ml:
+        - "മാലിന്യ"
+        - "ഓട"
+        - "മലിനജല"
+        - "ശുചിമുറി"
+        - "ശുചീകരണ"
+        - "ചവറ്"
+        - "കൊതുക്"
+      te:
+        - "చెత్త"
+        - "మురుగు"
+        - "కాలువ"
+        - "మరుగుదొడ్డి"
+        - "పారిశుధ్య"
+        - "దోమ"
+      hi:
+        - "कूड़ा"
+        - "कचरा"
+        - "नाली"
+        - "सीवर"
+        - "शौचालय"
+        - "सफाई"
+        - "गंदगी"
+        - "मच्छर"
+      roman:
+        - "kuppai"
+        - "saakkadai"
+        - "chakkadai"
+        - "kazhivu"
+        - "chetta"
+        - "kachra"
+        - "malinya"
+
+  PENSION:
+    label:
+      en: "Pension payments"
+      ta: "ஓய்வூதியம்"
+      ml: "പെൻഷൻ"
+      te: "పింఛను"
+      hi: "पेंशन"
+    routing:
+      requires_evidence: true
+      urban_department_candidate: "Social Welfare and Women Empowerment Department"
+      rural_department_candidate: "Social Welfare and Women Empowerment Department"
+    terms:
+      en:
+        - "pension"
+        - "old age"
+        - "widow"
+        - "old age pension"
+        - "widow pension"
+        - "destitute"
+        - "differently abled pension"
+      ta:
+        - "ஓய்வூதிய"
+        - "முதியோர்"
+        - "விதவை"
+        - "ஆதரவற்ற"
+      ml:
+        - "പെൻഷൻ"
+        - "വാർദ്ധക്യ"
+        - "വിധവ"
+        - "ക്ഷേമ പെൻഷൻ"
+      te:
+        - "పింఛను"
+        - "పెన్షన్"
+        - "వృద్ధాప్య"
+        - "వితంతు"
+      hi:
+        - "पेंशन"
+        - "वृद्धावस्था"
+        - "विधवा"
+        - "निराश्रित"
+      roman:
+        - "oivoothiyam"
+        - "pinchanu"
+        - "muthiyor"
+
+  WELFARE:
+    label:
+      en: "Welfare entitlements"
+      ta: "நல உரிமைகள்"
+      ml: "ക്ഷേമ ആനുകൂല്യങ്ങൾ"
+      te: "సంక్షేమ ప్రయోజనాలు"
+      hi: "कल्याण लाभ"
+    routing:
+      requires_evidence: true
+      urban_department_candidate: "Co-operation, Food and Consumer Protection Department"
+      rural_department_candidate: "Co-operation, Food and Consumer Protection Department"
+    terms:
+      en:
+        - "ration"
+        - "ration card"
+        - "scheme"
+        - "allowance"
+        - "scholarship"
+        - "smart card"
+        - "fair price shop"
+        - "housing scheme"
+        - "free laptop"
+        - "maternity assistance"
+      ta:
+        - "ரேஷன்"
+        - "திட்டம்"
+        - "உதவித்தொகை"
+        - "நிதி"
+        - "தொகை"
+        - "நியாய விலை"
+      ml:
+        - "റേഷൻ"
+        - "പദ്ധതി"
+        - "ധനസഹായ"
+        - "ആനുകൂല്യ"
+        - "സ്കോളർഷിപ്പ്"
+      te:
+        - "రేషన్"
+        - "పథకం"
+        - "భత్యం"
+        - "ఉపకారవేతనం"
+        - "రేషన్ కార్డు"
+      hi:
+        - "राशन"
+        - "योजना"
+        - "भत्ता"
+        - "छात्रवृत्ति"
+        - "राशन कार्ड"
+      roman:
+        - "thogai"
+        - "urimai"
+        - "pathakam"
+        - "yojana"
+
+  LICENCE:
+    label:
+      en: "Licences and permits"
+      ta: "உரிமங்கள்"
+      ml: "ലൈസൻസുകൾ"
+      te: "లైసెన్సులు"
+      hi: "लाइसेंस"
+    routing:
+      requires_evidence: true
+      urban_department_candidate: "Municipal Administration and Water Supply Department"
+      rural_department_candidate: "Rural Development and Panchayat Raj Department"
+    terms:
+      en:
+        - "licence"
+        - "license"
+        - "permit"
+        - "renewal"
+        - "trade licence"
+        - "building plan"
+        - "planning permission"
+        - "building permission"
+        - "no objection certificate"
+        - "noc"
+      ta:
+        - "உரிமம்"
+        - "அனுமதி"
+        - "புதுப்பி"
+        - "கட்டிட அனுமதி"
+      ml:
+        - "ലൈസൻസ്"
+        - "അനുമതി"
+        - "പുതുക്ക"
+        - "കെട്ടിട അനുമതി"
+      te:
+        - "లైసెన్సు"
+        - "అనుమతి"
+        - "పునరుద్ధరణ"
+        - "భవన అనుమతి"
+      hi:
+        - "लाइसेंस"
+        - "अनुमति"
+        - "परमिट"
+        - "नवीनीकरण"
+      roman:
+        - "urimam"
+        - "anumathi"
+        - "parmit"
+
+  CERTIFICATE:
+    label:
+      en: "Certificates"
+      ta: "சான்றிதழ்கள்"
+      ml: "സർട്ടിഫിക്കറ്റുകൾ"
+      te: "ధృవీకరణ పత్రాలు"
+      hi: "प्रमाण पत्र"
+    routing:
+      requires_evidence: true
+      urban_department_candidate: "Revenue and Disaster Management Department"
+      rural_department_candidate: "Revenue and Disaster Management Department"
+    terms:
+      en:
+        - "certificate"
+        - "community certificate"
+        - "income certificate"
+        - "birth certificate"
+        - "death certificate"
+        - "nativity certificate"
+        - "caste certificate"
+        - "legal heir"
+        - "first graduate"
+      ta:
+        - "சான்றிதழ்"
+        - "சான்று"
+        - "ஜாதி சான்று"
+        - "வருமானச் சான்று"
+        - "வாரிசு சான்று"
+      ml:
+        - "സർട്ടിഫിക്കറ്റ്"
+        - "ജാതി സർട്ടിഫിക്കറ്റ്"
+        - "വരുമാന"
+        - "അവകാശ സർട്ടിഫിക്കറ്റ്"
+      te:
+        - "ధృవీకరణ పత్రం"
+        - "సర్టిఫికెట్"
+        - "కుల ధృవీకరణ"
+        - "ఆదాయ ధృవీకరణ"
+      hi:
+        - "प्रमाण पत्र"
+        - "प्रमाणपत्र"
+        - "जाति प्रमाण"
+        - "आय प्रमाण"
+        - "निवास प्रमाण"
+      roman:
+        - "saandrithazh"
+        - "sanru"
+        - "pramaan"
+
+  PROPERTY:
+    label:
+      en: "Land and property"
+      ta: "நிலம் மற்றும் சொத்து"
+      ml: "ഭൂമിയും സ്വത്തും"
+      te: "భూమి మరియు ఆస్తి"
+      hi: "भूमि और संपत्ति"
+    routing:
+      requires_evidence: true
+      urban_department_candidate: "Revenue and Disaster Management Department"
+      rural_department_candidate: "Revenue and Disaster Management Department"
+    terms:
+      en:
+        - "patta"
+        - "land"
+        - "encroachment"
+        - "encroach"
+        - "survey number"
+        - "title"
+        - "boundary"
+        - "chitta"
+        - "adangal"
+        - "property tax"
+        - "name transfer"
+        - "mutation"
+      ta:
+        - "பட்டா"
+        - "நிலம்"
+        - "ஆக்கிரமிப்பு"
+        - "சர்வே"
+        - "எல்லை"
+        - "சிட்டா"
+      ml:
+        - "പട്ടയം"
+        - "ഭൂമി"
+        - "കൈയേറ്റം"
+        - "സർവേ"
+        - "അതിർത്തി"
+      te:
+        - "పట్టా"
+        - "భూమి"
+        - "ఆక్రమణ"
+        - "సర్వే"
+        - "సరిహద్దు"
+      hi:
+        - "पट्टा"
+        - "भूमि"
+        - "जमीन"
+        - "अतिक्रमण"
+        - "सर्वे"
+        - "सीमा"
+      roman:
+        - "nilam"
+        - "aakkiramippu"
+        - "bhoomi"
+        - "atikraman"
+
+  ELECTRICITY:
+    label:
+      en: "Electricity supply"
+      ta: "மின்சாரம்"
+      ml: "വൈദ്യുതി"
+      te: "విద్యుత్"
+      hi: "बिजली"
+    routing:
+      requires_evidence: true
+      urban_department_candidate: "Energy Department"
+      rural_department_candidate: "Energy Department"
+    terms:
+      en:
+        - "electricity"
+        - "power cut"
+        - "transformer"
+        - "voltage"
+        - "power supply"
+        - "eb "
+        - "current"
+        - "electric pole"
+        - "meter reading"
+        - "electricity bill"
+        - "low voltage"
+        - "power failure"
+      ta:
+        - "மின்சார"
+        - "கரண்ட்"
+        - "மின்வெட்டு"
+        - "மின்மாற்றி"
+        - "மின் கம்பம்"
+      ml:
+        - "വൈദ്യുതി"
+        - "കറന്റ്"
+        - "ട്രാൻസ്ഫോർമർ"
+        - "വൈദ്യുത"
+      te:
+        - "విద్యుత్"
+        - "కరెంటు"
+        - "ట్రాన్స్‌ఫార్మర్"
+        - "విద్యుత్తు"
+      hi:
+        - "बिजली"
+        - "विद्युत"
+        - "ट्रांसफार्मर"
+        - "वोल्टेज"
+      roman:
+        - "minsaram"
+        - "karant"
+        - "bijli"
+        - "vaidyuthi"

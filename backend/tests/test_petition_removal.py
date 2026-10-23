@@ -19,9 +19,8 @@ from app.api.rest import router as rest_router
 from app.config import Settings
 from app.graph.state import new_state
 from app.graph.workflow import Workflow
-from app.services.removal import remove_sessions
 from app.services import officer_store
-
+from app.services.removal import remove_sessions
 
 # The browser these tests are. Every seeded petition is recorded against it,
 # because listing and deleting are scoped to the browser that created the

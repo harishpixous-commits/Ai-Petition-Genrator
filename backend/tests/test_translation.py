@@ -1,9 +1,9 @@
 """Reading a finished petition in another language.
 
-The feature is a convenience. The rule it must not break is not: the citizen's
-own text — their name, their address, their grievance — is reproduced exactly
-as entered, in whatever language they wrote it. A petition whose complaint has
-been reworded is a different petition, and a translator has already been caught
+The feature is a convenience. The rule it must not break is that the citizen's
+identity and complaint survive intact. Name and address display formatting may
+change capitalization or script; translation must never rewrite them, and the
+grievance is reproduced word for word. A translator has already been caught
 turning Coimbatore into the name of a locality in Chennai. A document naming
 the wrong town does not get acted on.
 """
@@ -17,33 +17,51 @@ import pytest
 from fastapi import FastAPI
 
 from app.api.rest import router
-from app.services import translate
 from app.graph.state import new_state
 from app.graph.workflow import Workflow
+from app.services import translate
 from app.services import translate as translator
 
 TAMIL_LINE = "வீதி விளக்கு மூன்று மாதங்களாக எரியவில்லை."
 HINDI_LINE = "स्ट्रीट लाइट तीन महीने से काम नहीं कर रही है।"
 GRIEVANCE = "The street light outside my house has not worked for three months."
 NAME = "Ravi Kumar"
-ADDRESS = "12 Anna Street, Coimbatore"
+RAW_ADDRESS = "12 anna street, coimbatore"
+ADDRESS = "12, Anna Street, Coimbatore"
 
 LETTER = "\n".join([
-    "To",
-    "    The District Collector",
-    "    District Collectorate",
+    "Date: 22-10-2026",
+    "Place: Coimbatore",
+    "",
+    "From,",
+    f"    {NAME}",
+    f"    {ADDRESS}",
+    "    Age: 45",
+    "    Mobile number: +91 98765 43210",
+    "",
+    "To,",
+    "    The District Collector,",
+    "    District Collectorate,",
+    "    Coimbatore District, Tamil Nadu.",
     "",
     "Subject: Petition seeking redressal of a grievance",
     "",
-    "Respected Sir/Madam,",
+    "Respected Sir / Madam,",
     "",
     GRIEVANCE,
     "",
     "I request that the necessary action be taken at the earliest.",
     "",
+    "Thanking you,",
+    "",
     "Yours faithfully,",
-    NAME,
-    ADDRESS,
+    "",
+    "",
+    f"(Signature) / {NAME}",
+    "",
+    "Enclosures: Nil",
+    "",
+    "Note: This petition was prepared based on the information provided by the petitioner. Please verify all details before signing or submitting it.",
 ])
 
 
@@ -55,7 +73,7 @@ def _ready(session_id: str, text: str = LETTER) -> dict:
     return {
         **new_state(session_id, "en"),
         "fields": {"applicant_name": NAME, "age": 45, "mobile": "9876543210",
-                   "aadhaar": "234567890124", "address": ADDRESS,
+                   "aadhaar": "234567890124", "address": RAW_ADDRESS,
                    "grievance": GRIEVANCE},
         "status": "ready", "confirmed": True,
         # A genuinely finished session has settled its attachment step. Without
@@ -63,7 +81,7 @@ def _ready(session_id: str, text: str = LETTER) -> dict:
         # not ready at the end of it — which is the graph working correctly.
         "attachments_offered": True, "attachments_done": True,
         "letter_text": text,
-        "document": {"reference": "PET-2026-0001", "docx": "petition.docx",
+        "document": {"reference": "AP/2026/TEST001", "docx": "petition.docx",
                      "generated_at": "2026-09-10T09:00:00+00:00", "version": 1},
         "document_version": 1,
         "verification": {"ok": True},
@@ -403,8 +421,14 @@ class TestATranslationIsNeverMadeFromATranslation:
         made countable.
         """
         async def translate(lines, target, settings=None, keep=frozenset(), source=None):
+            structural_starts = (
+                "Date:", "Place:", "From,", "To,", "Subject:", "Respected ",
+                "Sir / Madam", "Thanking you", "Thank you", "Yours faithfully",
+                "Yours sincerely", "Enclosures:", "Note:",
+            )
             return translator.TranslationResult(
-                lines=[line if (not line.strip() or line in keep or line.strip() in keep)
+                lines=[line if (not line.strip() or line in keep or line.strip() in keep
+                               or line.strip().startswith(structural_starts))
                        else f"{tag}{line}"
                        for line in lines],
                 engine="test")
@@ -422,7 +446,9 @@ class TestATranslationIsNeverMadeFromATranslation:
             response = await api.post(f"/api/sessions/{session_id}/translate",
                                       json={"language": target})
             assert response.status_code == 200, response.text
-            letters.append(response.json()["letter_text"])
+            payload = response.json()
+            assert payload["status"] == "ready", payload.get("verification")
+            letters.append(payload["letter_text"])
 
         for letter in letters:
             worst = max((line.count("<>") for line in letter.split("\n")), default=0)
@@ -446,8 +472,10 @@ class TestATranslationIsNeverMadeFromATranslation:
         before = (await api.get(f"/api/sessions/{session_id}")).json()["letter_text"]
 
         for target in ("ta", "hi", "ta"):
-            assert (await api.post(f"/api/sessions/{session_id}/translate",
-                                   json={"language": target})).status_code == 200
+            response = await api.post(f"/api/sessions/{session_id}/translate",
+                                      json={"language": target})
+            assert response.status_code == 200, response.text
+            assert response.json()["status"] == "ready", response.json().get("verification")
 
         home = await api.post(f"/api/sessions/{session_id}/translate",
                               json={"language": "en"})

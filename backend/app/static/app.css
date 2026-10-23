@@ -230,7 +230,10 @@ a.btn.off{opacity:.45;pointer-events:none}
 .progress-note{display:flex;align-items:baseline;justify-content:space-between;gap:10px;font-size:9.5px;color:var(--muted)}
 #progressPct{font-weight:700;font-size:11px;color:var(--blue)}
 .progress-track{height:5px;border-radius:3px;overflow:hidden;background:#edf2f2;margin-top:8px}
-.progress-track i{display:block;height:100%;border-radius:3px;background:var(--blue);transition:width 320ms cubic-bezier(.4,0,.2,1)}
+.progress-track progress{display:block;width:100%;height:5px;border:0;appearance:none;background:#edf2f2}
+.progress-track progress::-webkit-progress-bar{background:#edf2f2}
+.progress-track progress::-webkit-progress-value{border-radius:3px;background:var(--blue);transition:width 320ms cubic-bezier(.4,0,.2,1)}
+.progress-track progress::-moz-progress-bar{border-radius:3px;background:var(--blue)}
 .section-label{padding:21px 22px 10px;font-size:9px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#8b9aa0}
 .field-row{display:flex;align-items:flex-start;gap:10px;margin:0 12px;padding:11px 10px;border-bottom:1px solid var(--line-soft);transition:background var(--step);border-radius:0}
 .field-row:last-child{border-bottom:0}
@@ -331,6 +334,13 @@ details.drawer>summary .count{padding:1px 6px;background:var(--blue-soft);color:
 .submitted-mark{display:flex;align-items:center;gap:14px;width:100%;max-width:710px;margin:18px auto 4px;padding:16px 20px;border:1px solid #c9e4d6;border-radius:13px;background:var(--ok-soft)}
 .submitted-mark h3{margin:0 0 3px;font-size:13.5px;color:var(--ok)}
 .submitted-mark p{margin:0;font-size:11.5px;line-height:1.7;color:var(--muted)}
+.submission-details{display:grid;gap:8px;margin-top:13px;padding-top:12px;border-top:1px solid #d7e9df}
+.submission-reference{display:flex;align-items:center;flex-wrap:wrap;gap:9px;font-size:10px}
+.submission-reference code{font-size:12px;font-weight:700;color:var(--ink);letter-spacing:.35px}
+.submission-details p{display:flex;gap:8px;flex-wrap:wrap}
+.submission-details p strong{color:var(--ink)}
+.submission-details .btn{justify-self:start}
+.btn.small{min-height:28px;padding:5px 10px;font-size:10px}
 .sm-tick{position:relative;width:38px;height:38px;flex:none;display:grid;place-items:center;border-radius:50%;background:var(--ok);color:white}
 .sm-tick svg{width:20px;height:20px;position:relative;z-index:1}
 .sm-tick .ic-ring{position:absolute;inset:-5px;border-radius:50%;border:2px solid var(--ok);opacity:.28;animation:tick-ring .9s ease-out both}
@@ -367,7 +377,7 @@ details.drawer>summary .count{padding:1px 6px;background:var(--blue-soft);color:
 .paper-sheet{align-self:flex-start;width:100%;max-width:710px;border-collapse:collapse}
 .paper-sheet>tbody>tr>td{padding:0}
 .paper-sheet>.page-gutter{display:none}
-.paper{align-self:flex-start;width:100%;max-width:710px;padding:48px 46px;border:1px solid #dce3e4;border-radius:2px;background:white;box-shadow:var(--shadow-lg);font-size:12.5px;line-height:1.95;white-space:pre-wrap;overflow-wrap:anywhere;color:#263c48}
+.paper{align-self:flex-start;width:100%;max-width:710px;padding:48px 46px;border:1px solid #dce3e4;border-radius:2px;background:white;box-shadow:var(--shadow-lg);font-size:12.5px;line-height:1.45;white-space:pre-wrap;overflow-wrap:anywhere;color:#263c48}
 
 /* THE CONTINUOUS COMBINED PACKAGE. One white sheet per page, a small gap
    between them, drawn to the same width as the petition sheet so the run
@@ -419,7 +429,19 @@ img.enclosure-view{height:auto}
 /* The date and the place, where a letter carries them. The body keeps the
    pre-wrap the whole sheet used to have, so nothing else moves. */
 .paper-dateline{white-space:pre-wrap;text-align:right;margin-bottom:2px}
-.paper-body{white-space:pre-wrap}
+.paper-body{white-space:normal;line-height:1.35}
+.paper-body-line{white-space:pre-wrap;line-height:inherit}
+.paper-body-spacer{height:4pt}
+.paper-official-header{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.35fr) minmax(0,1.05fr);gap:8px;align-items:start;margin:0 0 14px;line-height:1.25;white-space:normal;color:#1c3440;break-inside:avoid;page-break-inside:avoid}
+.paper-header-ref{font-size:9px;overflow-wrap:anywhere}
+.paper-header-ref strong{display:block}
+.paper-header-qr{display:block;width:64px;height:64px;margin-top:5px;image-rendering:pixelated}
+.paper-header-title{padding-top:8px;text-align:center;font-size:12px;font-weight:700;line-height:1.3}
+.paper-office-box{min-height:78px;padding:6px;border:1px solid #59666b;text-align:center;font-size:8.5px;font-weight:700;line-height:1.4;white-space:pre-line}
+.paper-signature-row{display:grid;grid-template-columns:1fr 1fr;align-items:end;gap:12px;margin-top:25px;line-height:1.35;white-space:normal}
+.paper-enclosures-count{font-size:11px;font-weight:700}
+.paper-signature-name{text-align:right;font-size:11px;font-weight:600}
+.paper-note{margin-top:7px;font-size:9.5px;line-height:1.35;font-style:italic;color:#59666b;white-space:normal}
 .gp-emblem svg{width:17px;height:17px}
 .gp-pencil{color:var(--blue)}
 .gp-pencil svg{width:23px;height:23px}
@@ -516,6 +538,14 @@ img.enclosure-view{height:auto}
   transform-origin: left center; transform: scaleX(0);
   animation: write 4.6s cubic-bezier(.35,.8,.4,1) infinite;
 }
+.gp-line.delay-1 i{animation-delay:.10s}.gp-line.delay-2 i{animation-delay:.35s}
+.gp-line.delay-3 i{animation-delay:.70s}.gp-line.delay-4 i{animation-delay:.95s}
+.gp-line.delay-5 i{animation-delay:1.30s}.gp-line.delay-6 i{animation-delay:1.70s}
+.gp-line.delay-7 i{animation-delay:1.90s}.gp-line.delay-8 i{animation-delay:2.10s}
+.gp-line.delay-9 i{animation-delay:2.30s}.gp-line.delay-10 i{animation-delay:2.55s}
+.gp-line.delay-11 i{animation-delay:2.75s}.gp-line.delay-12 i{animation-delay:2.95s}
+.gp-line.delay-13 i{animation-delay:3.15s}.gp-line.delay-14 i{animation-delay:3.45s}
+.gp-sign.delay-15 i{animation-delay:3.70s}
 
 /* The scanner reading the details, sweeping the page. */
 .gp-scan {
@@ -1197,7 +1227,7 @@ body.kiosk [data-route="home"] { display: none !important; }
     display:block!important;
     max-width:none;margin:0;padding:0 16mm;width:auto;
     border:0;border-radius:0;box-shadow:none;background:white;
-    color:black;font-size:11pt;line-height:1.85}
+    color:black;font-size:11pt;line-height:1.4}
 
   /* The emblem sits against the top of the first sheet. The gutter above it
      is the table's, so it needs none of its own. */
@@ -1398,6 +1428,32 @@ header.app{gap:24px}
 .create-action p{color:#b9cecf}
 .create-action .action-arrow{color:#d4eae5;border-color:rgb(255 255 255 / 23%)}
 .create-action:hover{background:#204751;border-color:#204751}
+.track-action{display:grid;grid-template-columns:43px minmax(0,1fr);align-content:start;min-height:190px}
+.track-action:hover{transform:none}
+.track-action .track-icon{background:#e9f4f0;color:#327761}
+.track-card-content{min-width:0}
+.track-form{display:flex;align-items:stretch;gap:8px;margin-top:14px}
+.track-form input{flex:1;min-width:0;height:40px;padding:9px 11px;border:1px solid #dce6e7;border-radius:8px;background:#fbfdfc;color:var(--ink);font-size:11px;letter-spacing:.25px}
+.track-form input:focus{outline:2px solid #e4f2ef;border-color:#87b7b7}
+.track-form .btn{min-height:40px;flex:none;padding-inline:14px;font-size:10.5px}
+.track-error{grid-column:1/-1;margin:9px 0 0!important;color:#a64239!important;font-size:10.5px!important}
+.track-result{grid-column:1/-1;min-width:0;margin-top:18px;padding-top:15px;border-top:1px solid var(--line)}
+.track-result-heading{display:flex;align-items:start;justify-content:space-between;gap:12px}
+.track-result-heading h4{margin:0;font-size:13px;color:var(--ink)}
+.track-status{max-width:50%;padding:5px 8px;border-radius:6px;background:#edf5f2;color:#27654f;font-size:9.5px;font-weight:700;text-align:right}
+.track-result-date{margin:7px 0 12px!important;font-size:9.5px!important}
+.track-steps{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px;list-style:none;padding:0;margin:14px 0 18px;counter-reset:track-step}
+.track-steps li{position:relative;min-width:0;padding-top:27px;color:#82929a;font-size:8px;line-height:1.45;text-align:center;counter-increment:track-step}
+.track-steps li::before{content:counter(track-step);position:absolute;top:0;left:50%;display:grid;place-items:center;width:20px;height:20px;transform:translateX(-50%);border:1px solid #ccd9d8;border-radius:50%;background:#fff;color:#7d8d91;font-size:9px;font-weight:700}
+.track-steps li::after{content:"";position:absolute;top:9px;left:calc(50% + 11px);width:calc(100% - 18px);height:2px;background:#dce6e4}
+.track-steps li:last-child::after{display:none}
+.track-steps li.complete,.track-steps li.current{color:#286247;font-weight:700}
+.track-steps li.complete::before,.track-steps li.current::before{border-color:#318265;background:#318265;color:#fff}
+.track-steps li.complete::after{background:#318265}
+.track-details{display:grid;grid-template-columns:minmax(100px,.7fr) minmax(0,1.3fr);gap:7px 12px;margin:0;font-size:9.5px;line-height:1.55}
+.track-details dt{color:var(--muted);font-weight:600}
+.track-details dd{min-width:0;margin:0;color:var(--ink);overflow-wrap:anywhere}
+.status-detail{color:var(--muted)}
 .home-guide{display:grid;grid-template-columns:230px minmax(0,1fr);gap:55px;margin-top:52px;padding:31px 22px 5px;border-top:1px solid var(--line)}
 .home-guide .eyebrow{font-size:8px;letter-spacing:1.25px;color:#88a097;margin-bottom:9px}
 .home-guide h3{margin:0;color:var(--navy);font-size:20px;line-height:1.55;letter-spacing:-.4px}

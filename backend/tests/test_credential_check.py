@@ -44,8 +44,23 @@ GEMINI = "AIzaTESTKEYaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 SARVAM = "sk_test_one,sk_test_two"
 
 SCRIPTS = Path("../deploy/scripts").resolve()
-BASH = shutil.which("bash")
-NEEDS_BASH = pytest.mark.skipif(BASH is None, reason="bash is not available")
+
+
+def _working_bash() -> str | None:
+    bash = shutil.which("bash")
+    if bash is None:
+        return None
+    try:
+        result = subprocess.run([bash, "--version"], capture_output=True,
+                                text=True, timeout=5, check=False)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return bash if result.returncode == 0 else None
+
+
+BASH = _working_bash()
+NEEDS_BASH = pytest.mark.skipif(
+    BASH is None, reason="a working bash executable is not available")
 
 
 def settings(**overrides) -> Settings:

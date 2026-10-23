@@ -1,0 +1,469 @@
+# The government documents this service reasons from.
+#
+# WHAT THIS FILE IS. A manifest, not a cache. Every entry names a document by
+# its official URL, says who issued it and what kind of document it is, and
+# records when it was last verified to be downloadable. `scripts/fetch_corpus.py`
+# reads this file, fetches what it names, checks it, and ingests it.
+#
+# WHY A MANIFEST AND NOT A FOLDER OF PDFs. Three reasons, all of which have
+# cost somebody something before:
+#
+#   A corpus you cannot rebuild is a corpus you cannot trust. If the only copy
+#   of a document is a file somebody downloaded once, nobody can tell whether
+#   it is current, whether it was edited, or where it came from.
+#
+#   Government documents are superseded. An Act is amended, a Rule is replaced,
+#   a town is reclassified. A manifest can record that; a folder cannot.
+#
+#   Nothing in this repository should be a copy of a government document. The
+#   documents belong to the department that published them. This file points at
+#   them.
+#
+# EVERY URL BELOW WAS FETCHED AND CONFIRMED to return HTTP 200 with a PDF body
+# on the date in `verified`. That is a statement about reachability on that
+# day, and nothing more: it is not a statement that the document is current
+# law, which only the department can say.
+#
+# WHAT IS DELIBERATELY NOT HERE. Fund-release orders, staff postings, tender
+# notices and award announcements. They are the bulk of what a Government
+# Order portal contains and no citizen petition turns on any of them. The
+# selection below is the material that decides a grievance: what the local body
+# is obliged to do, who is responsible, and what procedure applies.
+
+version: 1
+state: "Tamil Nadu"
+
+documents:
+
+  # ------------------------------------------------------------------------ #
+  # Urban local bodies: the law that says what they must do
+  # ------------------------------------------------------------------------ #
+
+  - id: tn-ulb-act-1998
+    title: "Tamil Nadu Urban Local Bodies Act, 1998"
+    url: "https://www.tnurbantree.tn.gov.in/wp-content/uploads/2023/07/Act-2023.pdf"
+    document_type: act
+    authority: official
+    department: "Municipal Administration and Water Supply Department"
+    publisher: "Commissionerate of Town Panchayats, Government of Tamil Nadu"
+    language: en
+    applies_to: urban
+    verified: "2026-10-10"
+    why: >
+      The constituting Act for municipal corporations, municipalities and town
+      panchayats. It is the document that says which body is responsible for
+      water supply, roads, lighting and sanitation in an urban area, which is
+      the first question any petition about those raises.
+
+  - id: tn-ulb-act-1998-tamil
+    title: "தமிழ்நாடு நகர்ப்புற உள்ளாட்சி அமைப்புகள் சட்டம், 1998"
+    url: "https://www.tnurbantree.tn.gov.in/wp-content/uploads/2023/06/ULB-ACT-2023-Tamil.pdf"
+    document_type: act
+    authority: official
+    department: "Municipal Administration and Water Supply Department"
+    publisher: "Commissionerate of Town Panchayats, Government of Tamil Nadu"
+    language: ta
+    applies_to: urban
+    verified: "2026-10-10"
+    why: >
+      The Tamil text of the same Act. Indexed alongside the English because a
+      citizen asking in Tamil should be able to reach the passage in Tamil, and
+      because a retrieval layer that only ever holds English makes every
+      non-English citizen depend on translation.
+
+  - id: tn-ulb-rules-2023
+    title: "Tamil Nadu Urban Local Bodies Rules, 2023"
+    url: "https://www.tnurbantree.tn.gov.in/wp-content/uploads/2023/07/Rules-2023.pdf"
+    document_type: rule
+    authority: official
+    department: "Municipal Administration and Water Supply Department"
+    publisher: "Commissionerate of Town Panchayats, Government of Tamil Nadu"
+    language: en
+    applies_to: urban
+    verified: "2026-10-10"
+    why: >
+      The Rules made under the 1998 Act. Where the Act says a duty exists, the
+      Rules say the procedure and the timeframe, which is what a citizen is
+      usually actually complaining about.
+
+  - id: tn-district-municipalities-act-1920
+    title: "The Tamil Nadu District Municipalities Act, 1920"
+    url: "https://www.tnurbantree.tn.gov.in/wp-content/uploads/2020/09/The-Tamil-Nadu-District-Municipalities-Act-1920.pdf"
+    document_type: act
+    authority: official
+    department: "Municipal Administration and Water Supply Department"
+    publisher: "Commissionerate of Town Panchayats, Government of Tamil Nadu"
+    language: en
+    applies_to: urban
+    verified: "2026-10-10"
+    why: >
+      Still the operative Act for much municipal administration, and the Act
+      under which a town panchayat is classified or reclassified as a
+      municipality — the question a jurisdiction finding turns on.
+
+  # ------------------------------------------------------------------------ #
+  # Rural local bodies
+  # ------------------------------------------------------------------------ #
+
+  - id: tn-panchayats-act-1994
+    title: "The Tamil Nadu Panchayats Act, 1994 (Tamil Nadu Act 21 of 1994)"
+    url: "https://tnrd.tn.gov.in/rdweb_newsite/project/reports/Public/public_page_table_content_getpdf.php?pdf_download_id=Mjcy"
+    document_type: act
+    authority: official
+    department: "Rural Development and Panchayat Raj Department"
+    publisher: "Rural Development and Panchayat Raj Department, Government of Tamil Nadu"
+    language: en
+    applies_to: rural
+    verified: "2026-10-10"
+    why: >
+      The rural half, and the half most often missing. A grievance from a
+      village panchayat area goes to a different officer under a different Act,
+      and a corpus holding only the urban law would answer every rural petition
+      with urban procedure.
+
+  # ------------------------------------------------------------------------ #
+  # Procedure: what an office is supposed to do, and by when
+  # ------------------------------------------------------------------------ #
+
+  - id: tn-district-office-manual
+    title: "District Office Manual, Parts I and II"
+    url: "https://www.tnurbantree.tn.gov.in/wp-content/uploads/2021/03/DISTRICT-OFFICE-MANUAL-Part-I-and-II.pdf"
+    document_type: procedure
+    authority: official
+    department: "Public (Miscellaneous) Department"
+    publisher: "Government of Tamil Nadu"
+    language: en
+    applies_to: both
+    verified: "2026-10-10"
+    why: >
+      How a government office in this state is required to handle a paper it
+      receives: registration, acknowledgement, disposal and the time allowed.
+      A petition about delay is a petition about this document.
+
+  - id: tn-swm-ready-reckoner
+    title: "Ready Reckoner on Municipal Solid Waste Management for Urban Local Bodies"
+    url: "https://www.tnurbantree.tn.gov.in/wp-content/uploads/2020/10/Ready-Reckoner-on-Municipal-Solid-Waste-Management-for-ULBs.pdf"
+    document_type: guideline
+    authority: official
+    department: "Municipal Administration and Water Supply Department"
+    publisher: "Commissionerate of Town Panchayats, Government of Tamil Nadu"
+    language: en
+    applies_to: urban
+    verified: "2026-10-10"
+    why: >
+      Sanitation is one of the commonest grievance categories and this is the
+      operational document behind it — collection frequency, who is responsible,
+      what a complaint should trigger.
+
+  - id: tn-go-ms-106-2014-septage
+    title: "G.O.(Ms) No.106 — Septage Management, operative guidelines"
+    url: "https://www.tn.gov.in/dtp/gorders/maws_e_106_2014_Ms.pdf"
+    document_type: government_order
+    authority: official
+    department: "Municipal Administration and Water Supply Department"
+    publisher: "Government of Tamil Nadu"
+    government_order_number: "106"
+    language: en
+    applies_to: both
+    verified: "2026-10-10"
+    why: >
+      Septage is the subject of a large share of sanitation complaints in
+      unsewered areas, and this is the order that sets the procedure.
+
+  # ------------------------------------------------------------------------ #
+  # Building, planning and licences
+  # ------------------------------------------------------------------------ #
+
+  - id: tn-town-country-planning-act-1971
+    title: "Tamil Nadu Town and Country Planning Act, 1971"
+    url: "https://www.tnurbantree.tn.gov.in/wp-content/uploads/2021/03/tamilnadu_town_country_planning_act_1971.pdf"
+    document_type: act
+    authority: official
+    department: "Housing and Urban Development Department"
+    publisher: "Government of Tamil Nadu"
+    language: en
+    applies_to: both
+    verified: "2026-10-10"
+    why: >
+      Planning permission and building approval grievances are decided under
+      this Act.
+
+  - id: tn-combined-building-rules-2019
+    title: "Tamil Nadu Combined Development and Building Rules, 2019"
+    url: "https://www.tnurbantree.tn.gov.in/wp-content/uploads/2020/06/TN_combined_development_building_rules_2019.pdf"
+    document_type: rule
+    authority: official
+    department: "Housing and Urban Development Department"
+    publisher: "Government of Tamil Nadu"
+    language: en
+    applies_to: both
+    verified: "2026-10-10"
+    why: >
+      The rules a building plan application is actually judged against, and
+      therefore what a refusal or a delay has to be measured against.
+
+  - id: tn-street-vendors-policy
+    title: "Tamil Nadu Policy for Urban Street Vendors"
+    url: "https://www.tnurbantree.tn.gov.in/wp-content/uploads/2020/10/Tamil-Nadu-Policy-for-Urban-Street-Vendors.pdf"
+    document_type: guideline
+    authority: official
+    department: "Municipal Administration and Water Supply Department"
+    publisher: "Government of Tamil Nadu"
+    language: en
+    applies_to: urban
+    verified: "2026-10-10"
+    why: >
+      Vending licences and eviction from a vending site are ordinary petition
+      subjects and are governed by this policy rather than by the general
+      licensing rules.
+
+  # ------------------------------------------------------------------------ #
+  # Jurisdiction: which body covers which place
+  # ------------------------------------------------------------------------ #
+
+  - id: tn-go-ms-208-2010-oddanchatram
+    title: "G.O.(Ms) No.208 — Oddanchatram Town Panchayat classified as a Second Grade Municipality"
+    url: "https://www.tn.gov.in/dtp/gorders/maws_e_208_2010.pdf"
+    document_type: local_body_directory
+    authority: official
+    department: "Municipal Administration and Water Supply Department"
+    publisher: "Government of Tamil Nadu"
+    government_order_number: "208"
+    language: en
+    applies_to: urban
+    verified: "2026-10-10"
+    why: >
+      A worked example of a RECLASSIFICATION, which is the hardest case for a
+      jurisdiction answer: for a period, both descriptions of the same place
+      are in circulation and only the dated order settles which applies. Kept
+      as a single real instance of the shape; it is NOT a directory, and the
+      department's own directory is still the missing piece recorded in
+      docs/knowledge-base-population.md.
+
+  # ------------------------------------------------------------------------ #
+  # THE AMENDMENT CHAIN — why the 2023 Rules alone are not current law
+  # ------------------------------------------------------------------------ #
+  #
+  # The Tamil Nadu Urban Local Bodies Rules, 2023 have been amended repeatedly
+  # since they were made. A corpus holding only the original would answer
+  # every question about them from superseded text, confidently and with a
+  # citation, which is the worst failure this layer has.
+  #
+  # Found by enumerating the Government Gazette extraordinary lists for 2023,
+  # 2024, 2025 and 2026 and following each entry to its PDF. The 2026
+  # amendment was confirmed to exist rather than assumed.
+
+  - id: tn-ulb-rules-2023-gazette
+    title: "The Tamil Nadu Urban Local Bodies Rules, 2023 - Gazette notification (G.O. Ms. No. 45, SRO A-17(a)/2023)"
+    url: "https://www.stationeryprinting.tn.gov.in/extraordinary/2023/124_Ex_III_1a_2023.pdf"
+    document_type: rule
+    authority: official
+    department: "Municipal Administration and Water Supply Department"
+    publisher: "Government of Tamil Nadu, Stationery and Printing"
+    government_order_number: "45"
+    language: en
+    applies_to: urban
+    verified: "2026-10-11"
+    why: >
+      The Rules as originally published in the Gazette, carrying the SRO
+      number an officer cites.
+
+  - id: tn-ulb-rules-amend-164-2026
+    title: "Amendment to the Tamil Nadu Urban Local Bodies Rules, 2023 - G.O. Ms. No. 164, MA and WS (MA.IV), 3 September 2026 (SRO A-16(a)/2026)"
+    url: "https://www.stationeryprinting.tn.gov.in/extraordinary/2026/374_Ex_III_1a_2026.pdf"
+    document_type: government_order
+    authority: official
+    department: "Municipal Administration and Water Supply Department"
+    publisher: "Government of Tamil Nadu, Stationery and Printing"
+    government_order_number: "164"
+    language: en
+    applies_to: urban
+    verified: "2026-10-11"
+    why: >
+      THE CURRENT-LAW CHECK. The most recent amendment to the 2023 Rules in
+      the Gazette. An answer about those Rules that does not account for this
+      is answering from superseded text.
+
+  - id: tn-ulb-rules-amend-480-2025
+    title: "Amendments to the Tamil Nadu Urban Local Bodies Rules, 2023 - G.O. Ms. No. 480 (SRO A-35(b)/2025)"
+    url: "https://www.stationeryprinting.tn.gov.in/extraordinary/2025/836_Ex_III_1a_2025.pdf"
+    document_type: government_order
+    authority: official
+    department: "Municipal Administration and Water Supply Department"
+    publisher: "Government of Tamil Nadu, Stationery and Printing"
+    government_order_number: "480"
+    language: en
+    applies_to: urban
+    verified: "2026-10-11"
+    why: "Part of the amendment chain to the 2023 Rules."
+
+  - id: tn-ulb-rules-amend-433-2025
+    title: "Amendment to the Tamil Nadu Urban Local Bodies Rules, 2023 - G.O. Ms. No. 433 (SRO A-34(c)/2025)"
+    url: "https://www.stationeryprinting.tn.gov.in/extraordinary/2025/777_Ex_III_1a_2025.pdf"
+    document_type: government_order
+    authority: official
+    department: "Municipal Administration and Water Supply Department"
+    publisher: "Government of Tamil Nadu, Stationery and Printing"
+    government_order_number: "433"
+    language: en
+    applies_to: urban
+    verified: "2026-10-11"
+    why: "Part of the amendment chain to the 2023 Rules."
+
+  - id: tn-ulb-rules-amend-104-2025
+    title: "Amendment to the Tamil Nadu Urban Local Bodies Rules, 2023 - G.O. Ms. No. 104 (SRO A-15(a)/2025)"
+    url: "https://www.stationeryprinting.tn.gov.in/extraordinary/2025/285_Ex_III_1a_2025.pdf"
+    document_type: government_order
+    authority: official
+    department: "Municipal Administration and Water Supply Department"
+    publisher: "Government of Tamil Nadu, Stationery and Printing"
+    government_order_number: "104"
+    language: en
+    applies_to: urban
+    verified: "2026-10-11"
+    why: "Part of the amendment chain to the 2023 Rules."
+
+  - id: tn-ulb-rules-amend-162-2024
+    title: "Amendment to the Tamil Nadu Urban Local Bodies Rules, 2023 - G.O. Ms. No. 162 (SRO A-19(a)/2024)"
+    url: "https://www.stationeryprinting.tn.gov.in/extraordinary/2024/359_Ex_III_1a_2024.pdf"
+    document_type: government_order
+    authority: official
+    department: "Municipal Administration and Water Supply Department"
+    publisher: "Government of Tamil Nadu, Stationery and Printing"
+    government_order_number: "162"
+    language: en
+    applies_to: urban
+    verified: "2026-10-11"
+    why: "Part of the amendment chain to the 2023 Rules."
+
+  - id: tn-ulb-amendment-act-24-2024
+    title: "Act No. 24 of 2024 - an Act further to amend the Tamil Nadu Urban Local Bodies Act, 1998"
+    url: "https://www.stationeryprinting.tn.gov.in/extraordinary/2024/223_Ex_IV_2_2024.pdf"
+    document_type: act
+    authority: official
+    department: "Municipal Administration and Water Supply Department"
+    publisher: "Government of Tamil Nadu, Stationery and Printing"
+    language: en
+    applies_to: urban
+    verified: "2026-10-11"
+    why: >
+      An amending ACT, not a rule. The 1998 Act already indexed is the
+      pre-amendment text, so this is the difference between current and
+      historical law.
+
+  - id: tn-ulb-amendment-act-30-2025
+    title: "Act No. 30 of 2025 - The Tamil Nadu Urban Local Bodies (Amendment) Act, 2025"
+    url: "https://www.stationeryprinting.tn.gov.in/extraordinary/2025/252_Ex_IV_2_2025.pdf"
+    document_type: act
+    authority: official
+    department: "Municipal Administration and Water Supply Department"
+    publisher: "Government of Tamil Nadu, Stationery and Printing"
+    language: en
+    applies_to: urban
+    verified: "2026-10-11"
+    why: "The later amending Act to the 1998 Act."
+
+  # ------------------------------------------------------------------------ #
+  # Procedure and entitlement, by grievance category
+  # ------------------------------------------------------------------------ #
+
+  - id: tn-property-tax-revision-go-73
+    title: "Property Tax - General Revision of Property Tax in Urban Local Bodies (G.O. 73)"
+    url: "https://www.tnurbantree.tn.gov.in/wp-content/uploads/2020/11/G.O-73-Gen-Rev-amendment-1.pdf"
+    document_type: government_order
+    authority: official
+    department: "Municipal Administration and Water Supply Department"
+    publisher: "Commissionerate of Town Panchayats, Government of Tamil Nadu"
+    government_order_number: "73"
+    language: en
+    applies_to: urban
+    verified: "2026-10-11"
+    why: >
+      Property tax demands are an ordinary petition subject, and the basis of
+      a revision is what a disputed demand is measured against.
+
+  - id: tn-trade-licence-circular
+    title: "Public Health - Trade (D and O Trade) Licence - Municipalities and Corporations, circular 12424/J2"
+    url: "https://www.tnurbantree.tn.gov.in/wp-content/uploads/2021/04/12424-J2-Trade-License-Circular.pdf"
+    document_type: circular
+    authority: official
+    department: "Municipal Administration and Water Supply Department"
+    publisher: "Commissionerate of Town Panchayats, Government of Tamil Nadu"
+    language: en
+    applies_to: urban
+    verified: "2026-10-11"
+    why: >
+      The procedure a trade licence application is decided under, which a
+      delay or a refusal has to be measured against.
+
+  - id: tn-sewer-entry-ban-go-293
+    title: "Ban on entry of workers into the sewerage system and septic tanks - G.O. No. 293"
+    url: "https://www.tnurbantree.tn.gov.in/wp-content/uploads/2020/11/G.O.No_.293.pdf"
+    document_type: government_order
+    authority: official
+    department: "Municipal Administration and Water Supply Department"
+    publisher: "Commissionerate of Town Panchayats, Government of Tamil Nadu"
+    government_order_number: "293"
+    language: en
+    applies_to: both
+    verified: "2026-10-11"
+    why: >
+      Manual entry into sewers is prohibited, and a sanitation grievance that
+      would otherwise be answered "send somebody in" is decided by this.
+
+  # ------------------------------------------------------------------------ #
+  # Tamil-language material
+  # ------------------------------------------------------------------------ #
+  #
+  # The corpus was overwhelmingly English, which makes a Tamil citizen depend
+  # on cross-language retrieval for everything. These are departmental
+  # documents published in Tamil.
+
+  - id: tn-swm-rules-2016-tamil
+    title: "திடக்கழிவு மேலாண்மை விதிகள், 2016 (Solid Waste Management Rules, 2016 - Tamil)"
+    url: "https://www.tnurbantree.tn.gov.in/wp-content/uploads/2021/03/SWM-Rule-2016-Tamil-1.pdf"
+    document_type: rule
+    authority: official
+    department: "Municipal Administration and Water Supply Department"
+    publisher: "Commissionerate of Town Panchayats, Government of Tamil Nadu"
+    language: ta
+    applies_to: both
+    verified: "2026-10-11"
+    why: >
+      The rules governing waste collection, in Tamil. Sanitation is the
+      commonest grievance category and a Tamil citizen should be able to reach
+      the passage in Tamil rather than through a translation.
+
+  - id: tn-building-permission-time-limit-ta
+    title: "கட்டிட அனுமதி வழங்குவது - கால வரம்பு சுற்றறிக்கை (Building permission time limit circular, Tamil)"
+    url: "https://www.tnurbantree.tn.gov.in/wp-content/uploads/2020/10/building-plantime-limit-cir.pdf"
+    document_type: circular
+    authority: official
+    department: "Municipal Administration and Water Supply Department"
+    publisher: "Commissionerate of Town Panchayats, Government of Tamil Nadu"
+    language: ta
+    applies_to: urban
+    verified: "2026-10-11"
+    why: >
+      A TIME LIMIT for deciding a building permission application, in Tamil.
+      A petition about delay turns on exactly this.
+
+  # ------------------------------------------------------------------------ #
+  # District grievance routing and citizen-charter sources
+  # ------------------------------------------------------------------------ #
+
+  - id: tn-rd-citizen-charter-2024
+    title: "Rural Development and Panchayat Raj Department Citizen Charter - 2024"
+    url: "https://tnrd.tn.gov.in/rdweb_newsite/project/reports/Public/public_page_table_content_getpdf.php?pdf_download_id=NDY1"
+    document_type: guideline
+    authority: official
+    department: "Rural Development and Panchayat Raj Department"
+    publisher: "Rural Development and Panchayat Raj Department, Government of Tamil Nadu"
+    language: en
+    applies_to: rural
+    verified: "2026-10-22"
+    why: >
+      The official 2024 charter sets out village panchayat duties, including
+      rural drinking water, village roads, public street lights, drains and
+      sanitation, and identifies block-level administrative responsibility.
+

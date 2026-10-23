@@ -275,7 +275,7 @@ class TestReadingThisServicesOwnPetition:
         prior = prior_petition.analyse(self._letter())
 
         assert prior.address is not None
-        assert prior.address.value == "72/11 Gandhipuram, Coimbatore"
+        assert prior.address.value == "72/11, Gandhipuram, Coimbatore"
 
     def test_the_labelled_details_below_it_are_not_swept_into_the_address(self):
         """"Age: 21" and the Aadhaar line sit directly under the address in

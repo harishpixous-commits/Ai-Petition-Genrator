@@ -159,6 +159,92 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   # =========================================================================
+  # JOB 0b — The tests
+  # =========================================================================
+  #
+  # UNTIL THIS JOB EXISTED, NOTHING STOPPED A BROKEN BUILD REACHING CITIZENS.
+  # The only gate before production was a `curl GET /` returning 200 on the
+  # host, which a service can do while every petition it produces is wrong.
+  # There were 2,000-odd tests in the repository and the pipeline ran none of
+  # them.
+  #
+  # `deploy` now needs this job, so a red suite stops the deployment.
+  #
+  # WHAT RUNS HERE AND WHAT CANNOT. The suite is built to run with no model,
+  # no dictation, no PDF converter and no network — that is the deployment it
+  # has to survive, so it is the one that is tested, and it needs no secrets.
+  #
+  # The four cross-language retrieval tests are the exception: matching a
+  # Malayalam grievance to an English Act needs an embedder that understands
+  # both, and the offline fixture is a hashed bag of words with no semantics.
+  # They are opt-in through PETITION_LIVE_EMBEDDINGS, run in their own step
+  # below, and that step runs ONLY where the key secret is configured. It is
+  # `continue-on-error` because a deployment must not be blocked by a third
+  # party's rate limit — the result is reported either way, and the offline
+  # suite above is the gate.
+  tests:
+    name: Tests
+    runs-on: ubuntu-latest
+
+    # SECRETS CANNOT BE READ IN AN `if:` CONDITION. GitHub does not expose the
+    # `secrets` context to conditionals, so `if: secrets.X != ''` is not false
+    # when the secret is missing — it is invalid, and the step does not behave
+    # as written. Lifting it into a job-level env var is the supported way to
+    # ask "is this configured", and `env` IS available to `if`.
+    env:
+      HAS_GEMINI_KEY: ${{ secrets.GEMINI_API_KEY != '' }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          # The same version the runtime image is built on. A suite that
+          # passes on a different minor version is not evidence about
+          # production.
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Lint
+        working-directory: backend
+        # `app/` and `benchmarks/` only, which is what this repository
+        # actually keeps clean. Two acceptance scripts under `scripts/` carry
+        # ~57 pre-existing style violations and several test files a handful
+        # more; widening the gate now would fail the pipeline on its first run
+        # for reasons unrelated to any change, which is how a lint gate gets
+        # removed. Clean those separately, then widen this.
+        run: python -m ruff check app/ benchmarks/
+
+      - name: Run the suite
+        working-directory: backend
+        run: python -m pytest -p no:cacheprovider
+
+      - name: Cross-language retrieval against a real embedder
+        working-directory: backend
+        if: env.HAS_GEMINI_KEY == 'true'
+        continue-on-error: true
+        env:
+          PETITION_LIVE_EMBEDDINGS: "1"
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          ALLOW_EXTERNAL_AI: "true"
+        run: |
+          python -m pytest -p no:cacheprovider -rs             tests/test_knowledge.py -k finds_an_english_document
+
+      - name: Grievance classifier, held-out set
+        working-directory: backend
+        run: |
+          echo "The number quoted about this classifier. Not tuned against."
+          python -m benchmarks.run_grievance_eval --split heldout --no-confusion
+
+  # =========================================================================
   # JOB 1 — Build and Analyze
   # =========================================================================
   build-and-analyze:
@@ -183,7 +269,7 @@ jobs:
   # =========================================================================
   deploy:
     name: Deploy to EC2
-    needs: [preserve-previous, build-and-analyze]
+    needs: [preserve-previous, tests, build-and-analyze]
     runs-on: ubuntu-latest
 
     # Production credentials are supplied to this job, so it runs inside a

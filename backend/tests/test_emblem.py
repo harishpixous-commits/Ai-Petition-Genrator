@@ -320,7 +320,12 @@ class TestTheDeploymentSetting:
         assert placement_for(None).pages == "none"
 
     async def test_the_setting_reaches_the_rendered_document(self, monkeypatch, answers):
-        """End to end: turn it on in settings, and the DOCX carries an image."""
+        """End to end: turning the emblem on in settings adds exactly ONE
+        image to the DOCX, whichever other images the renderer already
+        includes. Checked as a DIFFERENCE rather than an absolute count
+        because 2026-10-22 added a QR of the reference number — a second
+        image that lives in the top-left header cell of every petition —
+        and the emblem is still what this test exists to measure."""
         import zipfile
 
         from app.config import get_settings
@@ -340,10 +345,14 @@ class TestTheDeploymentSetting:
         citizen = Conversation(build_graph().compile(checkpointer=InMemorySaver()))
         await citizen.answer_all(answers)
         off_state = await citizen.say("yes")
-        assert images_in(off_state) == []
+        off_count = len(images_in(off_state))
 
         monkeypatch.setattr(settings, "letter_emblem_pages", "all")
         citizen = Conversation(build_graph().compile(checkpointer=InMemorySaver()))
         await citizen.answer_all(answers)
         on_state = await citizen.say("yes")
-        assert len(images_in(on_state)) == 1
+        on_count = len(images_in(on_state))
+
+        assert on_count == off_count + 1, (
+            f"the emblem must add exactly one image, got {on_count} with vs "
+            f"{off_count} without")

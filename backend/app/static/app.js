@@ -1284,6 +1284,14 @@ const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[<>&"]/g, c =>
   ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" })[c]);
 const T = () => UI[lang] || UI.en;
+const SUBMISSION_TEXT = {
+  en: { reference: "Reference Number", status: "Current Status", submitted: "Submitted — Pending Collectorate Review", timeline: "Timeline", sla: "15 to 30 Working Days (portal target)", track: "Track Petition Status" },
+  ta: { reference: "குறிப்பு எண்", status: "தற்போதைய நிலை", submitted: "சமர்ப்பிக்கப்பட்டது — மாவட்ட ஆட்சியர் அலுவலக ஆய்வுக்காக நிலுவையில் உள்ளது", timeline: "காலவரம்பு", sla: "15 முதல் 30 வேலை நாட்கள் (தள இலக்கு)", track: "மனு நிலையைப் பின்தொடர்க" },
+  ml: { reference: "റഫറൻസ് നമ്പർ", status: "നിലവിലെ സ്ഥിതി", submitted: "സമർപ്പിച്ചു — കളക്ടറേറ്റ് പരിശോധനയ്ക്കായി കാത്തിരിക്കുന്നു", timeline: "സമയപരിധി", sla: "15 മുതൽ 30 പ്രവൃത്തി ദിവസങ്ങൾ (പോർട്ടൽ ലക്ഷ്യം)", track: "ഹർജിയുടെ നില പിന്തുടരുക" },
+  te: { reference: "రిఫరెన్స్ నంబర్", status: "ప్రస్తుత స్థితి", submitted: "సమర్పించబడింది — కలెక్టరేట్ సమీక్ష కోసం వేచి ఉంది", timeline: "కాలవ్యవధి", sla: "15 నుండి 30 పని దినాలు (పోర్టల్ లక్ష్యం)", track: "విన్నప స్థితిని తెలుసుకోండి" },
+  hi: { reference: "संदर्भ संख्या", status: "वर्तमान स्थिति", submitted: "जमा हुआ — कलेक्टरेट समीक्षा लंबित", timeline: "समय-सीमा", sla: "15 से 30 कार्यदिवस (पोर्टल लक्ष्य)", track: "आवेदन की स्थिति देखें" },
+};
+const submissionText = () => SUBMISSION_TEXT[lang] || SUBMISSION_TEXT.en;
 
 const EXPERIENCE = {
   en: {
@@ -2149,13 +2157,9 @@ function drawDetails(v) {
   $("progressText").textContent = t.progress(done, total);
   const pct = total ? Math.round((done / total) * 100) : 0;
   $("progressPct").textContent = pct + "%";
-  $("progressBar").style.width = pct + "%";
-  const track = $("progressBar").parentElement;
-  track.setAttribute("role", "progressbar");
-  track.setAttribute("aria-label", t.details);
-  track.setAttribute("aria-valuenow", String(done));
-  track.setAttribute("aria-valuemin", "0");
-  track.setAttribute("aria-valuemax", String(total));
+  $("progressBar").max = Math.max(1, total);
+  $("progressBar").value = done;
+  $("progressBar").setAttribute("aria-label", t.details);
 
   const byName = {};
   for (const f of v.collected) byName[f.name] = { ...f, filled: true };
@@ -2678,6 +2682,17 @@ function drawOutcome(v) {
       $("submittedTitle").textContent = t.submittedTitle;
       $("submittedText").textContent =
         t.submittedText.replace("{date}", submittedOn(submitted));
+      const reference = v.document?.reference || v.petition_reference || "";
+      const submittedCopy = submissionText();
+      $("submittedReference").textContent = reference;
+      $("submissionReferenceLabel").textContent = submittedCopy.reference;
+      $("copyReferenceBtn").textContent = t.copy;
+      $("submissionStatusLabel").textContent = submittedCopy.status;
+      $("submissionStatus").textContent = submittedCopy.submitted;
+      $("submissionSlaLabel").textContent = submittedCopy.timeline;
+      $("submissionSla").textContent = submittedCopy.sla;
+      $("trackSubmittedBtn").textContent = submittedCopy.track;
+      $("trackSubmittedBtn").dataset.reference = reference;
     }
   }
   $("printBtn").disabled = !hasLetter;
@@ -2902,6 +2917,10 @@ $("ask").onsubmit = async (e) => {
    sentences and a citizen should not have to fight the box to write them. */
 $("text").addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !e.shiftKey && !e.isComposing && e.keyCode !== 229) { e.preventDefault(); $("ask").requestSubmit(); }
+  /* Escape stops dictation — the same word “stop” does while speaking, so
+     someone who started typing by microphone and changed their mind has a
+     keyboard way out that does not involve finding the small button again. */
+  else if (e.key === "Escape" && typing.phase === "recording") { e.preventDefault(); stopDictation(); }
 });
 $("text").addEventListener("input", () => { autoGrow(); syncControls(); });
 function autoGrow() {
@@ -3236,6 +3255,15 @@ async function kioskRestart() {
   $("kioskDone").hidden = true;
   kioskState.printedKey = null;
   kioskState.askedIfStillThere = false;
+  // The browser forgets the session id; the server also discards the
+  // previous citizen's draft and attachments on this id, so the next
+  // person at the kiosk does not inherit the previous one's enclosures.
+  // Best-effort — forgetting the session on the browser is more important
+  // than succeeding here, so a failing POST does not block the reset.
+  if (sid) {
+    try { await api(`/api/sessions/${sid}/restart`, { method: "POST", quiet: true }); }
+    catch { /* ignore — the browser cleanup below still runs */ }
+  }
   forgetSession();
   resetInterface();
   $("log").innerHTML = "";
@@ -3284,46 +3312,11 @@ $("printBtn").onclick = async () => {
   w.document.write(
     `<!doctype html><html lang="${lang}"><head><meta charset="utf-8">
      <title>${esc(view.document?.reference || T().title)}</title>
-     <style>
-       @font-face { font-family:"Noto Sans Tamil";
-         src:url("${location.origin}/assets/fonts/NotoSansTamil-Regular.ttf") format("truetype"); }
-       @font-face { font-family:"Noto Sans Malayalam";
-         src:url("${location.origin}/assets/fonts/NotoSansMalayalam-Regular.ttf") format("truetype"); }
-       @font-face { font-family:"Noto Sans Telugu";
-         src:url("${location.origin}/assets/fonts/NotoSansTelugu-Regular.ttf") format("truetype"); }
-       @font-face { font-family:"Noto Sans Devanagari";
-         src:url("${location.origin}/assets/fonts/NotoSansDevanagari-Regular.ttf") format("truetype"); }
-       /* All four Indic faces are named here, unlike the page itself, because
-          this window is built once for one document and then printed. There is
-          no first paint to protect, and a missing face prints boxes onto the
-          paper the citizen hands across a counter. */
-       body { font: 12pt/1.8 "Noto Sans Tamil","Noto Sans Malayalam","Noto Sans Telugu",
-                    "Noto Sans Devanagari","Segoe UI",serif; margin: 22mm 20mm; }
-       /* THE SAME TWO BLOCKS THE PREVIEW DRAWS. Printing used to write the
-          letter as one run of plain text, so the date and place — which the
-          preview sets against the right margin, where a letter puts them —
-          came out ranged left. The document on screen and the document that
-          comes out of the printer were laid out differently, and the printed
-          one was the wrong one. */
-       .dateline { white-space: pre-wrap; text-align: right; margin-bottom: 2px; }
-       .body     { white-space: pre-wrap; }
-     </style></head><body></body></html>`);
-  // Split exactly as `drawLetter` splits it, so there is one rule about what
-  // counts as the opening block and not a second copy here to drift from it.
-  {
-    const lines = String(view.letter_text ?? "").split("\n");
-    const head = openingBlock(lines);
-    if (head > 0) {
-      const top = w.document.createElement("div");
-      top.className = "dateline";
-      top.textContent = lines.slice(0, head).join("\n");
-      w.document.body.appendChild(top);
-    }
-    const body = w.document.createElement("div");
-    body.className = "body";
-    body.textContent = lines.slice(head).join("\n");
-    w.document.body.appendChild(body);
-  }
+     <link rel="stylesheet" href="${location.origin}/static/print.css">
+     </head><body></body></html>`);
+  const printable = $("letter").cloneNode(true);
+  printable.removeAttribute("id");
+  w.document.body.appendChild(printable);
   w.document.close();
   w.focus();
   await w.document.fonts.ready;
@@ -3355,6 +3348,18 @@ $("copyBtn").onclick = async () => {
     const was = $("copyBtn").textContent;
     $("copyBtn").textContent = T().copied;
     setTimeout(() => { $("copyBtn").textContent = was; }, 1600);
+  } catch { bubble("system", X().copiedError, true); }
+};
+
+$("copyReferenceBtn").onclick = async () => {
+  const reference = $("submittedReference").textContent.trim();
+  if (!reference) return;
+  try {
+    await navigator.clipboard.writeText(reference);
+    const button = $("copyReferenceBtn");
+    const previous = button.textContent;
+    button.textContent = T().copied;
+    setTimeout(() => { button.textContent = previous; }, 1600);
   } catch { bubble("system", X().copiedError, true); }
 };
 
@@ -3647,7 +3652,7 @@ function drawHealth() {
       `<div class="status-line ${ok ? "ok" : "bad"}">
          <span class="ic" aria-hidden="true">${ok ? "✓" : "✕"}</span>
          <span>${esc(label)}: <b>${esc(ok ? t.svcReady : t.svcOff)}</b>${
-           detail ? ` <span style="color:var(--muted)">· ${esc(detail)}</span>` : ""}</span>
+           detail ? ` <span class="status-detail">· ${esc(detail)}</span>` : ""}</span>
        </div>`;
     $("health").innerHTML =
       line(h.language_model.available, t.svcAI) +
@@ -3766,14 +3771,67 @@ function openingBlock(lines) {
   return head.every(line => LABELLED_LINE.test(line.trim())) ? head.length : 0;
 }
 
-function drawLetter(text) {
+function drawLetter(text, reference = view?.document?.reference || "",
+                    sessionId = view?.session_id || "") {
   const paper = $("letter");
   const value = String(text ?? "");
   // While editing it is one plain text node: the citizen is typing into it.
   if (editingLetter) { paper.textContent = value; return; }
   const lines = value.split("\n");
   const head = openingBlock(lines);
+  // The generated text ends with the petitioner's name, an enclosure count,
+  // and a localized Note line. Keep the first two out of the prose so the
+  // preview can place them in the same two-column signature row as the DOCX.
+  const labelled = [];
+  lines.forEach((line, index) => {
+    if (/^[^:\n]{1,24}:\s*\S/.test(line.trim())) labelled.push(index);
+  });
+  const enclosureIndex = labelled.length >= 2 ? labelled[labelled.length - 2] : -1;
+  const noteIndex = labelled.length && labelled[labelled.length - 1] > enclosureIndex
+    ? labelled[labelled.length - 1] : -1;
+  let signatureIndex = -1;
+  if (enclosureIndex >= 0) {
+    for (let index = enclosureIndex - 1; index >= 0; index--) {
+      const candidate = lines[index].trim();
+      if (!candidate) continue;
+      if (!candidate.endsWith(":") && !candidate.endsWith(",")
+          && !/^[^:\n]{1,24}:\s*\S/.test(candidate)) signatureIndex = index;
+      break;
+    }
+  }
+
+  let signoffIndex = -1;
+  if (signatureIndex >= 0) {
+    for (let index = signatureIndex - 1; index >= head; index--) {
+      if (lines[index].trim()) { signoffIndex = index; break; }
+    }
+  }
+
   paper.replaceChildren();
+  const official = document.createElement("header");
+  official.className = "paper-official-header";
+  const refBlock = document.createElement("div");
+  refBlock.className = "paper-header-ref";
+  const refText = document.createElement("strong");
+  refText.textContent = `Petition Ref No: ${reference || "—"}`;
+  refBlock.appendChild(refText);
+  if (reference && sessionId) {
+    const qr = document.createElement("img");
+    qr.className = "paper-header-qr";
+    qr.src = `/api/sessions/${encodeURIComponent(sessionId)}/document/qr.png`;
+    qr.alt = "QR code containing the petition reference number";
+    qr.loading = "lazy";
+    refBlock.appendChild(qr);
+  }
+  const title = document.createElement("div");
+  title.className = "paper-header-title";
+  title.textContent = "PUBLIC GRIEVANCE REDRESSAL PETITION";
+  const office = document.createElement("div");
+  office.className = "paper-office-box";
+  office.textContent = "FOR OFFICE USE\nCOLLECTOR ENDORSEMENT\n(Dept / Priority)";
+  official.append(refBlock, title, office);
+  paper.appendChild(official);
+
   if (head > 0) {
     const top = document.createElement("div");
     top.className = "paper-dateline";
@@ -3782,8 +3840,40 @@ function drawLetter(text) {
   }
   const body = document.createElement("div");
   body.className = "paper-body";
-  body.textContent = lines.slice(head).join("\n");
+  const bodyEnd = signoffIndex >= head ? signoffIndex + 1 : lines.length;
+  const bodyLines = lines.slice(head, bodyEnd);
+  bodyLines.forEach((line) => {
+    const row = document.createElement("div");
+    if (line.trim()) {
+      row.className = "paper-body-line";
+      row.textContent = line;
+    } else {
+      row.className = "paper-body-spacer";
+      row.setAttribute("aria-hidden", "true");
+    }
+    body.appendChild(row);
+  });
   paper.appendChild(body);
+
+  if (signatureIndex >= 0 || enclosureIndex >= 0) {
+    const closing = document.createElement("div");
+    closing.className = "paper-signature-row";
+    const enclosures = document.createElement("div");
+    enclosures.className = "paper-enclosures-count";
+    if (enclosureIndex >= 0) enclosures.textContent = lines[enclosureIndex].trim();
+    const signature = document.createElement("div");
+    signature.className = "paper-signature-name";
+    signature.textContent = signatureIndex >= 0
+      ? `(Signature) / ${lines[signatureIndex].trim()}` : "(Signature)";
+    closing.append(enclosures, signature);
+    paper.appendChild(closing);
+  }
+  if (noteIndex >= 0) {
+    const note = document.createElement("div");
+    note.className = "paper-note";
+    note.textContent = lines[noteIndex].trim();
+    paper.appendChild(note);
+  }
 }
 
 // The attached documents, drawn after the letter.

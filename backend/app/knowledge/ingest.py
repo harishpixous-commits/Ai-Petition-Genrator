@@ -93,6 +93,27 @@ def extract(source: str | Path) -> Extracted:
             f"Unsupported file type '{suffix}'. Supported: .pdf, .docx, .html, .txt"
         )
 
+    if suffix == ".pdf" and any(not page.text.strip() for page in extracted.pages):
+        # A SCANNED GOVERNMENT DOCUMENT IS NOT AN EDGE CASE. Two of the twelve
+        # documents in `corpus/tamil_nadu.yaml` are scans with no text layer —
+        # the District Office Manual and the street vendor policy — and an Act
+        # printed in 1920 is more likely to be a scan than not.
+        #
+        # The service already has an OCR engine for citizen attachments. It is
+        # reused here rather than adding a second one, so a department that
+        # installs Tesseract gets scanned documents indexed everywhere at once.
+        #
+        # When no engine is installed this changes nothing: the error below is
+        # raised exactly as before, naming what is missing. Indexing an empty
+        # document would be the one unacceptable outcome, and it cannot happen
+        # either way.
+        #
+        # Only the pages WITHOUT a text layer go to OCR, page by page, so a
+        # Gazette with typeset pages and a scanned annexure keeps its typeset
+        # text exactly and gains the annexure — rather than losing it, or
+        # indexing the typeset pages twice.
+        extracted = _ocr_blank_pages(path, extracted)
+
     if not extracted.title:
         extracted.title = _title_from(extracted, fallback=path.stem)
     if not extracted.text.strip():
@@ -101,6 +122,89 @@ def extract(source: str | Path) -> Extracted:
             "A scanned PDF needs OCR before it can be indexed."
         )
     return extracted
+
+
+#: Above this many pages without a text layer, OCR stops and says so. A
+#: 400-page scan at a few seconds a page is most of an hour on one CPU, and a
+#: single document must not be able to stall ingestion for everybody.
+MAX_OCR_PAGES = 200
+
+
+def _ocr_blank_pages(path: Path, extracted: Extracted) -> Extracted:
+    """Fill in the pages that have no text layer. Never raises.
+
+    Returns `extracted` unchanged when no engine is available or OCR fails —
+    the caller then raises the existing "needs OCR" error if nothing at all is
+    readable, so an empty document is still never indexed.
+    """
+    blank = [page.number for page in extracted.pages
+             if not page.text.strip() and page.number is not None]
+    if not blank:
+        return extracted
+
+    try:
+        from ..services import ocr
+    except Exception:  # noqa: BLE001
+        return extracted
+    engine = ocr.active()
+    if engine is None or not engine.available():
+        log.info("ingest.ocr_unavailable",
+                 extra={"file": path.name, "pages_needing_ocr": len(blank)})
+        extracted.meta["ocr"] = {"status": "unavailable",
+                                 "pages_needing_ocr": blank}
+        return extracted
+
+    attempted = blank[:MAX_OCR_PAGES]
+    try:
+        texts = _ocr_page_texts(engine, path, attempted)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("ingest.ocr_failed",
+                    extra={"file": path.name, "error": str(exc)[:200]})
+        extracted.meta["ocr"] = {"status": "failed", "error": str(exc)[:200],
+                                 "pages_needing_ocr": blank}
+        return extracted
+
+    read, unreadable = [], []
+    for page in extracted.pages:
+        if page.number in texts:
+            text = (texts[page.number] or "").strip()
+            if text:
+                page.text = text
+                read.append(page.number)
+            else:
+                unreadable.append(page.number)
+
+    extracted.meta["ocr"] = {
+        "status": "partial" if (unreadable or len(attempted) < len(blank)) else "complete",
+        "engine": getattr(engine, "name", "?"),
+        "languages": (engine._language_argument()
+                      if hasattr(engine, "_language_argument") else ""),
+        "pages_ocrd": read,
+        "pages_unreadable": unreadable,
+        "pages_not_attempted": blank[len(attempted):],
+    }
+    log.info("ingest.ocr_used",
+             extra={"file": path.name, "pages_ocrd": len(read),
+                    "pages_unreadable": len(unreadable),
+                    "pages_skipped": len(blank) - len(attempted)})
+    return extracted
+
+
+def _ocr_page_texts(engine: Any, path: Path, numbers: list[int]) -> dict[int, str]:
+    """{page number: text} for exactly these pages.
+
+    Engines that can OCR single pages are asked for just those. One that can
+    only read a whole PDF is asked for all of it and the form-feed-separated
+    result is split back into pages — and only the requested pages are kept,
+    so a typeset page is never replaced with an OCR reading of itself.
+    """
+    if hasattr(engine, "pdf_pages"):
+        return dict(engine.pdf_pages(path, numbers))
+    whole = engine.pdf(path)
+    pages = [part.strip() for part in str(whole).split("\f")]
+    wanted = set(numbers)
+    return {index: text for index, text in enumerate(pages, start=1)
+            if index in wanted}
 
 
 def _extract_pdf(path: Path) -> Extracted:
@@ -115,15 +219,27 @@ def _extract_pdf(path: Path) -> Extracted:
             log.info("ingest.page_failed",
                      extra={"page": index, "error": str(exc)[:120]})
             text = ""
-        if text.strip():
-            pages.append(Page(number=index, text=text))
+        # EVERY page is kept, including those with no text layer. Dropping
+        # them lost the one fact OCR needs — WHICH page numbers are scans —
+        # and a fully scanned PDF came back with no pages at all, so a
+        # page-level OCR check found nothing to read. An empty page is
+        # harmless downstream: the chunker skips text that cleans to nothing.
+        pages.append(Page(number=index, text=text))
 
     info = {}
     try:
         raw = reader.metadata or {}
         info = {
             "title": (raw.get("/Title") or "").strip(),
-            "date": _pdf_date(raw.get("/CreationDate")),
+            # NOT the document's date. `/CreationDate` is when somebody's
+            # software wrote the PDF file — for the ULB Act, 1998 it is 2023,
+            # the day a scan was uploaded to a website; for G.O. Ms. No. 164 of
+            # 3 September 2026 it is 9 September. Stored as `date`, it became
+            # the legal date of every document without a readable G.O. line,
+            # which is wrong in exactly the field temporal reasoning depends
+            # on. Kept under an honest name: it is real provenance about the
+            # FILE, and nothing reads it as a legal date.
+            "file_created": _pdf_date(raw.get("/CreationDate")),
         }
     except Exception:  # noqa: BLE001
         pass
@@ -162,8 +278,17 @@ def _extract_docx(path: Path) -> Extracted:
 def _extract_html(html: str, url: str | None = None) -> Extracted:
     from lxml import html as lxml_html
 
-    tree = lxml_html.fromstring(html)
-    for tag in tree.xpath("//script|//style|//nav|//footer|//noscript|//header|//form"):
+    # `httpx.Response.text` is already decoded, while some departmental XHTML
+    # pages still begin with `<?xml ... encoding="..."?>`. lxml rejects a
+    # Unicode string carrying that byte-level declaration. Re-encode the
+    # decoded text and pin the parser to UTF-8 so its text is preserved without
+    # trusting a stale HTML encoding header.
+    parser = lxml_html.HTMLParser(encoding="utf-8")
+    tree = lxml_html.fromstring(str(html).encode("utf-8"), parser=parser)
+    for tag in tree.xpath(
+        "//script|//style|//nav|//footer|//noscript|//header|"
+        "//input|//button|//select|//textarea"
+    ):
         tag.getparent().remove(tag)
 
     title = ""
@@ -172,9 +297,12 @@ def _extract_html(html: str, url: str | None = None) -> Extracted:
         title = " ".join(str(heads[0]).split())
 
     # Prefer the page's own main region when it marks one — government sites
-    # that do are otherwise 80% navigation.
+    # that do are otherwise 80% navigation. Some XHTML portals have an empty
+    # layout <main id="main"> before a second, populated <main>; use the
+    # region with the most readable text instead of silently indexing the
+    # empty shell.
     main = tree.xpath("//main|//article|//*[@role='main']|//*[@id='content']")
-    body = main[0] if main else tree
+    body = max(main, key=lambda node: len(node.text_content().strip())) if main else tree
     lines = []
     for node in body.iter():
         if node.tag in ("h1", "h2", "h3", "h4"):
@@ -348,7 +476,14 @@ def detect_metadata(text: str, limit: int = 6000) -> dict[str, Any]:
     found: dict[str, Any] = {}
 
     if match := _ACT.search(head):
-        found["act_name"] = " ".join(match.group(1).split())
+        name = " ".join(match.group(1).split())
+        # A MATCH THAT STARTS MID-PHRASE IS NOT AN ACT NAME. Measured on the
+        # real solid-waste Ready Reckoner, which yielded "Abolition) Act 1970"
+        # — the pattern began at a capital inside a bracketed clause and took
+        # the stray closing bracket with it. A citation naming a statute that
+        # does not exist is worse than naming none.
+        if name.count(")") <= name.count("("):
+            found["act_name"] = name
     if match := _RULES.search(head):
         found["rule_name"] = " ".join(match.group(1).split())
     go = _GO.search(head)
@@ -479,14 +614,29 @@ def chunk_document(
     overlap: int = 160,
     document_id: str = "",
 ) -> list[dict[str, Any]]:
-    """Chunks, in document order, each knowing its section and its page."""
+    """Chunks, in document order, each knowing its section and its page.
+
+    A SECTION CARRIES ACROSS PAGE BREAKS. `_sections` reads each page's text
+    independently and the top of page 6 — the tail of rule 290 that began on
+    page 5 — looks like an unlabelled preamble. Measured on the real corpus,
+    966 chunks lost their section label this way (12%% of the whole index);
+    for 576 of them in the amended ULB Rules the loss then propagated into a
+    legal-status misread, so the fix also closes a correctness gap, not only a
+    retrieval one. The last section seen is remembered across pages and used
+    for the preamble position until a new heading arrives.
+    """
     out: list[dict[str, Any]] = []
     ordinal = 0
+    last_section: str | None = None
     for page in extracted.pages:
         cleaned = clean(page.text)
         if not cleaned:
             continue
         for section, body in _sections(cleaned):
+            if section is None:
+                section = last_section
+            else:
+                last_section = section
             for piece in _split_long(body, size, overlap):
                 text = piece.strip()
                 if len(text) < 40:      # a heading with no body under it
@@ -598,8 +748,18 @@ class Ingestor:
                                 error="Nothing survived chunking.")
 
         vectors = await self._embed([c["text"] for c in chunks])
-        self.store.upsert(document=document, chunks=chunks, embeddings=vectors)
-        return IngestResult(document_id, str(document["title"]), len(chunks))
+        self.store.upsert(document=document, chunks=chunks, embeddings=vectors,
+                          model=self._model_name())
+        if vectors is None:
+            # Indexed lexically, and SAID so. A document whose embedding failed
+            # is still searchable by its words, which is better than not being
+            # indexed at all — but the caller and the health check must know
+            # it has no vectors, so `vector_integrity.repair` can supply them.
+            log.warning("ingest.indexed_without_vectors",
+                        extra={"document_id": document_id, "chunks": len(chunks)})
+        return IngestResult(document_id, str(document["title"]), len(chunks),
+                            reason="" if vectors is not None
+                            else "indexed without vectors; run repair")
 
     async def _embed(self, texts: Sequence[str]) -> list[list[float]] | None:
         """Vectors, or None — never a half-embedded document.
@@ -631,34 +791,35 @@ class Ingestor:
             results.append(await self.ingest(source, metadata=metadata, force=force))
         return results
 
+    def _model_name(self) -> str:
+        """The name a vector's provenance is recorded under."""
+        return str(getattr(self.provider, "model", None)
+                   or getattr(self.provider, "name", "unknown"))
+
     async def reindex(self) -> int:
-        """Re-embed everything already stored, without re-reading the sources.
+        """Re-embed every chunk, without ever deleting a vector first.
 
-        What you run after changing the embedding provider. Text and citations
-        are untouched; only the vectors are rebuilt.
+        WHAT THIS USED TO DO, because it is the reason for every line here: it
+        called `store.upsert` per document, which deletes a document's vectors
+        and re-inserts them, with `_embed` returning None for the whole
+        document if any one batch failed — and it added `len(chunks)` to its
+        total either way. A rate limit part-way through left a vector table
+        with ZERO rows under a message reading "Re-embedded 8344 chunks."
+
+        Now it is `vector_integrity.repair(force=True)`: batch by batch, each
+        vector replaced only once its successor exists, each batch committed
+        on its own, and the number returned is what was actually WRITTEN.
         """
-        rows = list(self.store.all_chunks())
-        if not rows:
-            return 0
-        by_document: dict[str, list[dict[str, Any]]] = {}
-        for row in rows:
-            by_document.setdefault(row["document_id"], []).append(row)
+        from .vector_integrity import repair
 
-        total = 0
-        for document_id, chunks in by_document.items():
-            stored = {d["document_id"]: d for d in self.store.documents(limit=10000)}
-            document = stored.get(document_id)
-            if not document:
-                continue
-            chunks.sort(key=lambda c: c["ordinal"])
-            vectors = await self._embed([c["text"] for c in chunks])
-            document = dict(document)
-            document["content_hash"] = content_hash(
-                "".join(c["text"] for c in chunks))
-            self.store.upsert(document=document, chunks=chunks, embeddings=vectors)
-            total += len(chunks)
-        log.info("knowledge.reindexed", extra={"chunks": total})
-        return total
+        report = await repair(self.store, self.provider,
+                              model=self._model_name(), force=True)
+        if report.failed:
+            log.warning("knowledge.reindex_incomplete",
+                        extra={"written": report.written, "failed": report.failed,
+                               "action": "run repair again to finish"})
+        log.info("knowledge.reindexed", extra={"chunks": report.written})
+        return report.written
 
 
 

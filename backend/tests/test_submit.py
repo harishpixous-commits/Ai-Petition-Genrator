@@ -111,7 +111,8 @@ class TestWhatIsShown:
     def test_the_note_does_not_claim_an_office_received_it(self):
         """The one sentence that has to stay true."""
         script = self.script()
-        line = next(l for l in script.splitlines() if "submitNote:" in l and "office" in l)
+        line = next(ln for ln in script.splitlines()
+                    if "submitNote:" in ln and "office" in ln)
         assert "still has to reach the office" in line
 
     def test_it_is_not_printed(self):
