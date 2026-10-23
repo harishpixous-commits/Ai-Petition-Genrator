@@ -1222,29 +1222,42 @@ class TestWhatAFirstVisitDownloads:
             "headers": [(b"host", b"test"),
                         (b"accept-encoding", b"gzip" if gzip else b"identity")],
         }
+        import asyncio
+
         sent = 0
         calls = 0
+        response_done = asyncio.Event()
 
         async def receive():
-            # ASGI contract: deliver the body once, then let any later poll
-            # see `http.disconnect`. The older starlette this suite pins
-            # happens not to poll receive() a second time on a FileResponse,
-            # but the version CI pulls does (listen-for-disconnect while
-            # the body is being streamed), and a receive() that keeps
-            # returning http.request on every call spins forever instead
-            # of letting the response close. Return disconnect from the
-            # second call onwards so this test runs under either behaviour.
+            # ASGI contract. One http.request message, then whatever the
+            # server would do while waiting for the next client event:
+            # a real socket READS from the client, which blocks until the
+            # client speaks again or disconnects. The older Starlette this
+            # suite pins never polls receive() during a FileResponse body,
+            # so the previous implementation (always return http.request)
+            # worked by accident. The build CI pulls DOES poll —
+            # listen-for-disconnect while streaming — and the previous
+            # harness looped forever. A plain "always disconnect" is also
+            # wrong: Starlette aborts the response on sight of a disconnect,
+            # which is why run #62 saw 0 of 0 bytes.
+            #
+            # Correct: deliver http.request once, then WAIT until send
+            # has drained the final body chunk, then say disconnect so
+            # any lingering listener wakes and closes.
             nonlocal calls
             calls += 1
             if calls == 1:
                 return {"type": "http.request", "body": b"",
                         "more_body": False}
+            await response_done.wait()
             return {"type": "http.disconnect"}
 
         async def send(message):
             nonlocal sent
             if message["type"] == "http.response.body":
                 sent += len(message.get("body", b""))
+                if not message.get("more_body", False):
+                    response_done.set()
 
         async with app.router.lifespan_context(app):
             await app(scope, receive, send)
