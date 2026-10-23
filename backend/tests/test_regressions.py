@@ -1223,9 +1223,23 @@ class TestWhatAFirstVisitDownloads:
                         (b"accept-encoding", b"gzip" if gzip else b"identity")],
         }
         sent = 0
+        calls = 0
 
         async def receive():
-            return {"type": "http.request", "body": b"", "more_body": False}
+            # ASGI contract: deliver the body once, then let any later poll
+            # see `http.disconnect`. The older starlette this suite pins
+            # happens not to poll receive() a second time on a FileResponse,
+            # but the version CI pulls does (listen-for-disconnect while
+            # the body is being streamed), and a receive() that keeps
+            # returning http.request on every call spins forever instead
+            # of letting the response close. Return disconnect from the
+            # second call onwards so this test runs under either behaviour.
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                return {"type": "http.request", "body": b"",
+                        "more_body": False}
+            return {"type": "http.disconnect"}
 
         async def send(message):
             nonlocal sent
