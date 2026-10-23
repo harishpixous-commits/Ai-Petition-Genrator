@@ -322,37 +322,68 @@ def create_app() -> FastAPI:
         "interest-cohort=()",
     ))
 
-    @app.middleware("http")
-    async def response_headers(request: Request, call_next):
-        response = await call_next(request)
-        response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["Referrer-Policy"] = "no-referrer"
-        # Not set on the two endpoints that already send their own, stricter,
-        # sandboxing policy for untrusted document previews.
-        response.headers.setdefault("Content-Security-Policy", _CSP)
-        response.headers.setdefault("Permissions-Policy", _PERMISSIONS)
-        response.headers.setdefault("X-Frame-Options", "DENY")
-        # Session recovery and document downloads contain citizen information.
-        # Neither a shared browser cache nor a proxy should retain a copy.
-        if request.url.path.startswith("/api/"):
-            response.headers["Cache-Control"] = "no-store"
-        elif request.url.path.startswith("/static/"):
-            # Revalidate every time. These files change on every deploy, and
-            # the page that loads them is served `no-store` — so without this
-            # a returning citizen gets NEW markup with an OLD stylesheet, and
-            # the page renders structurally current and visually broken. That
-            # happened: a footer shipped and appeared unstyled and enormous.
-            #
-            # `no-cache` is not "do not cache": the browser keeps the file and
-            # asks whether it changed, which the ETag answers with a 304 of a
-            # couple of hundred bytes.
-            response.headers["Cache-Control"] = "no-cache"
-        elif request.url.path.startswith("/assets/"):
-            # Fonts, the state emblem, the footer mark. These change rarely,
-            # so they are worth caching — but not indefinitely, or replacing
-            # one means waiting out a year of stale copies.
-            response.headers["Cache-Control"] = "public, max-age=3600"
-        return response
+    # Pure ASGI, NOT @app.middleware("http"). The decorator version wraps
+    # the request in Starlette's BaseHTTPMiddleware, which rewrites `receive`
+    # so it can expose a Request to the dispatch function. StaticFiles then
+    # calls `receive()` once of its own accord — to notice an `http.disconnect`
+    # before streaming a file — and the wrapper's task group raises
+    # `RuntimeError: Unexpected message received: http.request`. The test
+    # suite's /static/app.css fetch tripped exactly this on the CI runner's
+    # Starlette build. The ASGI form below never touches `receive`, so the
+    # two coexist cleanly. See CorrelationIdMiddleware for the same shape.
+    _HEADER_RULES = [
+        (b"/api/", b"no-store"),
+        (b"/static/", b"no-cache"),       # revalidate every deploy
+        (b"/assets/", b"public, max-age=3600"),
+    ]
+    _CSP_BYTES = _CSP.encode("latin-1")
+    _PERMISSIONS_BYTES = _PERMISSIONS.encode("latin-1")
+
+    class ResponseHeadersMiddleware:
+        def __init__(self, inner):
+            self.inner = inner
+
+        async def __call__(self, scope, receive, send):
+            if scope["type"] != "http":
+                await self.inner(scope, receive, send)
+                return
+            path = scope.get("path", "").encode("latin-1")
+
+            async def send_with_headers(message):
+                if message["type"] == "http.response.start":
+                    headers = list(message.get("headers") or [])
+                    seen = {name for name, _ in headers}
+                    # Always set — never set upstream, carry no exception.
+                    headers.append((b"x-content-type-options", b"nosniff"))
+                    headers.append((b"referrer-policy", b"no-referrer"))
+                    # Defaults — a route (operator preview, document download)
+                    # may already have set its own stricter policy, in which
+                    # case we leave it alone.
+                    if b"content-security-policy" not in seen:
+                        headers.append((b"content-security-policy", _CSP_BYTES))
+                    if b"permissions-policy" not in seen:
+                        headers.append((b"permissions-policy", _PERMISSIONS_BYTES))
+                    if b"x-frame-options" not in seen:
+                        headers.append((b"x-frame-options", b"DENY"))
+                    # Session recovery and document downloads contain citizen
+                    # information. Neither a shared browser cache nor a proxy
+                    # should retain a copy. Static assets revalidate every
+                    # deploy (new markup must not pair with an old stylesheet
+                    # — that shipped once, as a huge unstyled footer); fonts
+                    # and emblem get an hour so a replacement is not held off
+                    # for a year.
+                    for prefix, policy in _HEADER_RULES:
+                        if path.startswith(prefix):
+                            headers = [h for h in headers
+                                       if h[0] != b"cache-control"]
+                            headers.append((b"cache-control", policy))
+                            break
+                    message = {**message, "headers": headers}
+                await send(message)
+
+            await self.inner(scope, receive, send_with_headers)
+
+    app.add_middleware(ResponseHeadersMiddleware)
 
     # Noto Sans and Noto Sans Tamil ship WITH the application and are served
     # from here. The page asked for them and nothing answered — every request

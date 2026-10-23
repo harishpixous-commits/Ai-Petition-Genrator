@@ -131,11 +131,12 @@ class TestTheStricterPolicyOnUntrustedPreviewsSurvives:
 
         app = create_app()
         # Asserted on the mechanism rather than by reaching the endpoint,
-        # which needs a session and an uploaded file: the middleware uses
-        # setdefault, so a handler that already set the header keeps it.
+        # which needs a session and an uploaded file: the middleware
+        # appends its default CSP only when none is already set upstream,
+        # so a handler that already sent a stricter one keeps it.
         source = Path(__file__).resolve().parent.parent / "app" / "main.py"
         body = source.read_text(encoding="utf-8")
-        assert 'setdefault("Content-Security-Policy"' in body, (
+        assert 'b"content-security-policy" not in seen' in body, (
             "the middleware must not overwrite a handler's stricter policy")
         assert app is not None
 
