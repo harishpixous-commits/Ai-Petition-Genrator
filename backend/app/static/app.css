@@ -1737,3 +1737,15 @@ header.app{gap:24px}
   margin:8px 0 0;padding:8px 10px;border-radius:8px;
   background:var(--surface-2);border:1px solid var(--line);
   font-size:11.5px;line-height:1.6;color:var(--muted)}
+
+/* Admin feature switches. The admin portal (/admin → Features) can turn
+   each of these off; the fetch at the bottom of app.js marks the body
+   with a corresponding class, and the rules below hide the UI pieces
+   the flag covers. Fail-open on the fetch means a network error leaves
+   everything visible. */
+body.feature-off-citizen_voice_dictation #mic,
+body.feature-off-citizen_voice_dictation #micInline { display: none !important; }
+body.feature-off-citizen_multi_language #lang,
+body.feature-off-citizen_multi_language .lang-switcher { display: none !important; }
+body.feature-off-citizen_attachments #attachBtn,
+body.feature-off-citizen_attachments .attach-row { display: none !important; }

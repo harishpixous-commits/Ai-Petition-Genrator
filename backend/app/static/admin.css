@@ -1,0 +1,105 @@
+/* Admin portal — extras on top of officer.css. The admin portal
+   reuses officer.css for its panels, dialogs and badges, and only
+   adds a few things of its own: the dashboard card grid, the
+   feature-switch rows, and the account grid. */
+
+.officer.admin .portal-label { background: #563b1f; color: #ffd38a; }
+
+/* Dashboard cards */
+.officer .admin-home { padding: 28px; }
+.officer .admin-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 16px;
+  margin-top: 20px;
+}
+.officer .admin-card {
+  display: block;
+  padding: 20px;
+  border: 1px solid var(--line, #e2e5ea);
+  border-radius: 10px;
+  background: #fff;
+  color: inherit;
+  text-decoration: none;
+  transition: border-color .15s, transform .15s, box-shadow .15s;
+}
+.officer .admin-card:hover,
+.officer .admin-card:focus-visible {
+  border-color: #2b6cb0;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(10, 20, 35, 0.08);
+}
+.officer .admin-card h3 { margin: 0 0 8px; font-size: 16px; }
+.officer .admin-card p { margin: 0; color: #556; font-size: 13px; line-height: 1.5; }
+
+/* Feature switch rows */
+.officer .feature-group {
+  padding: 18px 0;
+  border-bottom: 1px solid var(--line, #eef0f3);
+}
+.officer .feature-group:last-child { border-bottom: 0; }
+.officer .feature-group h3 {
+  margin: 0 0 10px;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #556;
+}
+.officer .feature-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 12px 0;
+}
+.officer .feature-text { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.officer .feature-text strong { font-size: 14px; }
+.officer .feature-text small.monospace { color: #778; font-size: 11px; }
+.officer .feature-text p { margin: 4px 0 0; max-width: 60ch; }
+
+/* The actual on/off switch */
+.officer .switch { position: relative; display: inline-block; width: 44px; height: 24px; flex-shrink: 0; margin-top: 2px; }
+.officer .switch input { opacity: 0; width: 0; height: 0; }
+.officer .switch .slider {
+  position: absolute;
+  cursor: pointer;
+  inset: 0;
+  background-color: #c7cdd6;
+  border-radius: 999px;
+  transition: 0.2s;
+}
+.officer .switch .slider::before {
+  content: "";
+  position: absolute;
+  height: 18px; width: 18px;
+  left: 3px; bottom: 3px;
+  background-color: #fff;
+  border-radius: 50%;
+  transition: 0.2s;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+.officer .switch input:checked + .slider { background-color: #2b7a3e; }
+.officer .switch input:checked + .slider::before { transform: translateX(20px); }
+.officer .switch input:disabled + .slider { opacity: 0.6; cursor: not-allowed; }
+.officer .switch input:focus-visible + .slider { outline: 2px solid #2b6cb0; outline-offset: 2px; }
+
+/* Account page grid */
+.officer .account-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 32px;
+}
+.officer .account-grid section h3 { margin: 0 0 8px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; color: #556; }
+@media (max-width: 720px) {
+  .officer .account-grid { grid-template-columns: 1fr; }
+}
+
+/* Dark */
+@media (prefers-color-scheme: dark) {
+  .officer .admin-card { background: #1a2130; border-color: #2a3243; }
+  .officer .admin-card:hover { border-color: #4b86c2; }
+  .officer .admin-card p { color: #c0c6d0; }
+  .officer .feature-group { border-bottom-color: #2a3243; }
+  .officer .feature-text small.monospace { color: #a0a8b4; }
+  .officer .switch .slider { background-color: #3a4252; }
+  .officer .switch input:checked + .slider { background-color: #3b9b55; }
+}

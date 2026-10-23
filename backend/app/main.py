@@ -269,6 +269,29 @@ def create_app() -> FastAPI:
         return FileResponse(STATIC_DIR / "officer.html",
                             headers={"Cache-Control": "no-store"})
 
+    # Separate admin portal. Lives under /admin/* so administrators log
+    # in through their own screen rather than through the officer
+    # portal, and so the review officer portal has no "Admin panel" link
+    # for a reviewer to wonder about. The gate below redirects to
+    # /admin/login when there is no session; a signed-in officer without
+    # any `manage_*` privilege gets past this redirect (there is a
+    # session) and the SPA then renders the "no admin rights" page from
+    # the browser.
+    @app.get("/admin", include_in_schema=False)
+    @app.get("/admin/{path:path}", include_in_schema=False)
+    async def admin_page(request: Request, path: str = "") -> Response:
+        from fastapi.responses import RedirectResponse
+
+        from .services import officer_store
+
+        signed_in = officer_store.identity(
+            request.cookies.get(officer_store.COOKIE))
+        previewing = request.query_params.get("preview") == "1"
+        if path != "login" and not previewing and not signed_in:
+            return RedirectResponse("/admin/login", status_code=303)
+        return FileResponse(STATIC_DIR / "admin.html",
+                            headers={"Cache-Control": "no-store"})
+
     # A CONTENT SECURITY POLICY THE PAGE CAN ACTUALLY LIVE UNDER.
     #
     # Audited rather than guessed. Across index.html, officer.html and
@@ -422,8 +445,19 @@ def create_app() -> FastAPI:
     # when one is configured, loopback only when none is.
     @app.get("/operator", include_in_schema=False)
     async def operator_page(request: Request) -> FileResponse:
-        from .api.operator import authorise
+        from fastapi.responses import JSONResponse
 
+        from .api.operator import authorise
+        from .services import officer_store
+
+        # The admin feature switch gate: when an admin has toggled
+        # `operator_screen` off, the route disappears entirely rather
+        # than being served behind the token gate as usual. A 404 instead
+        # of a 403 so the switch can also be used as "hide this surface"
+        # on a departmental deployment where the operator screen is
+        # irrelevant.
+        if not officer_store.feature_enabled("operator_screen"):
+            return JSONResponse({"detail": "Not Found"}, status_code=404)
         authorise(request)
         return FileResponse(
             STATIC_DIR / "operator.html",

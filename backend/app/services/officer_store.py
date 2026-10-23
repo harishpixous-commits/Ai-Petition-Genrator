@@ -40,12 +40,14 @@ OFFICER = "officer"
 #                       cannot destroy the citizen's record.
 PRIV_MANAGE_USERS = "manage_users"
 PRIV_MANAGE_ROLES = "manage_roles"
+PRIV_MANAGE_FEATURES = "manage_features"
 PRIV_REVIEW_PETITIONS = "review_petitions"
 PRIV_DELETE_PETITIONS = "delete_petitions"
 
 PRIVILEGES: dict[str, str] = {
     PRIV_MANAGE_USERS:     "Manage officers (create, edit, delete, reset password)",
     PRIV_MANAGE_ROLES:     "Manage roles (create and edit custom roles)",
+    PRIV_MANAGE_FEATURES:  "Manage feature switches (turn parts of the service on and off)",
     PRIV_REVIEW_PETITIONS: "Review petitions (list, open, update, reply)",
     PRIV_DELETE_PETITIONS: "Delete petitions (remove a citizen record permanently)",
 }
@@ -54,11 +56,68 @@ PRIVILEGES: dict[str, str] = {
 # comes up with a working two-tier split without a bootstrap step.
 _BUILTIN_ROLES = (
     (ADMIN, "Administrator",
-     [PRIV_MANAGE_USERS, PRIV_MANAGE_ROLES,
+     [PRIV_MANAGE_USERS, PRIV_MANAGE_ROLES, PRIV_MANAGE_FEATURES,
       PRIV_REVIEW_PETITIONS, PRIV_DELETE_PETITIONS]),
     (OFFICER, "Review officer",
      [PRIV_REVIEW_PETITIONS]),
 )
+
+# -------------------------------------------------------------------- #
+# Feature switches. The admin panel's "Features" tab exposes these as
+# on/off toggles; both the citizen and officer front-ends read the
+# live state to show or hide gated UI pieces. A flag not in this
+# catalogue is nothing the service recognises; a toggle in the UI
+# that nothing enforces would be a lie, so new flags must be defined
+# here first and read by the pages that gate on them.
+# -------------------------------------------------------------------- #
+
+FEATURE_FLAGS: dict[str, dict] = {
+    "citizen_voice_dictation": {
+        "label": "Voice dictation on the citizen portal",
+        "description": "Show the microphone button so a citizen can speak "
+                       "their grievance rather than type it. Depends on an "
+                       "ASR provider being configured.",
+        "default": True,
+        "audience": "citizen",
+    },
+    "citizen_multi_language": {
+        "label": "Multi-language citizen portal",
+        "description": "Show the language switcher (English, Tamil, "
+                       "Malayalam, Telugu, Hindi). Off makes the citizen "
+                       "portal English-only.",
+        "default": True,
+        "audience": "citizen",
+    },
+    "citizen_attachments": {
+        "label": "Attachment uploads",
+        "description": "Let the citizen attach supporting documents to "
+                       "their petition (PDFs, photographs, slips).",
+        "default": True,
+        "audience": "citizen",
+    },
+    "officer_delete_petition": {
+        "label": "Delete button in officer workspace",
+        "description": "Show a delete action on the petition detail page. "
+                       "Still subject to the 'delete_petitions' privilege "
+                       "on the officer's role.",
+        "default": True,
+        "audience": "officer",
+    },
+    "officer_dictation": {
+        "label": "Dictation on the officer portal",
+        "description": "Show the dictation controls when an officer is "
+                       "writing a reply.",
+        "default": True,
+        "audience": "officer",
+    },
+    "operator_screen": {
+        "label": "Operator status screen",
+        "description": "Serve the /operator technical status page. When "
+                       "off the route returns 404.",
+        "default": True,
+        "audience": "operator",
+    },
+}
 
 
 @contextmanager
@@ -86,6 +145,10 @@ def database(settings=None):
         label TEXT NOT NULL,
         privileges TEXT NOT NULL,
         builtin INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE TABLE IF NOT EXISTS officer_feature_flags(
+        name TEXT PRIMARY KEY,
+        enabled INTEGER NOT NULL DEFAULT 1
     );
     """)
     # Existing deployments already have a two-column officer_reviews table.
@@ -124,6 +187,25 @@ def database(settings=None):
             "privileges=excluded.privileges,builtin=1",
             (name, label, json.dumps(privs)),
         )
+    # Seed every feature flag with its catalogue default — new flags
+    # added to Python ship on by default (or off, as the catalogue
+    # declares), without a dedicated migration. Flags the admin has
+    # already toggled are left alone.
+    for name, meta in FEATURE_FLAGS.items():
+        db.execute(
+            "INSERT OR IGNORE INTO officer_feature_flags(name,enabled) "
+            "VALUES(?,?)",
+            (name, 1 if meta["default"] else 0),
+        )
+    # And prune feature-flag rows for names that no Python code reads
+    # any more, so the admin panel doesn't offer toggles that do
+    # nothing.
+    db.execute(
+        "DELETE FROM officer_feature_flags WHERE name NOT IN ("
+        + ",".join("?" * len(FEATURE_FLAGS)) + ")",
+        tuple(FEATURE_FLAGS),
+    ) if FEATURE_FLAGS else db.execute(
+        "DELETE FROM officer_feature_flags")
     try:
         yield db
         db.commit()
@@ -667,6 +749,78 @@ def delete_role(name: str):
                 f"Reassign them before deleting the role."
             )
         db.execute("DELETE FROM officer_roles WHERE name=?", (name,))
+
+
+# -------------------------------------------------------------------- #
+# Feature switches. Admin → "Features" tab → on/off toggles. The
+# citizen and officer front-ends fetch /api/features to decide what
+# to show; the catalogue is in Python so a toggle in the admin UI
+# that nothing enforces is impossible.
+# -------------------------------------------------------------------- #
+
+
+def list_feature_flags():
+    """Every known flag, with its live enabled state and the metadata
+    the catalogue carries about it. Alphabetical by name — the admin
+    UI groups further by `audience`."""
+    with database() as db:
+        rows = {
+            r["name"]: bool(r["enabled"])
+            for r in db.execute(
+                "SELECT name,enabled FROM officer_feature_flags"
+            ).fetchall()
+        }
+    out = []
+    for name, meta in sorted(FEATURE_FLAGS.items()):
+        out.append({
+            "name": name,
+            "enabled": rows.get(name, meta["default"]),
+            "label": meta["label"],
+            "description": meta["description"],
+            "audience": meta["audience"],
+            "default": meta["default"],
+        })
+    return out
+
+
+def feature_enabled(name: str) -> bool:
+    """Fast check for route-level enforcement (e.g. the /operator route
+    checks this before rendering). Returns the catalogue default when
+    the row is missing (first-start race, deleted catalogue entry) so
+    the service never becomes less functional under corrupted state."""
+    meta = FEATURE_FLAGS.get(name)
+    if meta is None:
+        return False
+    with database() as db:
+        row = db.execute(
+            "SELECT enabled FROM officer_feature_flags WHERE name=?", (name,)
+        ).fetchone()
+    return bool(row["enabled"]) if row else bool(meta["default"])
+
+
+def set_feature_flag(name: str, enabled: bool):
+    """Flip a flag on or off. Unknown flag names are refused — the
+    catalogue is the floor."""
+    if name not in FEATURE_FLAGS:
+        raise LookupError(f'No feature flag "{name}".')
+    with database() as db:
+        db.execute(
+            "INSERT INTO officer_feature_flags(name,enabled) VALUES(?,?) "
+            "ON CONFLICT(name) DO UPDATE SET enabled=excluded.enabled",
+            (name, 1 if enabled else 0),
+        )
+
+
+def feature_flags_for(audience: str) -> dict[str, bool]:
+    """Just the on/off map for the front-end that asks. The citizen
+    page needs only `citizen_*`; the officer page needs `officer_*`
+    AND `citizen_*` (so it can render the citizen view faithfully in a
+    preview); the operator page needs `operator_screen`."""
+    flags = {}
+    for row in list_feature_flags():
+        if audience == "all" or row["audience"] == audience:
+            flags[row["name"]] = row["enabled"]
+    return flags
 
 
 def login(username, password, host):

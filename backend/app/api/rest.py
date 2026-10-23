@@ -219,6 +219,17 @@ _health_cached_at: float = 0.0
 _health_lock = asyncio.Lock()
 
 
+@router.get("/features")
+def citizen_features() -> dict:
+    """The subset of the feature switch map the citizen page needs to
+    render itself — only the `citizen` audience flags, no label or
+    description. Public (no login): the citizen page reads it before
+    any identity exists, and knowing whether the microphone button is
+    present is not a privacy leak."""
+    from ..services import officer_store
+    return {"features": officer_store.feature_flags_for("citizen")}
+
+
 @router.get("/health")
 async def health() -> dict:
     """What is actually working, including whether citizen text leaves the box.

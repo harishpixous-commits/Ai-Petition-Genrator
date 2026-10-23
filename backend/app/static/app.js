@@ -4442,4 +4442,26 @@ $("attachInput").addEventListener("change", (e) => {
   e.target.value = "";           // so the same file can be re-picked after a removal
 });
 
+/* ---------------------------------------------------------------------
+   Feature switches. The admin portal (/admin → Features) exposes toggles
+   that turn parts of the citizen page on and off. Read them once at
+   load and mark the <body> so CSS can hide gated UI; the pieces each
+   flag covers wear `data-feature="citizen_voice_dictation"` et cetera.
+   Fails open — a network error on this fetch leaves the page as
+   designed, which is the correct read of "we could not reach the
+   admin flag store".
+   -------------------------------------------------------------------- */
+(async () => {
+  try {
+    const r = await fetch("/api/features", { cache: "no-store" });
+    if (!r.ok) return;
+    const data = await r.json();
+    for (const [name, enabled] of Object.entries(data.features || {})) {
+      document.body.dataset["feature" + (enabled ? "On" : "Off")
+        + name.replace(/[^a-z0-9]/gi, "")] = "";
+      document.body.classList.toggle("feature-off-" + name, !enabled);
+    }
+  } catch (_) { /* fail open */ }
+})();
+
 

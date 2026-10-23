@@ -807,3 +807,101 @@ class TestCustomAdminLikeRoles:
             json={"privileges": ["manage_roles", "review_petitions"]})
         assert strip.status_code == 400
         assert "manage_users" in strip.json()["detail"]
+
+
+# --------------------------------------------------------------------- #
+# Feature switches. The admin's Features tab exposes toggles that turn
+# parts of the service on and off; the citizen and officer pages read
+# the live state to render.
+# --------------------------------------------------------------------- #
+
+
+class TestFeatureFlags:
+    async def test_the_catalogue_is_served_with_every_known_flag(
+            self, admin_api):
+        await _sign_in(admin_api, "chief", "chief-password-1234")
+        response = await admin_api.get("/api/officer/features")
+        assert response.status_code == 200
+        names = {f["name"] for f in response.json()["features"]}
+        assert "citizen_voice_dictation" in names
+        assert "operator_screen" in names
+        assert "citizen_multi_language" in names
+
+    async def test_a_plain_officer_can_read_but_not_change_a_flag(
+            self, admin_api):
+        await _sign_in(admin_api, "reviewer", "reviewer-password-1234")
+        get = await admin_api.get("/api/officer/features")
+        assert get.status_code == 200
+        set_it = await admin_api.patch(
+            "/api/officer/features/operator_screen",
+            json={"enabled": False})
+        assert set_it.status_code == 403
+        assert "manage_features" in set_it.json()["detail"]
+
+    async def test_an_admin_can_toggle_a_flag_and_the_change_sticks(
+            self, admin_api):
+        await _sign_in(admin_api, "chief", "chief-password-1234")
+        off = await admin_api.patch(
+            "/api/officer/features/citizen_voice_dictation",
+            json={"enabled": False})
+        assert off.status_code == 200
+        assert off.json()["enabled"] is False
+        read = await admin_api.get("/api/officer/features")
+        row = next(
+            f for f in read.json()["features"]
+            if f["name"] == "citizen_voice_dictation")
+        assert row["enabled"] is False
+        # Flip back.
+        on = await admin_api.patch(
+            "/api/officer/features/citizen_voice_dictation",
+            json={"enabled": True})
+        assert on.status_code == 200
+        assert on.json()["enabled"] is True
+
+    async def test_an_unknown_flag_is_refused(self, admin_api):
+        await _sign_in(admin_api, "chief", "chief-password-1234")
+        response = await admin_api.patch(
+            "/api/officer/features/not_a_real_flag",
+            json={"enabled": True})
+        assert response.status_code == 404
+
+    async def test_the_citizen_public_endpoint_only_shows_citizen_flags(
+            self, admin_api):
+        """The citizen page reads /api/features without a login, so it
+        must not leak the officer-only flag names."""
+        response = await admin_api.get("/api/features")
+        assert response.status_code == 200
+        names = set(response.json()["features"])
+        assert all(n.startswith("citizen_") for n in names)
+        assert "operator_screen" not in names
+        assert "officer_delete_petition" not in names
+
+
+# --------------------------------------------------------------------- #
+# Admin portal: a separate /admin surface, no longer the review officer
+# portal. The front-end file is served at /admin and /admin/login
+# redirects a signed-out visitor there.
+# --------------------------------------------------------------------- #
+
+
+class TestTheAdminPortalIsSeparate:
+    async def test_officer_portal_no_longer_shows_an_admin_link(self):
+        """The officer portal must not advertise an admin link —
+        administrators log in through /admin/login instead."""
+        from pathlib import Path
+        officer_js = (
+            Path(__file__).resolve().parent.parent
+            / "app" / "static" / "officer.js"
+        ).read_text(encoding="utf-8")
+        # The actual button text that used to render in the header.
+        assert ">Admin panel<" not in officer_js
+        # And the legacy /officer/admin URL should redirect to /admin,
+        # not render the former admin UI.
+        assert 'location.replace("/admin")' in officer_js
+
+    def test_the_admin_shell_file_ships(self):
+        """A built container must include admin.html so /admin works."""
+        from pathlib import Path
+        root = Path(__file__).resolve().parent.parent / "app" / "static"
+        for name in ("admin.html", "admin.js", "admin.css"):
+            assert (root / name).is_file(), f"{name} is missing"

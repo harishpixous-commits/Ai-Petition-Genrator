@@ -281,15 +281,14 @@
       account.innerHTML = '<a class="hbtn" href="/#home">← Citizen Portal</a>';
       return;
     }
-    const adminLink = user.role === "admin"
-      ? '<a class="hbtn ghost" href="/officer/admin" data-go>Admin panel</a>'
-      : "";
+    // The officer portal has no admin link, by design. Administrators
+    // reach the admin screens through the separate /admin/login page.
     const accountLink =
       '<a class="hbtn ghost" href="/officer/account" data-go>My account</a>';
     account.innerHTML =
       `<div class="account-name">${esc(user.name)}` +
       `<small>${esc(user.title || user.role)}</small></div>` +
-      `${adminLink}${accountLink}` +
+      `${accountLink}` +
       '<button class="hbtn" id="logout">Log out</button>';
     document.getElementById("logout")?.addEventListener("click", async () => {
       try {
@@ -1321,8 +1320,13 @@
         else user = await api("/me");
       }
       header();
-      if (path.endsWith("/admin")) await adminPanel();
-      else if (path.endsWith("/account")) accountPanel();
+      // Legacy /officer/admin link redirects to the separate admin
+      // portal — the officer portal no longer carries user management.
+      if (path.endsWith("/admin")) {
+        location.replace("/admin");
+        return;
+      }
+      if (path.endsWith("/account")) accountPanel();
       else if (path.includes("/petitions/"))
         await detail(decodeURIComponent(path.split("/").pop()));
       else if (path.includes("/acknowledgements/"))

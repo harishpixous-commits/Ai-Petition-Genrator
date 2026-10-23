@@ -347,6 +347,41 @@ def delete_role(name: str, admin: RoleAdminUser):
         raise HTTPException(400, str(exc)) from exc
 
 
+# -------------------------------------------------------------------- #
+# Feature switches. Admin panel → "Features" tab → the toggles that
+# turn parts of the service on and off. Public GET endpoint for the
+# citizen page (no login required — the page needs to know whether
+# to render the mic button). PATCH requires `manage_features`.
+# -------------------------------------------------------------------- #
+
+
+class FeatureUpdate(BaseModel):
+    enabled: bool
+
+
+require_feature_manager = require_privilege(store.PRIV_MANAGE_FEATURES)
+FeatureAdminUser = Annotated[dict, Depends(require_feature_manager)]
+
+
+@router.get("/features")
+def list_features(user: OfficerUser):
+    """The full feature list, each flag with its live state and the
+    audience label (citizen / officer / operator) the admin UI groups
+    them by. Requires login so a leaked catalogue of the service's
+    extra features is not public — the citizen page uses the shorter
+    public endpoint below."""
+    return {"features": store.list_feature_flags()}
+
+
+@router.patch("/features/{name}")
+def set_feature(name: str, body: FeatureUpdate, admin: FeatureAdminUser):
+    try:
+        store.set_feature_flag(name, body.enabled)
+    except LookupError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    return {"name": name, "enabled": body.enabled}
+
+
 def _dedup_sources(sources):
     """Collapse per-finding sources that cite the same provision.
 
