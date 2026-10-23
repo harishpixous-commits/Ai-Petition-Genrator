@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import secrets
 import sqlite3
@@ -19,6 +20,45 @@ TTL = 8 * 60 * 60
 
 ADMIN = "admin"
 OFFICER = "officer"
+
+# -------------------------------------------------------------------- #
+# Privilege catalogue. Hardcoded in Python by design: an admin can mix
+# and match privileges on a custom role, but cannot invent new names
+# that nothing enforces. Add a new privilege here first, then wire its
+# check into the endpoint it gates — never the other direction.
+# -------------------------------------------------------------------- #
+#   manage_users      — admin panel: create, edit, delete officers,
+#                       reset other officers' passwords. Also includes
+#                       seeing the user list.
+#   manage_roles      — the roles tab of the admin panel: create,
+#                       edit, delete custom roles.
+#   review_petitions  — the base review workflow: list petitions, open
+#                       one, update its status, write a reply, assign a
+#                       department. Every working officer needs this.
+#   delete_petitions  — remove a petition from the service. Rare, and
+#                       deliberately split so a reviewer-only role
+#                       cannot destroy the citizen's record.
+PRIV_MANAGE_USERS = "manage_users"
+PRIV_MANAGE_ROLES = "manage_roles"
+PRIV_REVIEW_PETITIONS = "review_petitions"
+PRIV_DELETE_PETITIONS = "delete_petitions"
+
+PRIVILEGES: dict[str, str] = {
+    PRIV_MANAGE_USERS:     "Manage officers (create, edit, delete, reset password)",
+    PRIV_MANAGE_ROLES:     "Manage roles (create and edit custom roles)",
+    PRIV_REVIEW_PETITIONS: "Review petitions (list, open, update, reply)",
+    PRIV_DELETE_PETITIONS: "Delete petitions (remove a citizen record permanently)",
+}
+
+# The seed rows for `admin` and `officer`. Shipped so a fresh database
+# comes up with a working two-tier split without a bootstrap step.
+_BUILTIN_ROLES = (
+    (ADMIN, "Administrator",
+     [PRIV_MANAGE_USERS, PRIV_MANAGE_ROLES,
+      PRIV_REVIEW_PETITIONS, PRIV_DELETE_PETITIONS]),
+    (OFFICER, "Review officer",
+     [PRIV_REVIEW_PETITIONS]),
+)
 
 
 @contextmanager
@@ -40,6 +80,12 @@ def database(settings=None):
         reference TEXT NOT NULL UNIQUE,
         acknowledged_by TEXT NOT NULL,
         acknowledged_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS officer_roles(
+        name TEXT PRIMARY KEY,
+        label TEXT NOT NULL,
+        privileges TEXT NOT NULL,
+        builtin INTEGER NOT NULL DEFAULT 0
     );
     """)
     # Existing deployments already have a two-column officer_reviews table.
@@ -66,6 +112,18 @@ def database(settings=None):
     if "role" not in officer_columns:
         db.execute("ALTER TABLE officers ADD COLUMN role TEXT NOT NULL DEFAULT 'officer'")
         db.execute("UPDATE officers SET role='admin'")
+    # Keep the two builtin role rows aligned with the live privilege
+    # catalogue — a privilege added here reaches `admin` on the next
+    # restart without a dedicated migration. Custom roles (builtin=0)
+    # created by the admin panel are left alone.
+    for name, label, privs in _BUILTIN_ROLES:
+        db.execute(
+            "INSERT INTO officer_roles(name,label,privileges,builtin) "
+            "VALUES(?,?,?,1) "
+            "ON CONFLICT(name) DO UPDATE SET label=excluded.label,"
+            "privileges=excluded.privileges,builtin=1",
+            (name, label, json.dumps(privs)),
+        )
     try:
         yield db
         db.commit()
@@ -104,10 +162,64 @@ def _valid_username(raw: str) -> str:
     return value
 
 
-def _valid_role(raw: str) -> str:
+_ROLE_NAME_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_-]{2,31}$")
+
+
+def _valid_role_name(raw: str) -> str:
+    """A role name ends up in URLs and SQL rows. Bind it here, once."""
     value = (raw or "").strip().casefold()
-    if value not in (ADMIN, OFFICER):
-        raise ValueError(f'Role must be "{ADMIN}" or "{OFFICER}".')
+    if not _ROLE_NAME_PATTERN.match(value):
+        raise ValueError(
+            "Role name must be 3–32 characters, lowercase letters, digits, "
+            "`_` and `-` only, and must start with a letter or digit."
+        )
+    return value
+
+
+def _valid_role_label(raw: str) -> str:
+    value = (raw or "").strip()
+    if not value:
+        raise ValueError("Role label is required.")
+    if len(value) > 80:
+        raise ValueError("Role label is at most 80 characters.")
+    return value
+
+
+def _valid_privileges(raw) -> list[str]:
+    """Accepts a list OR a comma-separated string. Returns a de-duped list
+    of valid privilege names. Unknown privilege names are refused — the
+    catalogue in Python is the floor; a role cannot grant something no
+    endpoint checks."""
+    if isinstance(raw, str):
+        items = [p.strip() for p in raw.split(",") if p.strip()]
+    elif isinstance(raw, (list, tuple)):
+        items = [str(p).strip() for p in raw if str(p).strip()]
+    else:
+        raise ValueError("Privileges must be a list.")
+    unknown = [p for p in items if p not in PRIVILEGES]
+    if unknown:
+        raise ValueError(
+            f'Unknown privilege(s): {", ".join(sorted(set(unknown)))}. '
+            f"Allowed: {', '.join(sorted(PRIVILEGES))}."
+        )
+    return sorted(set(items))
+
+
+def _valid_role(raw: str) -> str:
+    """Validate a role NAME against the live roles table. Falls back to
+    `admin`/`officer` for cases where the DB has not yet been consulted
+    — the migration seeds those two on first open, so this short-circuit
+    only matters inside a transaction that is about to run the migration
+    itself."""
+    value = _valid_role_name(raw)
+    if value in (ADMIN, OFFICER):
+        return value
+    with database() as db:
+        row = db.execute(
+            "SELECT 1 FROM officer_roles WHERE name=?", (value,)
+        ).fetchone()
+    if not row:
+        raise ValueError(f'No such role "{value}".')
     return value
 
 
@@ -164,20 +276,33 @@ def identity(token):
         return None
     with database() as db:
         row = db.execute(
-            "SELECT o.username,o.name,o.role FROM officer_sessions s "
+            "SELECT o.username,o.name,o.role,r.label,r.privileges "
+            "FROM officer_sessions s "
             "JOIN officers o ON o.username=s.username "
+            "LEFT JOIN officer_roles r ON r.name=o.role "
             "WHERE s.token=? AND s.expires>? AND o.enabled=1",
             (digest(token), time.time()),
         ).fetchone()
     if not row:
         return None
     role = row["role"] or OFFICER
+    label = row["label"] or _role_label(role)
+    try:
+        privs = json.loads(row["privileges"]) if row["privileges"] else []
+    except (TypeError, ValueError):
+        privs = []
     return {
         "username": row["username"],
         "name": row["name"],
         "role": role,
-        "title": _role_label(role),
+        "title": label,
+        "privileges": privs,
     }
+
+
+def has_privilege(user: dict | None, privilege: str) -> bool:
+    """True when the signed-in officer's role grants `privilege`."""
+    return bool(user and privilege in (user.get("privileges") or []))
 
 
 def list_officers():
@@ -199,15 +324,38 @@ def list_officers():
     ]
 
 
+def _count_user_managers(db) -> int:
+    """How many enabled officers currently hold `manage_users`.
+
+    Counts by PRIVILEGE, not by literal role name — a custom role that
+    grants `manage_users` is just as much "an admin" for the purpose of
+    the last-admin rule as the builtin `admin` role is."""
+    rows = db.execute(
+        "SELECT r.privileges FROM officers o "
+        "JOIN officer_roles r ON r.name=o.role "
+        "WHERE o.enabled=1"
+    ).fetchall()
+    count = 0
+    for r in rows:
+        try:
+            privs = json.loads(r["privileges"]) if r["privileges"] else []
+        except (TypeError, ValueError):
+            privs = []
+        if PRIV_MANAGE_USERS in privs:
+            count += 1
+    return count
+
+
+# Backwards-compatible aliases. The `admin` concept is now spelled
+# "an officer with `manage_users`"; nothing outside this module should
+# call these.
 def _count_admins(db) -> int:
-    return db.execute(
-        "SELECT COUNT(*) AS n FROM officers WHERE role='admin' AND enabled=1"
-    ).fetchone()["n"]
+    return _count_user_managers(db)
 
 
 def count_admins() -> int:
     with database() as db:
-        return _count_admins(db)
+        return _count_user_managers(db)
 
 
 def exists(username) -> bool:
@@ -282,10 +430,22 @@ def set_name(username, name):
             raise LookupError(f'No officer "{username}".')
 
 
+def _role_grants(db, role_name: str, privilege: str) -> bool:
+    row = db.execute(
+        "SELECT privileges FROM officer_roles WHERE name=?", (role_name,)
+    ).fetchone()
+    if not row:
+        return False
+    try:
+        return privilege in json.loads(row["privileges"] or "[]")
+    except (TypeError, ValueError):
+        return False
+
+
 def set_role(username, role):
-    """Promote or demote an officer. Refuses to demote the last admin so
-    that an operator cannot accidentally leave the admin panel unreachable
-    behind their own login."""
+    """Promote or demote an officer. Refuses the change when it would
+    leave zero officers holding `manage_users` — the admin panel would
+    be unreachable the next request."""
     username = _valid_username(username)
     role = _valid_role(role)
     with database() as db:
@@ -294,9 +454,12 @@ def set_role(username, role):
         ).fetchone()
         if not row:
             raise LookupError(f'No officer "{username}".')
-        if row["role"] == ADMIN and role != ADMIN and _count_admins(db) <= 1:
+        old_had = _role_grants(db, row["role"], PRIV_MANAGE_USERS)
+        new_has = _role_grants(db, role, PRIV_MANAGE_USERS)
+        if old_had and not new_has and _count_user_managers(db) <= 1:
             raise ValueError(
-                "Cannot demote the last admin — promote another officer first."
+                "Cannot demote the last administrator — promote another "
+                "officer first."
             )
         db.execute("UPDATE officers SET role=? WHERE username=?", (role, username))
 
@@ -335,8 +498,8 @@ def rename(username, new_username):
 
 
 def delete_officer(username):
-    """Remove an officer and every session they still hold. Refuses to leave
-    the admin panel unreachable."""
+    """Remove an officer and every session they still hold. Refuses the
+    delete when it would leave zero officers holding `manage_users`."""
     username = _valid_username(username)
     with database() as db:
         row = db.execute(
@@ -344,12 +507,166 @@ def delete_officer(username):
         ).fetchone()
         if not row:
             raise LookupError(f'No officer "{username}".')
-        if row["role"] == ADMIN and _count_admins(db) <= 1:
+        if (_role_grants(db, row["role"], PRIV_MANAGE_USERS)
+                and _count_user_managers(db) <= 1):
             raise ValueError(
-                "Cannot delete the last admin — promote another officer first."
+                "Cannot delete the last administrator — promote another "
+                "officer first."
             )
         db.execute("DELETE FROM officers WHERE username=?", (username,))
         db.execute("DELETE FROM officer_sessions WHERE username=?", (username,))
+
+
+# -------------------------------------------------------------------- #
+# Role management. The two builtin rows (admin, officer) are shipped
+# and cannot be renamed or deleted; custom rows are freely editable
+# except where their deletion would orphan an existing officer.
+# -------------------------------------------------------------------- #
+
+
+def list_roles():
+    """Every role, builtins first, then alphabetical. Each row carries the
+    full privilege list and a count of officers using it."""
+    with database() as db:
+        rows = db.execute("""
+            SELECT r.name, r.label, r.privileges, r.builtin,
+                   (SELECT COUNT(*) FROM officers o
+                    WHERE o.role = r.name) AS member_count
+            FROM officer_roles r
+            ORDER BY r.builtin DESC, r.name
+        """).fetchall()
+    out = []
+    for r in rows:
+        try:
+            privs = json.loads(r["privileges"] or "[]")
+        except (TypeError, ValueError):
+            privs = []
+        out.append({
+            "name": r["name"],
+            "label": r["label"],
+            "privileges": sorted(privs),
+            "builtin": bool(r["builtin"]),
+            "member_count": r["member_count"],
+        })
+    return out
+
+
+def get_role(name: str):
+    name = _valid_role_name(name)
+    with database() as db:
+        row = db.execute(
+            "SELECT name,label,privileges,builtin FROM officer_roles "
+            "WHERE name=?",
+            (name,),
+        ).fetchone()
+    if not row:
+        return None
+    try:
+        privs = json.loads(row["privileges"] or "[]")
+    except (TypeError, ValueError):
+        privs = []
+    return {
+        "name": row["name"],
+        "label": row["label"],
+        "privileges": sorted(privs),
+        "builtin": bool(row["builtin"]),
+    }
+
+
+def create_role(name: str, label: str, privileges):
+    name = _valid_role_name(name)
+    label = _valid_role_label(label)
+    privileges = _valid_privileges(privileges)
+    with database() as db:
+        clash = db.execute(
+            "SELECT 1 FROM officer_roles WHERE name=? LIMIT 1", (name,)
+        ).fetchone()
+        if clash:
+            raise ValueError(f'A role named "{name}" already exists.')
+        db.execute(
+            "INSERT INTO officer_roles(name,label,privileges,builtin) "
+            "VALUES(?,?,?,0)",
+            (name, label, json.dumps(privileges)),
+        )
+    return get_role(name)
+
+
+def update_role(name: str, *, label=None, privileges=None):
+    """Change a role's display label or privilege set. The builtin
+    `admin` and `officer` rows cannot be edited — they are the floor
+    the privilege system is wired against; changing them silently would
+    be a surprise. The admin panel disables these fields when the row
+    is builtin, and this re-asserts the rule server-side."""
+    name = _valid_role_name(name)
+    with database() as db:
+        row = db.execute(
+            "SELECT builtin,privileges FROM officer_roles WHERE name=?",
+            (name,),
+        ).fetchone()
+        if not row:
+            raise LookupError(f'No role "{name}".')
+        if row["builtin"]:
+            raise ValueError(
+                f'The "{name}" role ships with the service and cannot be '
+                f"edited. Create a custom role instead."
+            )
+        try:
+            current_privs = json.loads(row["privileges"] or "[]")
+        except (TypeError, ValueError):
+            current_privs = []
+        if label is not None:
+            label = _valid_role_label(label)
+            db.execute(
+                "UPDATE officer_roles SET label=? WHERE name=?", (label, name)
+            )
+        if privileges is not None:
+            new_privs = _valid_privileges(privileges)
+            # When the privilege change takes `manage_users` away from a role
+            # whose current members include every remaining administrator,
+            # refuse — same reasoning as the last-admin rule on officers.
+            lost_manage = (PRIV_MANAGE_USERS in current_privs
+                           and PRIV_MANAGE_USERS not in new_privs)
+            if lost_manage:
+                members = db.execute(
+                    "SELECT COUNT(*) AS n FROM officers "
+                    "WHERE role=? AND enabled=1",
+                    (name,),
+                ).fetchone()["n"]
+                if members and _count_user_managers(db) <= members:
+                    raise ValueError(
+                        f'Removing "manage_users" from "{name}" would '
+                        f"leave no officer able to reach the admin panel. "
+                        f"Reassign the officers holding this role first."
+                    )
+            db.execute(
+                "UPDATE officer_roles SET privileges=? WHERE name=?",
+                (json.dumps(new_privs), name),
+            )
+    return get_role(name)
+
+
+def delete_role(name: str):
+    name = _valid_role_name(name)
+    with database() as db:
+        row = db.execute(
+            "SELECT builtin FROM officer_roles WHERE name=?", (name,)
+        ).fetchone()
+        if not row:
+            raise LookupError(f'No role "{name}".')
+        if row["builtin"]:
+            raise ValueError(
+                f'The "{name}" role ships with the service and cannot be '
+                f"deleted."
+            )
+        in_use = db.execute(
+            "SELECT COUNT(*) AS n FROM officers WHERE role=?", (name,)
+        ).fetchone()["n"]
+        if in_use:
+            raise ValueError(
+                f'The "{name}" role is assigned to {in_use} officer(s). '
+                f"Reassign them before deleting the role."
+            )
+        db.execute("DELETE FROM officer_roles WHERE name=?", (name,))
 
 
 def login(username, password, host):

@@ -446,7 +446,7 @@ class TestWhoCanReachTheAdminPanel:
         await _sign_in(admin_api, "reviewer", "reviewer-password-1234")
         response = await admin_api.get("/api/officer/users")
         assert response.status_code == 403
-        assert "Administrator" in response.json()["detail"]
+        assert "manage_users" in response.json()["detail"]
 
     async def test_an_admin_can_list_users(self, admin_api):
         await _sign_in(admin_api, "chief", "chief-password-1234")
@@ -625,3 +625,185 @@ class TestDeletion:
         try_login = await admin_api.post("/api/officer/login", json={
             "username": "reviewer", "password": "reviewer-password-1234"})
         assert try_login.status_code == 401
+
+
+# --------------------------------------------------------------------- #
+# Role management. Custom roles with any mix of privileges, assigned
+# directly to officers, built-ins unchanged.
+# --------------------------------------------------------------------- #
+
+
+class TestTheBuiltinRolesAreSeeded:
+    def test_fresh_database_has_admin_and_officer_rows(
+            self, tmp_path, monkeypatch):
+        settings = get_settings().model_copy(update={"data_dir": tmp_path})
+        monkeypatch.setattr(store, "get_settings", lambda: settings)
+        tmp_path.mkdir(parents=True, exist_ok=True)
+        roles = {r["name"]: r for r in store.list_roles()}
+        assert {"admin", "officer"} <= set(roles)
+        assert roles["admin"]["builtin"] is True
+        assert roles["officer"]["builtin"] is True
+        assert store.PRIV_MANAGE_USERS in roles["admin"]["privileges"]
+        assert store.PRIV_MANAGE_USERS not in roles["officer"]["privileges"]
+
+
+class TestWhoCanManageRoles:
+    async def test_a_plain_officer_can_see_the_list_but_not_change_it(
+            self, admin_api):
+        await _sign_in(admin_api, "reviewer", "reviewer-password-1234")
+        listed = await admin_api.get("/api/officer/roles")
+        assert listed.status_code == 200
+        attempt = await admin_api.post("/api/officer/roles", json={
+            "name": "village_officer",
+            "label": "Village officer",
+            "privileges": ["review_petitions"],
+        })
+        assert attempt.status_code == 403
+        assert "manage_roles" in attempt.json()["detail"]
+
+    async def test_an_admin_can_create_a_custom_role(self, admin_api):
+        await _sign_in(admin_api, "chief", "chief-password-1234")
+        response = await admin_api.post("/api/officer/roles", json={
+            "name": "village_officer",
+            "label": "Village officer",
+            "privileges": ["review_petitions"],
+        })
+        assert response.status_code == 201, response.text
+        row = response.json()
+        assert row["name"] == "village_officer"
+        assert row["label"] == "Village officer"
+        assert row["builtin"] is False
+        assert row["privileges"] == ["review_petitions"]
+
+    async def test_the_privilege_catalogue_is_served(self, admin_api):
+        await _sign_in(admin_api, "reviewer", "reviewer-password-1234")
+        response = await admin_api.get("/api/officer/privileges")
+        assert response.status_code == 200
+        privs = response.json()["privileges"]
+        assert "manage_users" in privs
+        assert "review_petitions" in privs
+
+
+class TestBuiltinRolesAreProtected:
+    async def test_admin_role_cannot_be_edited(self, admin_api):
+        await _sign_in(admin_api, "chief", "chief-password-1234")
+        response = await admin_api.patch(
+            "/api/officer/roles/admin", json={"label": "The Chief"})
+        assert response.status_code == 400
+        assert "built" in response.json()["detail"] or \
+               "ship" in response.json()["detail"]
+
+    async def test_officer_role_cannot_be_deleted(self, admin_api):
+        await _sign_in(admin_api, "chief", "chief-password-1234")
+        response = await admin_api.delete("/api/officer/roles/officer")
+        assert response.status_code == 400
+
+
+class TestRolesInUse:
+    async def test_a_role_assigned_to_an_officer_cannot_be_deleted(
+            self, admin_api):
+        await _sign_in(admin_api, "chief", "chief-password-1234")
+        # Create custom role, assign to the reviewer, then try to delete.
+        await admin_api.post("/api/officer/roles", json={
+            "name": "village_officer",
+            "label": "Village officer",
+            "privileges": ["review_petitions"],
+        })
+        await admin_api.patch(
+            "/api/officer/users/reviewer",
+            json={"role": "village_officer"})
+        attempt = await admin_api.delete(
+            "/api/officer/roles/village_officer")
+        assert attempt.status_code == 400
+        assert "assigned" in attempt.json()["detail"]
+
+    async def test_a_role_can_be_deleted_once_members_move_away(
+            self, admin_api):
+        await _sign_in(admin_api, "chief", "chief-password-1234")
+        await admin_api.post("/api/officer/roles", json={
+            "name": "village_officer",
+            "label": "Village officer",
+            "privileges": ["review_petitions"],
+        })
+        delete_now = await admin_api.delete(
+            "/api/officer/roles/village_officer")
+        assert delete_now.status_code == 204
+        remaining = {r["name"] for r in (
+            await admin_api.get("/api/officer/roles")
+        ).json()["roles"]}
+        assert "village_officer" not in remaining
+
+
+class TestCustomRoleAssignment:
+    async def test_an_officer_assigned_a_custom_role_gets_its_privileges(
+            self, admin_api):
+        await _sign_in(admin_api, "chief", "chief-password-1234")
+        await admin_api.post("/api/officer/roles", json={
+            "name": "ward_officer",
+            "label": "Ward officer",
+            "privileges": ["review_petitions", "delete_petitions"],
+        })
+        # Create a new officer directly in that role.
+        await admin_api.post("/api/officer/users", json={
+            "username": "ward1",
+            "name": "Ward One",
+            "password": "ward-password-1234",
+            "role": "ward_officer",
+        })
+        await admin_api.post("/api/officer/logout")
+        await _sign_in(admin_api, "ward1", "ward-password-1234")
+        me = (await admin_api.get("/api/officer/me")).json()
+        assert me["role"] == "ward_officer"
+        assert me["title"] == "Ward officer"
+        assert set(me["privileges"]) == {
+            "review_petitions", "delete_petitions"
+        }
+
+    async def test_a_non_existent_role_is_refused(self, admin_api):
+        await _sign_in(admin_api, "chief", "chief-password-1234")
+        response = await admin_api.post("/api/officer/users", json={
+            "username": "ghost",
+            "name": "Ghost",
+            "password": "ghost-password-1234",
+            "role": "does_not_exist",
+        })
+        assert response.status_code == 400
+
+
+class TestCustomAdminLikeRoles:
+    async def test_a_custom_role_with_manage_users_satisfies_the_admin_gate(
+            self, admin_api):
+        await _sign_in(admin_api, "chief", "chief-password-1234")
+        await admin_api.post("/api/officer/roles", json={
+            "name": "panel_lead",
+            "label": "Panel lead",
+            "privileges": ["manage_users", "review_petitions"],
+        })
+        await admin_api.patch(
+            "/api/officer/users/reviewer", json={"role": "panel_lead"})
+        await admin_api.post("/api/officer/logout")
+        await _sign_in(admin_api, "reviewer", "reviewer-password-1234")
+        # The reviewer now holds `manage_users` through a non-builtin role.
+        response = await admin_api.get("/api/officer/users")
+        assert response.status_code == 200
+
+    async def test_the_last_manage_users_cannot_be_removed_from_a_role_in_use(
+            self, admin_api):
+        await _sign_in(admin_api, "chief", "chief-password-1234")
+        # The role must also grant `manage_roles` so the holder can still
+        # reach the roles endpoint after being transferred into it.
+        await admin_api.post("/api/officer/roles", json={
+            "name": "panel_lead",
+            "label": "Panel lead",
+            "privileges": [
+                "manage_users", "manage_roles", "review_petitions"],
+        })
+        # Transfer the only chief into the custom role, then try to strip
+        # manage_users from that role: refused.
+        await admin_api.patch(
+            "/api/officer/users/chief", json={"role": "panel_lead"})
+        strip = await admin_api.patch(
+            "/api/officer/roles/panel_lead",
+            json={"privileges": ["manage_roles", "review_petitions"]})
+        assert strip.status_code == 400
+        assert "manage_users" in strip.json()["detail"]

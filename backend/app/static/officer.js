@@ -813,10 +813,37 @@
   }
   /* ---------- Admin panel + account page ------------------------------ */
 
-  function roleBadge(role) {
-    const kind = role === "admin" ? "admin" : "officer";
-    const label = role === "admin" ? "Administrator" : "Review officer";
-    return `<span class="role-badge role-${kind}">${label}</span>`;
+  /* Visual badge next to an officer's name. `role` is the role NAME
+     (admin, officer, or any custom slug). The second argument is the
+     display label — passed by the caller when it has one, inferred for
+     the two builtins when it does not. */
+  function roleBadge(role, label) {
+    const builtin = role === "admin" || role === "officer";
+    const kind = role === "admin" ? "admin" : builtin ? "officer" : "custom";
+    const text = label || (role === "admin" ? "Administrator"
+                           : role === "officer" ? "Review officer"
+                           : role);
+    return `<span class="role-badge role-${kind}">${esc(text)}</span>`;
+  }
+
+  const USERNAME_RE = /^[a-z0-9][a-z0-9._-]{2,63}$/;
+  const ROLE_NAME_RE = /^[a-z0-9][a-z0-9_-]{2,31}$/;
+
+  /* Attaches a live validator to a username input. The input gets an
+     `aria-invalid` flag and the sibling .inline-error span receives the
+     message, so the Create button is enabled only when the shape matches.
+     Fixes the earlier "typed Village officer, Create clicked, 400 on
+     response" trip. */
+  function bindUsernameValidator(input, errorEl, pattern, hint) {
+    const check = () => {
+      const v = input.value;
+      const ok = pattern.test(v);
+      input.setAttribute("aria-invalid", ok || !v ? "false" : "true");
+      errorEl.textContent = v && !ok ? hint : "";
+      return ok;
+    };
+    input.addEventListener("input", check);
+    return check;
   }
 
   async function adminPanel() {
@@ -828,40 +855,55 @@
         '<a class="hbtn" href="/officer/dashboard" data-go>Back to petitions</a></section>';
       return;
     }
+    const tab = (new URLSearchParams(location.search).get("tab") || "users");
+    main.innerHTML = `
+      <section class="panel admin-panel">
+        <header class="admin-head">
+          <div>
+            <p class="eyebrow">OFFICER PORTAL · ADMIN</p>
+            <h2>${tab === "roles" ? "Role management" : "User management"}</h2>
+            <p class="muted">${tab === "roles"
+              ? "Define custom roles with their own set of privileges, and assign them to officers."
+              : "Add officers, change their roles and reset passwords without touching GitHub."}</p>
+          </div>
+          <div class="admin-tabs">
+            <a class="hbtn ${tab === "users" ? "primary" : "ghost"}" data-tab="users" href="/officer/admin?tab=users" data-go>Officers</a>
+            <a class="hbtn ${tab === "roles" ? "primary" : "ghost"}" data-tab="roles" href="/officer/admin?tab=roles" data-go>Roles</a>
+          </div>
+        </header>
+        <div id="adminBody"></div>
+        <div id="adminDialog"></div>
+      </section>`;
+    if (tab === "roles") await usersTabRoles();
+    else await usersTabOfficers();
+  }
+
+  async function usersTabOfficers() {
+    const body = document.getElementById("adminBody");
     let users = [];
-    try {
-      users = (await api("/users")).users || [];
-    } catch (e) {
-      main.innerHTML = `<section class="panel empty"><h2>Could not load users</h2><p>${esc(e.message)}</p></section>`;
-      return;
-    }
+    try { users = (await api("/users")).users || []; }
+    catch (e) { body.innerHTML = `<p class="error" role="alert">${esc(e.message)}</p>`; return; }
+
     const rows = users.map((u) => `
       <tr data-username="${esc(u.username)}">
         <td>${esc(u.name)}</td>
         <td class="monospace">${esc(u.username)}</td>
-        <td>${roleBadge(u.role)}</td>
+        <td>${roleBadge(u.role, u.title)}</td>
         <td class="row-actions">
           <button class="hbtn ghost small" data-edit="${esc(u.username)}">Edit</button>
           <button class="hbtn ghost small" data-pw="${esc(u.username)}">Reset password</button>
           <button class="hbtn danger small" data-del="${esc(u.username)}" ${u.username === user.username ? "disabled title='You cannot delete your own account'" : ""}>Delete</button>
         </td>
       </tr>`).join("");
-    main.innerHTML = `
-      <section class="panel admin-panel">
-        <header class="admin-head">
-          <div>
-            <p class="eyebrow">OFFICER PORTAL · ADMIN</p>
-            <h2>User management</h2>
-            <p class="muted">Add officers, change their roles and reset passwords without touching GitHub.</p>
-          </div>
-          <button class="hbtn primary" id="newUser">+ Add officer</button>
-        </header>
-        <table class="admin-users">
-          <thead><tr><th>Name</th><th>Username</th><th>Role</th><th></th></tr></thead>
-          <tbody>${rows || '<tr><td colspan="4" class="muted">No officers yet.</td></tr>'}</tbody>
-        </table>
-        <div id="adminDialog"></div>
-      </section>`;
+    body.innerHTML = `
+      <div class="section-head">
+        <div></div>
+        <button class="hbtn primary" id="newUser">+ Add officer</button>
+      </div>
+      <table class="admin-users">
+        <thead><tr><th>Name</th><th>Username</th><th>Role</th><th></th></tr></thead>
+        <tbody>${rows || '<tr><td colspan="4" class="muted">No officers yet.</td></tr>'}</tbody>
+      </table>`;
 
     document.getElementById("newUser").onclick = () => showCreateDialog();
     document.querySelectorAll("[data-edit]").forEach((b) => {
@@ -878,6 +920,71 @@
         try {
           await api(`/users/${encodeURIComponent(b.dataset.del)}`, { method: "DELETE" });
           notify(`Deleted ${name}.`, "ok");
+          adminPanel();
+        } catch (e) {
+          notify(e.message, "err");
+        }
+      };
+    });
+  }
+
+  async function usersTabRoles() {
+    const body = document.getElementById("adminBody");
+    let roles = [], privileges = {};
+    try {
+      [roles, privileges] = await Promise.all([
+        api("/roles").then((r) => r.roles || []),
+        api("/privileges").then((r) => r.privileges || {}),
+      ]);
+    } catch (e) {
+      body.innerHTML = `<p class="error" role="alert">${esc(e.message)}</p>`;
+      return;
+    }
+    const rows = roles.map((r) => {
+      const privsCell = r.privileges.length
+        ? r.privileges.map((p) => `<code class="pill">${esc(p)}</code>`).join(" ")
+        : '<span class="muted small">none</span>';
+      const builtinLabel = r.builtin
+        ? '<span class="muted small"> (built-in)</span>' : '';
+      const memberLabel = r.member_count
+        ? `${r.member_count} officer${r.member_count === 1 ? "" : "s"}`
+        : '<span class="muted small">no officers</span>';
+      const canEdit = !r.builtin;
+      const canDelete = !r.builtin && r.member_count === 0;
+      return `
+        <tr data-role="${esc(r.name)}">
+          <td><strong>${esc(r.label)}</strong>${builtinLabel}<br><small class="monospace">${esc(r.name)}</small></td>
+          <td class="role-privs">${privsCell}</td>
+          <td>${memberLabel}</td>
+          <td class="row-actions">
+            <button class="hbtn ghost small" data-role-edit="${esc(r.name)}" ${canEdit ? "" : "disabled title='Built-in roles cannot be edited'"}>Edit</button>
+            <button class="hbtn danger small" data-role-del="${esc(r.name)}" ${canDelete ? "" : (r.builtin ? "disabled title='Built-in roles cannot be deleted'" : "disabled title='Reassign the officers using this role first'")}>Delete</button>
+          </td>
+        </tr>`;
+    }).join("");
+    body.innerHTML = `
+      <div class="section-head">
+        <p class="muted small">Create a role for each kind of reviewer in your office. Pick which privileges the role grants. The two built-in roles (<code>admin</code>, <code>officer</code>) ship with the service and cannot be edited.</p>
+        <button class="hbtn primary" id="newRole">+ Add role</button>
+      </div>
+      <table class="admin-users admin-roles">
+        <thead><tr><th>Role</th><th>Privileges</th><th>In use</th><th></th></tr></thead>
+        <tbody>${rows || '<tr><td colspan="4" class="muted">No roles defined yet.</td></tr>'}</tbody>
+      </table>`;
+
+    document.getElementById("newRole").onclick = () => showCreateRoleDialog(privileges);
+    document.querySelectorAll("[data-role-edit]").forEach((b) => {
+      if (b.disabled) return;
+      b.onclick = () => showEditRoleDialog(
+        roles.find((r) => r.name === b.dataset.roleEdit), privileges);
+    });
+    document.querySelectorAll("[data-role-del]").forEach((b) => {
+      if (b.disabled) return;
+      b.onclick = async () => {
+        if (!confirm(`Delete the "${b.dataset.roleDel}" role? This cannot be undone.`)) return;
+        try {
+          await api(`/roles/${encodeURIComponent(b.dataset.roleDel)}`, { method: "DELETE" });
+          notify(`Deleted role.`, "ok");
           adminPanel();
         } catch (e) {
           notify(e.message, "err");
@@ -903,34 +1010,66 @@
     return close;
   }
 
-  function showCreateDialog() {
+  function roleOptions(roles, selected) {
+    return roles.map((r) => `
+      <option value="${esc(r.name)}" ${r.name === selected ? "selected" : ""}>
+        ${esc(r.label)}${r.builtin ? "" : " · " + r.name}
+      </option>`).join("");
+  }
+
+  async function showCreateDialog() {
+    let roles = [];
+    try { roles = (await api("/roles")).roles || []; }
+    catch (e) { notify(e.message, "err"); return; }
     const close = dialogShell("Add an officer", `
       <form id="createForm" class="form-stack">
         <label>Display name<input id="newName" required maxlength="150" placeholder="e.g. Ravi Kumar"></label>
-        <label>Username<input id="newUsername" required maxlength="64" placeholder="lowercase, 3–64 chars, letters/digits/._-"></label>
-        <label>Password<input id="newPassword" type="password" required minlength="12" maxlength="256" placeholder="At least 12 characters"></label>
+        <label>
+          Username
+          <input id="newUsername" required maxlength="64" placeholder="lowercase, 3–64 chars, letters/digits/._-" autocomplete="off">
+          <span class="inline-error" id="newUsernameErr"></span>
+        </label>
+        <label>Password<input id="newPassword" type="password" required minlength="12" maxlength="256" placeholder="At least 12 characters" autocomplete="new-password"></label>
         <label>Role
           <select id="newRole">
-            <option value="officer" selected>Review officer</option>
-            <option value="admin">Administrator</option>
+            ${roleOptions(roles, "officer")}
           </select>
         </label>
         <p class="error" id="createError" role="alert"></p>
         <div class="dialog-actions">
           <button type="button" class="hbtn ghost" id="createCancel">Cancel</button>
-          <button type="submit" class="hbtn primary">Create</button>
+          <button type="submit" class="hbtn primary" id="createSubmit" disabled>Create</button>
         </div>
       </form>`);
     document.getElementById("createCancel").onclick = close;
+
+    const nameInput = document.getElementById("newName");
+    const userInput = document.getElementById("newUsername");
+    const userErr = document.getElementById("newUsernameErr");
+    const pwInput = document.getElementById("newPassword");
+    const submit = document.getElementById("createSubmit");
+    const checkUser = bindUsernameValidator(
+      userInput, userErr, USERNAME_RE,
+      "Lowercase letters, digits and ._- only. 3–64 characters. Must start with a letter or digit.");
+    const refresh = () => {
+      submit.disabled = !(
+        nameInput.value.trim()
+        && checkUser()
+        && pwInput.value.length >= 12
+      );
+    };
+    [nameInput, userInput, pwInput].forEach((el) => el.addEventListener("input", refresh));
+    refresh();
+
     document.getElementById("createForm").onsubmit = async (e) => {
       e.preventDefault();
       try {
         await api("/users", {
           method: "POST",
           body: JSON.stringify({
-            username: document.getElementById("newUsername").value,
-            name: document.getElementById("newName").value,
-            password: document.getElementById("newPassword").value,
+            username: userInput.value,
+            name: nameInput.value,
+            password: pwInput.value,
             role: document.getElementById("newRole").value,
           }),
         });
@@ -943,19 +1082,25 @@
     };
   }
 
-  function showEditDialog(u) {
+  async function showEditDialog(u) {
     const isSelf = u.username === user.username;
+    let roles = [];
+    try { roles = (await api("/roles")).roles || []; }
+    catch (e) { notify(e.message, "err"); return; }
     const close = dialogShell(`Edit "${u.name}"`, `
       <form id="editForm" class="form-stack">
         <label>Display name<input id="editName" value="${esc(u.name)}" required maxlength="150"></label>
-        <label>Username<input id="editUsername" value="${esc(u.username)}" required maxlength="64"></label>
+        <label>
+          Username
+          <input id="editUsername" value="${esc(u.username)}" required maxlength="64" autocomplete="off">
+          <span class="inline-error" id="editUsernameErr"></span>
+        </label>
         <label>Role
-          <select id="editRole" ${isSelf ? "disabled title='You cannot change your own role'" : ""}>
-            <option value="officer" ${u.role === "officer" ? "selected" : ""}>Review officer</option>
-            <option value="admin" ${u.role === "admin" ? "selected" : ""}>Administrator</option>
+          <select id="editRole">
+            ${roleOptions(roles, u.role)}
           </select>
         </label>
-        ${isSelf ? '<p class="muted small">You cannot change your own role. Ask another administrator, or promote someone else and then demote yourself.</p>' : ""}
+        ${isSelf ? '<p class="muted small">Changing your own role to one without the <code>manage_users</code> privilege is refused — you would lose access to this panel. Promote another administrator first and then edit yourself from the other login.</p>' : ""}
         <p class="error" id="editError" role="alert"></p>
         <div class="dialog-actions">
           <button type="button" class="hbtn ghost" id="editCancel">Cancel</button>
@@ -963,14 +1108,18 @@
         </div>
       </form>`);
     document.getElementById("editCancel").onclick = close;
+    const userInput = document.getElementById("editUsername");
+    bindUsernameValidator(
+      userInput, document.getElementById("editUsernameErr"), USERNAME_RE,
+      "Lowercase letters, digits and ._- only. 3–64 characters.");
     document.getElementById("editForm").onsubmit = async (e) => {
       e.preventDefault();
       try {
         const payload = {
           name: document.getElementById("editName").value,
-          new_username: document.getElementById("editUsername").value,
+          new_username: userInput.value,
+          role: document.getElementById("editRole").value,
         };
-        if (!isSelf) payload.role = document.getElementById("editRole").value;
         await api(`/users/${encodeURIComponent(u.username)}`, {
           method: "PATCH",
           body: JSON.stringify(payload),
@@ -980,6 +1129,104 @@
         adminPanel();
       } catch (err) {
         document.getElementById("editError").textContent = err.message;
+      }
+    };
+  }
+
+  function privilegeCheckboxes(privileges, selected) {
+    const set = new Set(selected || []);
+    return Object.entries(privileges).map(([name, label]) => `
+      <label class="checkbox-row">
+        <input type="checkbox" name="priv" value="${esc(name)}" ${set.has(name) ? "checked" : ""}>
+        <span><strong>${esc(name)}</strong><br><span class="muted small">${esc(label)}</span></span>
+      </label>`).join("");
+  }
+
+  function readCheckedPrivileges() {
+    return [...document.querySelectorAll('input[name="priv"]:checked')].map((i) => i.value);
+  }
+
+  function showCreateRoleDialog(privileges) {
+    const close = dialogShell("Add a role", `
+      <form id="roleForm" class="form-stack">
+        <label>Role name
+          <input id="roleName" required maxlength="32" placeholder="lowercase, 3–32 chars, letters/digits/_-" autocomplete="off">
+          <span class="inline-error" id="roleNameErr"></span>
+        </label>
+        <label>Display label<input id="roleLabel" required maxlength="80" placeholder="e.g. Village officer"></label>
+        <fieldset class="priv-group">
+          <legend>Privileges</legend>
+          ${privilegeCheckboxes(privileges, [])}
+        </fieldset>
+        <p class="error" id="roleError" role="alert"></p>
+        <div class="dialog-actions">
+          <button type="button" class="hbtn ghost" id="roleCancel">Cancel</button>
+          <button type="submit" class="hbtn primary" id="roleSubmit" disabled>Create role</button>
+        </div>
+      </form>`);
+    document.getElementById("roleCancel").onclick = close;
+    const nameInput = document.getElementById("roleName");
+    const labelInput = document.getElementById("roleLabel");
+    const submit = document.getElementById("roleSubmit");
+    const checkName = bindUsernameValidator(
+      nameInput, document.getElementById("roleNameErr"), ROLE_NAME_RE,
+      "Lowercase letters, digits, `_` and `-` only. 3–32 characters.");
+    const refresh = () => {
+      submit.disabled = !(labelInput.value.trim() && checkName());
+    };
+    [nameInput, labelInput].forEach((el) => el.addEventListener("input", refresh));
+    refresh();
+    document.getElementById("roleForm").onsubmit = async (e) => {
+      e.preventDefault();
+      try {
+        await api("/roles", {
+          method: "POST",
+          body: JSON.stringify({
+            name: nameInput.value,
+            label: labelInput.value,
+            privileges: readCheckedPrivileges(),
+          }),
+        });
+        close();
+        notify("Role created.", "ok");
+        adminPanel();
+      } catch (err) {
+        document.getElementById("roleError").textContent = err.message;
+      }
+    };
+  }
+
+  function showEditRoleDialog(role, privileges) {
+    const close = dialogShell(`Edit role "${role.label}"`, `
+      <form id="roleEditForm" class="form-stack">
+        <label>Role name<input value="${esc(role.name)}" disabled></label>
+        <label>Display label<input id="roleLabel" value="${esc(role.label)}" required maxlength="80"></label>
+        <fieldset class="priv-group">
+          <legend>Privileges</legend>
+          ${privilegeCheckboxes(privileges, role.privileges)}
+        </fieldset>
+        <p class="error" id="roleEditError" role="alert"></p>
+        <div class="dialog-actions">
+          <button type="button" class="hbtn ghost" id="roleEditCancel">Cancel</button>
+          <button type="submit" class="hbtn primary">Save changes</button>
+        </div>
+      </form>`);
+    document.getElementById("roleEditCancel").onclick = close;
+    document.getElementById("roleEditForm").onsubmit = async (e) => {
+      e.preventDefault();
+      try {
+        await api(`/roles/${encodeURIComponent(role.name)}`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            label: document.getElementById("roleLabel").value,
+            privileges: readCheckedPrivileges(),
+          }),
+        });
+        close();
+        notify("Role updated.", "ok");
+        adminPanel();
+      } catch (err) {
+        document.getElementById("roleEditError").textContent = err.message;
       }
     };
   }
@@ -1012,12 +1259,18 @@
   }
 
   function accountPanel() {
+    const privs = (user.privileges || []);
+    const privsHtml = privs.length
+      ? privs.map((p) => `<code class="pill">${esc(p)}</code>`).join(" ")
+      : '<span class="muted small">none</span>';
     main.innerHTML = `
       <section class="panel account-panel">
         <header>
           <p class="eyebrow">OFFICER PORTAL</p>
           <h2>My account</h2>
-          <p class="muted">You are signed in as <strong>${esc(user.name)}</strong> (<span class="monospace">${esc(user.username)}</span>). Role: ${roleBadge(user.role)}</p>
+          <p class="muted">You are signed in as <strong>${esc(user.name)}</strong> (<span class="monospace">${esc(user.username)}</span>).</p>
+          <p>Role: ${roleBadge(user.role, user.title)}</p>
+          <p>Privileges: ${privsHtml}</p>
         </header>
         <form id="accountForm" class="form-stack">
           <h3>Change my password</h3>

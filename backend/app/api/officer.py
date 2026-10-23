@@ -50,19 +50,33 @@ def require_officer(request: Request):
     return user
 
 
-def require_admin(user: Annotated[dict, Depends(require_officer)]):
-    """Gate for the admin panel endpoints. An officer without the admin
-    role gets a 403, not a 404: that lets the UI tell them exactly what
-    is wrong instead of leaving the page broken in some other way."""
-    if user.get("role") != store.ADMIN:
-        raise HTTPException(
-            403, "Administrator access is required for user management."
-        )
-    return user
+def require_privilege(privilege: str):
+    """Factory. The returned dependency admits the officer only when the
+    role they are signed in with grants `privilege`.
+
+    A privilege check instead of a role-equality check so a custom role
+    (admin panel → Roles tab → "+ Add role") can be granted administrative
+    rights without being named literally `admin` — the "Village officer
+    manager" scenario the operator asked for."""
+    def _dep(user: Annotated[dict, Depends(require_officer)]):
+        if not store.has_privilege(user, privilege):
+            raise HTTPException(
+                403,
+                f"This action needs the '{privilege}' privilege. Your "
+                f"current role does not grant it.",
+            )
+        return user
+    _dep.__name__ = f"require_{privilege}"
+    return _dep
+
+
+require_user_manager = require_privilege(store.PRIV_MANAGE_USERS)
+require_role_manager = require_privilege(store.PRIV_MANAGE_ROLES)
 
 
 OfficerUser = Annotated[dict, Depends(require_officer)]
-AdminUser = Annotated[dict, Depends(require_admin)]
+AdminUser = Annotated[dict, Depends(require_user_manager)]
+RoleAdminUser = Annotated[dict, Depends(require_role_manager)]
 
 
 class Login(BaseModel):
@@ -156,12 +170,14 @@ class NewOfficer(BaseModel):
     username: str = Field(min_length=1, max_length=64)
     name: str = Field(min_length=1, max_length=150)
     password: str = Field(min_length=12, max_length=256)
-    role: Literal["admin", "officer"] = "officer"
+    # `role` is a role NAME (admin, officer, or any custom role the admin
+    # created). Validated against the live roles table by officer_store.
+    role: str = Field(default=store.OFFICER, min_length=1, max_length=32)
 
 
 class EditOfficer(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=150)
-    role: Literal["admin", "officer"] | None = None
+    role: str | None = Field(default=None, min_length=1, max_length=32)
     new_username: str | None = Field(default=None, min_length=1, max_length=64)
 
 
@@ -200,16 +216,22 @@ def edit_user(username: str, body: EditOfficer, admin: AdminUser):
         if body.name is not None:
             store.set_name(target, body.name)
         if body.role is not None:
-            # Protect the admin against demoting the account they are logged
-            # in with: there is no "that was a typo" if the UI reloads under
-            # the plain officer role.
+            # Protect the admin against demoting their OWN account out of
+            # manage_users — the UI they are using would stop working next
+            # request, and the recovery path (another admin, or the CI
+            # workflow) is one more step. The store itself still refuses
+            # when it would leave zero user-managers; this check layers on
+            # top with a clearer message when the user is themselves.
+            new_role = store.get_role(body.role)
+            if new_role is None:
+                raise HTTPException(404, f'No such role "{body.role}".')
             if (target == admin["username"]
-                    and body.role != store.ADMIN):
+                    and store.PRIV_MANAGE_USERS not in new_role["privileges"]):
                 raise HTTPException(
                     400,
-                    "You cannot demote your own account. Promote another "
-                    "officer to admin first, then demote this one from the "
-                    "other login.",
+                    "You cannot move your own account to a role without "
+                    "the 'manage_users' privilege. Ask another administrator "
+                    "to do it, or promote someone else first.",
                 )
             store.set_role(target, body.role)
     except LookupError as exc:
@@ -250,6 +272,75 @@ def delete_user(username: str, admin: AdminUser):
         )
     try:
         store.delete_officer(target)
+    except LookupError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+# -------------------------------------------------------------------- #
+# Role management. Admin panel → "Roles" tab. Lets an operator create
+# custom roles (e.g. "Village officer", "Audit viewer") with any
+# combination of the privileges hardcoded in officer_store. The two
+# builtin rows (`admin`, `officer`) ship with the service and cannot
+# be renamed or deleted — they are the floor the enforcement is
+# wired against.
+# -------------------------------------------------------------------- #
+
+
+class NewRole(BaseModel):
+    name: str = Field(min_length=1, max_length=32)
+    label: str = Field(min_length=1, max_length=80)
+    privileges: list[str] = Field(default_factory=list, max_length=32)
+
+
+class EditRole(BaseModel):
+    label: str | None = Field(default=None, min_length=1, max_length=80)
+    privileges: list[str] | None = Field(default=None, max_length=32)
+
+
+@router.get("/privileges")
+def list_privileges(user: OfficerUser):
+    """The catalogue of privileges the service enforces, as {name:
+    human_label}. Powers the checkbox list in the role create/edit
+    dialogs. Available to any signed-in officer so the UI can render
+    the "My account" page's privilege summary too."""
+    return {"privileges": store.PRIVILEGES}
+
+
+@router.get("/roles")
+def list_roles_(user: OfficerUser):
+    """Every role, builtin first then alphabetical. Returned to any
+    signed-in officer so the Create / Edit Officer dialogs can populate
+    the role dropdown — a plain officer never sees the Roles tab, but
+    they do see "which role am I" on their account page."""
+    return {"roles": store.list_roles()}
+
+
+@router.post("/roles", status_code=201)
+def create_role(body: NewRole, admin: RoleAdminUser):
+    try:
+        return store.create_role(body.name, body.label, body.privileges)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@router.patch("/roles/{name}")
+def edit_role(name: str, body: EditRole, admin: RoleAdminUser):
+    try:
+        return store.update_role(
+            name, label=body.label, privileges=body.privileges
+        )
+    except LookupError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@router.delete("/roles/{name}", status_code=204)
+def delete_role(name: str, admin: RoleAdminUser):
+    try:
+        store.delete_role(name)
     except LookupError as exc:
         raise HTTPException(404, str(exc)) from exc
     except ValueError as exc:
