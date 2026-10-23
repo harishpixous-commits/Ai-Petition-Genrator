@@ -269,14 +269,14 @@ def create_app() -> FastAPI:
         return FileResponse(STATIC_DIR / "officer.html",
                             headers={"Cache-Control": "no-store"})
 
-    # Separate admin portal. Lives under /admin/* so administrators log
-    # in through their own screen rather than through the officer
-    # portal, and so the review officer portal has no "Admin panel" link
-    # for a reviewer to wonder about. The gate below redirects to
-    # /admin/login when there is no session; a signed-in officer without
-    # any `manage_*` privilege gets past this redirect (there is a
-    # session) and the SPA then renders the "no admin rights" page from
-    # the browser.
+    # Admin portal under /admin/*. The LOGIN itself is a single page
+    # shared with the officer portal — there is one sign-in surface, and
+    # which portal lands after the submit depends on the role the
+    # credentials carry (an officer with any `manage_*` privilege lands
+    # on /admin, every other officer lands on /officer/dashboard). So
+    # /admin/login is a server-side redirect to /officer/login, and the
+    # admin SPA is only ever served to an officer who already has a
+    # session.
     @app.get("/admin", include_in_schema=False)
     @app.get("/admin/{path:path}", include_in_schema=False)
     async def admin_page(request: Request, path: str = "") -> Response:
@@ -284,11 +284,13 @@ def create_app() -> FastAPI:
 
         from .services import officer_store
 
+        if path == "login":
+            return RedirectResponse("/officer/login", status_code=303)
         signed_in = officer_store.identity(
             request.cookies.get(officer_store.COOKIE))
         previewing = request.query_params.get("preview") == "1"
-        if path != "login" and not previewing and not signed_in:
-            return RedirectResponse("/admin/login", status_code=303)
+        if not previewing and not signed_in:
+            return RedirectResponse("/officer/login", status_code=303)
         return FileResponse(STATIC_DIR / "admin.html",
                             headers={"Cache-Control": "no-store"})
 

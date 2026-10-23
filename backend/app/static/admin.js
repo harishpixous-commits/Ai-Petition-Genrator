@@ -127,83 +127,6 @@
     };
   }
 
-  // -------- login ---------------------------------------------------
-
-  function loginScreen() {
-    header();
-    main.innerHTML = `
-      <div class="login-layout">
-        <section class="login-copy">
-          <p class="eyebrow">ADMINISTRATOR ACCESS</p>
-          <h2>Who gets to do what.</h2>
-          <p>Create review officer accounts, assemble roles with the exact set of privileges each one needs, and turn parts of the service on and off — all from here. The review officer portal is a separate sign-in.</p>
-          <div class="service-points">
-            <span><b>01</b>Officer accounts and passwords, managed in the browser</span>
-            <span><b>02</b>Custom roles with any mix of privileges</span>
-            <span><b>03</b>Switches that turn service features on and off</span>
-          </div>
-        </section>
-        <section class="panel login-card">
-          <p class="eyebrow">ADMIN PORTAL</p>
-          <h2>Sign in</h2>
-          <p class="muted">Administrators only. Review officers use the <a href="/officer/login">officer portal</a>.</p>
-          <form id="loginForm">
-            <div class="field">
-              <label for="username">Username</label>
-              <input id="username" name="username" autocomplete="username" required maxlength="150" placeholder="Enter your administrator username" autofocus>
-            </div>
-            <div class="field">
-              <label for="password">Password</label>
-              <div class="password-wrap">
-                <input type="password" id="password" autocomplete="current-password" required maxlength="256" placeholder="Enter your password">
-                <button type="button" id="showPassword" aria-label="Show password">Show</button>
-              </div>
-            </div>
-            <p class="error" id="loginError" role="alert"></p>
-            <button class="hbtn primary wide" type="submit">Sign In →</button>
-          </form>
-          <div class="login-foot">
-            <a href="/#home">← Back to Citizen Portal</a>
-            <p class="muted">Lost your password? Ask another administrator to reset it.</p>
-          </div>
-        </section>
-      </div>`;
-    document.getElementById("showPassword").onclick = (e) => {
-      const p = document.getElementById("password");
-      p.type = p.type === "password" ? "text" : "password";
-      e.target.textContent = p.type === "password" ? "Show" : "Hide";
-    };
-    document.getElementById("loginForm").onsubmit = async (e) => {
-      e.preventDefault();
-      const b = e.target.querySelector("[type=submit]");
-      b.disabled = true;
-      try {
-        user = await api("/login", {
-          method: "POST",
-          body: JSON.stringify({
-            username: document.getElementById("username").value,
-            password: document.getElementById("password").value,
-          }),
-        });
-        if (!has("manage_users") && !has("manage_roles") && !has("manage_features")) {
-          // Credentials valid but the role has no admin privileges.
-          // Sign the user straight out and tell them which portal
-          // they belong on.
-          try { await api("/logout", { method: "POST" }); } catch (_) {}
-          user = null;
-          document.getElementById("loginError").innerHTML =
-            'Your account has no administrator privileges. Please use the <a href="/officer/login">officer portal</a>.';
-          return;
-        }
-        go("/admin");
-      } catch (err) {
-        document.getElementById("loginError").textContent = err.message;
-      } finally {
-        b.disabled = false;
-      }
-    };
-  }
-
   // -------- dashboard ----------------------------------------------
 
   function dashboardScreen() {
@@ -692,10 +615,16 @@
   async function render() {
     try {
       const path = location.pathname;
-      if (path === "/admin/login" || path === "/admin/login/") return loginScreen();
+      // There is one sign-in surface for the whole portal, and it lives
+      // under /officer/login. A bookmark or back-button to /admin/login
+      // is handed off cleanly rather than re-rendering a dead screen.
+      if (path === "/admin/login" || path === "/admin/login/") {
+        location.replace("/officer/login");
+        return;
+      }
       if (!user) {
         try { user = await api("/me"); }
-        catch (_) { go("/admin/login"); return; }
+        catch (_) { location.replace("/officer/login"); return; }
       }
       header();
       if (path === "/admin" || path === "/admin/" || path === "/admin/dashboard")

@@ -329,6 +329,18 @@
                 password: document.getElementById("password").value,
               }),
             });
+        // Single login, two destinations: an officer with any
+        // admin-tier privilege lands on /admin; everyone else lands on
+        // the review workspace. The session cookie is the same for both
+        // portals, so an admin can navigate to /officer/dashboard
+        // afterwards if they also want to work on petitions.
+        const privs = (user && user.privileges) || [];
+        const admin = ["manage_users", "manage_roles", "manage_features"]
+          .some((p) => privs.includes(p));
+        if (admin && !demo) {
+          location.href = "/admin";
+          return;
+        }
         go("/officer/dashboard");
       } catch (err) {
         document.getElementById("loginError").textContent = err.message;

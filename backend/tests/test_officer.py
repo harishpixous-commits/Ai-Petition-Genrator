@@ -905,3 +905,35 @@ class TestTheAdminPortalIsSeparate:
         root = Path(__file__).resolve().parent.parent / "app" / "static"
         for name in ("admin.html", "admin.js", "admin.css"):
             assert (root / name).is_file(), f"{name} is missing"
+
+    def test_admin_login_url_redirects_to_the_single_sign_in(
+            self, graph, tmp_path, monkeypatch):
+        """One sign-in surface, under /officer/login. /admin/login is
+        a server-side 303 to the single page — the admin SPA never
+        renders its own login screen, and admin.js is wired to replace
+        the URL on the client side when it is reached."""
+        from fastapi.testclient import TestClient
+        from app.main import create_app
+        settings = get_settings().model_copy(update={"data_dir": tmp_path})
+        monkeypatch.setattr(store, "get_settings", lambda: settings)
+        app = create_app()
+        with TestClient(app, follow_redirects=False) as client:
+            r = client.get("/admin/login")
+            assert r.status_code == 303
+            assert r.headers["location"] == "/officer/login"
+            r2 = client.get("/admin")
+            assert r2.status_code == 303
+            assert r2.headers["location"] == "/officer/login"
+
+    def test_admin_js_has_no_login_screen(self):
+        """A single sign-in surface means the admin SPA has no login
+        form of its own. It also redirects to /officer/login when its
+        router reaches /admin/login (through the back button, a
+        bookmark, or a legacy link)."""
+        from pathlib import Path
+        admin_js = (
+            Path(__file__).resolve().parent.parent
+            / "app" / "static" / "admin.js"
+        ).read_text(encoding="utf-8")
+        assert "function loginScreen" not in admin_js
+        assert '"/officer/login"' in admin_js
