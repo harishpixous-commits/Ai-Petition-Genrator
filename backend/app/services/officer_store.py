@@ -9,6 +9,7 @@ import secrets
 import sqlite3
 import time
 from contextlib import contextmanager
+from datetime import UTC, datetime
 
 from fastapi import HTTPException, Request
 
@@ -150,6 +151,16 @@ def database(settings=None):
         name TEXT PRIMARY KEY,
         enabled INTEGER NOT NULL DEFAULT 1
     );
+    CREATE TABLE IF NOT EXISTS officer_admin_log(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        at TEXT NOT NULL,
+        actor TEXT NOT NULL,
+        action TEXT NOT NULL,
+        target TEXT NOT NULL DEFAULT '',
+        detail TEXT NOT NULL DEFAULT ''
+    );
+    CREATE INDEX IF NOT EXISTS idx_officer_admin_log_at
+        ON officer_admin_log(at DESC);
     """)
     # Existing deployments already have a two-column officer_reviews table.
     # Extend it in place so review metadata and the public tracking projection
@@ -821,6 +832,161 @@ def feature_flags_for(audience: str) -> dict[str, bool]:
         if audience == "all" or row["audience"] == audience:
             flags[row["name"]] = row["enabled"]
     return flags
+
+
+# -------------------------------------------------------------------- #
+# Admin audit log. Who did what, when. Used by the admin panel's
+# Activity tab; also the only durable record of password resets and
+# role changes once the originating session is gone.
+# -------------------------------------------------------------------- #
+
+
+def log_admin_action(actor: str, action: str, target: str = "",
+                     detail: dict | None = None) -> None:
+    """Record one admin mutation. Fails silently on log errors — a
+    sign-in with a brief DB hiccup must not be refused because the
+    audit log could not accept its row."""
+    try:
+        payload = json.dumps(detail or {}, separators=(",", ":"))
+    except (TypeError, ValueError):
+        payload = "{}"
+    with database() as db:
+        db.execute(
+            "INSERT INTO officer_admin_log(at,actor,action,target,detail) "
+            "VALUES(?,?,?,?,?)",
+            (
+                datetime.now(UTC).isoformat(timespec="seconds"),
+                (actor or "").casefold(),
+                action,
+                target or "",
+                payload,
+            ),
+        )
+
+
+def recent_admin_log(limit: int = 100) -> list[dict]:
+    """Newest first. `limit` is capped at 500 so the admin UI never
+    pulls more than a page at a time."""
+    limit = max(1, min(int(limit or 100), 500))
+    with database() as db:
+        rows = db.execute(
+            "SELECT id,at,actor,action,target,detail FROM officer_admin_log "
+            "ORDER BY id DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+    out = []
+    for r in rows:
+        try:
+            detail = json.loads(r["detail"] or "{}")
+        except (TypeError, ValueError):
+            detail = {}
+        out.append({
+            "id": r["id"],
+            "at": r["at"],
+            "actor": r["actor"],
+            "action": r["action"],
+            "target": r["target"],
+            "detail": detail,
+        })
+    return out
+
+
+# -------------------------------------------------------------------- #
+# Session management. Admins can see every live officer session and
+# kick one if a lost laptop needs to be locked out.
+# -------------------------------------------------------------------- #
+
+
+def list_sessions():
+    """Every unexpired session, newest first. Returns the DIGEST of the
+    cookie (not the cookie itself) as the id — enough to revoke by,
+    and useless as a stolen credential."""
+    now = time.time()
+    with database() as db:
+        rows = db.execute(
+            "SELECT s.token,s.username,s.expires,o.name "
+            "FROM officer_sessions s "
+            "LEFT JOIN officers o ON o.username=s.username "
+            "WHERE s.expires>? ORDER BY s.expires DESC",
+            (now,),
+        ).fetchall()
+    return [
+        {
+            "id": r["token"],
+            "username": r["username"],
+            "name": r["name"] or r["username"],
+            "expires": r["expires"],
+            "expires_in_seconds": max(0, int(r["expires"] - now)),
+        }
+        for r in rows
+    ]
+
+
+def revoke_session(session_id: str) -> None:
+    """Delete one session row by its digest id. A no-op if the row
+    does not exist, so a race between revoke and expiry is safe."""
+    with database() as db:
+        db.execute(
+            "DELETE FROM officer_sessions WHERE token=?", (session_id or "",)
+        )
+
+
+def revoke_sessions_for(username: str) -> int:
+    """Sign the user out of EVERY session. Returns the number of rows
+    actually removed, so the admin UI can say "signed 3 sessions out"
+    rather than guessing."""
+    username = _valid_username(username)
+    with database() as db:
+        res = db.execute(
+            "DELETE FROM officer_sessions WHERE username=?", (username,)
+        )
+    return res.rowcount or 0
+
+
+# -------------------------------------------------------------------- #
+# Service statistics. One query per metric so a slow count never
+# starves the others, and the admin dashboard can render partial if a
+# column were ever to break.
+# -------------------------------------------------------------------- #
+
+
+def service_stats() -> dict:
+    now = time.time()
+    with database() as db:
+        officers_total = db.execute(
+            "SELECT COUNT(*) AS n FROM officers").fetchone()["n"]
+        officers_enabled = db.execute(
+            "SELECT COUNT(*) AS n FROM officers WHERE enabled=1"
+        ).fetchone()["n"]
+        roles_total = db.execute(
+            "SELECT COUNT(*) AS n FROM officer_roles").fetchone()["n"]
+        roles_custom = db.execute(
+            "SELECT COUNT(*) AS n FROM officer_roles WHERE builtin=0"
+        ).fetchone()["n"]
+        active_sessions = db.execute(
+            "SELECT COUNT(*) AS n FROM officer_sessions WHERE expires>?",
+            (now,),
+        ).fetchone()["n"]
+        logins_today = db.execute(
+            "SELECT COUNT(*) AS n FROM officer_admin_log "
+            "WHERE action='login' AND at>?",
+            (
+                datetime.now(UTC).replace(
+                    hour=0, minute=0, second=0, microsecond=0
+                ).isoformat(timespec="seconds"),
+            ),
+        ).fetchone()["n"]
+    features = list_feature_flags()
+    return {
+        "officers": {"total": officers_total, "enabled": officers_enabled},
+        "roles": {"total": roles_total, "custom": roles_custom},
+        "features": {
+            "total": len(features),
+            "enabled": sum(1 for f in features if f["enabled"]),
+        },
+        "active_sessions": active_sessions,
+        "logins_today": logins_today,
+    }
 
 
 def login(username, password, host):

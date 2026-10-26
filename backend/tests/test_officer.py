@@ -937,3 +937,134 @@ class TestTheAdminPortalIsSeparate:
         ).read_text(encoding="utf-8")
         assert "function loginScreen" not in admin_js
         assert '"/officer/login"' in admin_js
+
+
+# --------------------------------------------------------------------- #
+# The advanced dashboard. Real metrics, audit log, sessions.
+# --------------------------------------------------------------------- #
+
+
+class TestServiceStats:
+    async def test_stats_are_served_to_any_officer_with_real_counts(
+            self, admin_api):
+        await _sign_in(admin_api, "chief", "chief-password-1234")
+        response = await admin_api.get("/api/officer/stats")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["officers"]["total"] == 2
+        assert body["officers"]["enabled"] == 2
+        assert body["roles"]["total"] >= 2       # the two builtins
+        assert body["roles"]["custom"] == 0
+        assert "enabled" in body["features"]
+        assert body["active_sessions"] >= 1
+        assert body["logins_today"] >= 1  # the sign-in above
+
+
+class TestAdminAuditLog:
+    async def test_each_mutation_appends_a_log_entry(self, admin_api):
+        await _sign_in(admin_api, "chief", "chief-password-1234")
+        await admin_api.post("/api/officer/users", json={
+            "username": "ravi", "name": "Ravi",
+            "password": "ravi-password-1234", "role": "officer",
+        })
+        await admin_api.patch(
+            "/api/officer/users/ravi", json={"name": "Ravi Kumar"})
+        await admin_api.put(
+            "/api/officer/users/ravi/password",
+            json={"new_password": "ravi-another-password"})
+        await admin_api.patch(
+            "/api/officer/features/citizen_voice_dictation",
+            json={"enabled": False})
+        feed = (await admin_api.get("/api/officer/activity")).json()["entries"]
+        actions = [e["action"] for e in feed]
+        for expected in ("login", "create_user", "edit_user",
+                         "reset_password", "toggle_feature"):
+            assert expected in actions, (
+                f"{expected} not in activity feed: {actions}")
+
+    async def test_activity_shows_newest_first(self, admin_api):
+        await _sign_in(admin_api, "chief", "chief-password-1234")
+        await admin_api.post("/api/officer/roles", json={
+            "name": "clerk", "label": "Clerk",
+            "privileges": ["review_petitions"],
+        })
+        feed = (await admin_api.get("/api/officer/activity")).json()["entries"]
+        # The most recent entry should be the role create we just did.
+        assert feed[0]["action"] == "create_role"
+        assert feed[0]["target"] == "clerk"
+
+    async def test_a_plain_officer_can_see_the_feed_but_sensitive_detail_is_safe(
+            self, admin_api):
+        """Everyone can read the feed. The feed must not expose plaintext
+        passwords — we only log that a reset happened, not what to."""
+        await _sign_in(admin_api, "chief", "chief-password-1234")
+        await admin_api.put(
+            "/api/officer/users/reviewer/password",
+            json={"new_password": "a-brand-new-reviewer-password"})
+        await admin_api.post("/api/officer/logout")
+        await _sign_in(admin_api, "reviewer", "a-brand-new-reviewer-password")
+        feed = (await admin_api.get("/api/officer/activity")).json()["entries"]
+        assert "a-brand-new-reviewer-password" not in str(feed)
+
+
+class TestSessions:
+    async def test_only_user_managers_can_see_sessions(self, admin_api):
+        await _sign_in(admin_api, "reviewer", "reviewer-password-1234")
+        attempt = await admin_api.get("/api/officer/sessions")
+        assert attempt.status_code == 403
+
+    async def test_an_admin_can_list_active_sessions(self, admin_api):
+        await _sign_in(admin_api, "chief", "chief-password-1234")
+        response = await admin_api.get("/api/officer/sessions")
+        assert response.status_code == 200
+        sessions = response.json()["sessions"]
+        assert any(s["username"] == "chief" for s in sessions)
+
+    async def test_an_admin_cannot_revoke_their_own_cookie_through_this_path(
+            self, admin_api):
+        """Self-revoke must go through the normal logout flow — the
+        bulk revoke endpoints should refuse the admin's own cookie so a
+        mistaken click here does not leave the dashboard in a broken
+        mid-request state."""
+        await _sign_in(admin_api, "chief", "chief-password-1234")
+        sessions = (await admin_api.get("/api/officer/sessions")).json()[
+            "sessions"]
+        own = next(s for s in sessions if s["username"] == "chief")
+        response = await admin_api.delete(
+            f"/api/officer/sessions/{own['id']}")
+        assert response.status_code == 400
+        assert "log out" in response.json()["detail"].lower()
+
+    async def test_revoke_all_sessions_signs_a_user_out_everywhere(
+            self, admin_api):
+        """A compromised account scenario. First, make the reviewer
+        establish a session; then the admin revokes every session they
+        hold; a request with the old cookie must now be refused."""
+        # Separate client for the reviewer so admin_api keeps the chief
+        # cookie; test on the backend by having both signed in and then
+        # revoking.
+        await _sign_in(admin_api, "chief", "chief-password-1234")
+        # Reviewer signs in to produce a session row.
+        import httpx
+        from fastapi import FastAPI
+        from app.api import catalog, officer, rest
+        settings = get_settings()
+        app = FastAPI()
+        for r in (officer.router, catalog.router, rest.router):
+            app.include_router(r)
+        app.state.workflow = admin_api._transport.app.state.workflow
+        _ = settings
+        async with httpx.AsyncClient(
+                transport=httpx.ASGITransport(
+                    app=admin_api._transport.app),
+                base_url="http://test") as reviewer:
+            r = await reviewer.post("/api/officer/login", json={
+                "username": "reviewer",
+                "password": "reviewer-password-1234"})
+            assert r.status_code == 200
+            revoked = await admin_api.post(
+                "/api/officer/users/reviewer/revoke")
+            assert revoked.status_code == 200
+            assert revoked.json()["revoked"] >= 1
+            me = await reviewer.get("/api/officer/me")
+            assert me.status_code == 401

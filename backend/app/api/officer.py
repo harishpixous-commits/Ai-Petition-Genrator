@@ -110,7 +110,11 @@ def login(body: Login, request: Request, response: Response):
         samesite="strict",
         path="/",
     )
-    return store.identity(token)
+    identity = store.identity(token)
+    # Log the successful sign-in: the dashboard's "logins today" tile
+    # and the Activity feed both read from this.
+    store.log_admin_action(body.username.strip(), "login")
+    return identity
 
 
 @router.get("/me")
@@ -164,6 +168,8 @@ def change_own_password(body: ChangeOwnPassword, user: OfficerUser):
         store.set_password(user["username"], body.new_password)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
+    store.log_admin_action(user["username"], "change_own_password",
+                           user["username"])
 
 
 class NewOfficer(BaseModel):
@@ -199,9 +205,10 @@ def create_user(body: NewOfficer, admin: AdminUser):
         )
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
-    return {
-        u["username"]: u for u in store.list_officers()
-    }[body.username.strip().casefold()]
+    target = body.username.strip().casefold()
+    store.log_admin_action(admin["username"], "create_user", target,
+                           {"role": body.role, "name": body.name})
+    return {u["username"]: u for u in store.list_officers()}[target]
 
 
 @router.patch("/users/{username}")
@@ -243,6 +250,14 @@ def edit_user(username: str, body: EditOfficer, admin: AdminUser):
     )
     if not row:
         raise HTTPException(404, f'No officer "{target}" after update.')
+    detail = {}
+    if body.name is not None:
+        detail["name"] = body.name
+    if body.role is not None:
+        detail["role"] = body.role
+    if body.new_username is not None:
+        detail["new_username"] = body.new_username
+    store.log_admin_action(admin["username"], "edit_user", target, detail)
     return row
 
 
@@ -256,6 +271,8 @@ def reset_user_password(username: str, body: ResetPassword, admin: AdminUser):
         raise HTTPException(404, str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
+    store.log_admin_action(admin["username"], "reset_password",
+                           username.strip().casefold())
 
 
 @router.delete("/users/{username}", status_code=204)
@@ -276,6 +293,7 @@ def delete_user(username: str, admin: AdminUser):
         raise HTTPException(404, str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
+    store.log_admin_action(admin["username"], "delete_user", target)
 
 
 # -------------------------------------------------------------------- #
@@ -320,21 +338,32 @@ def list_roles_(user: OfficerUser):
 @router.post("/roles", status_code=201)
 def create_role(body: NewRole, admin: RoleAdminUser):
     try:
-        return store.create_role(body.name, body.label, body.privileges)
+        row = store.create_role(body.name, body.label, body.privileges)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
+    store.log_admin_action(admin["username"], "create_role", row["name"],
+                           {"label": row["label"],
+                            "privileges": row["privileges"]})
+    return row
 
 
 @router.patch("/roles/{name}")
 def edit_role(name: str, body: EditRole, admin: RoleAdminUser):
     try:
-        return store.update_role(
+        row = store.update_role(
             name, label=body.label, privileges=body.privileges
         )
     except LookupError as exc:
         raise HTTPException(404, str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
+    detail = {}
+    if body.label is not None:
+        detail["label"] = body.label
+    if body.privileges is not None:
+        detail["privileges"] = body.privileges
+    store.log_admin_action(admin["username"], "edit_role", name, detail)
+    return row
 
 
 @router.delete("/roles/{name}", status_code=204)
@@ -345,6 +374,7 @@ def delete_role(name: str, admin: RoleAdminUser):
         raise HTTPException(404, str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
+    store.log_admin_action(admin["username"], "delete_role", name)
 
 
 # -------------------------------------------------------------------- #
@@ -379,7 +409,73 @@ def set_feature(name: str, body: FeatureUpdate, admin: FeatureAdminUser):
         store.set_feature_flag(name, body.enabled)
     except LookupError as exc:
         raise HTTPException(404, str(exc)) from exc
+    store.log_admin_action(admin["username"], "toggle_feature", name,
+                           {"enabled": body.enabled})
     return {"name": name, "enabled": body.enabled}
+
+
+# -------------------------------------------------------------------- #
+# Overview, Activity and Sessions. One statistics endpoint powering
+# the dashboard, one feed for the Activity tab, and three endpoints
+# behind the Sessions tab (list, revoke one, sign user out everywhere).
+# -------------------------------------------------------------------- #
+
+
+@router.get("/stats")
+def stats(user: OfficerUser):
+    """Counts for the admin dashboard: officers, roles, feature switches,
+    live sessions, and sign-ins today. Every signed-in officer can read
+    it so the dashboard renders without the privilege matrix leaking
+    anything useful from the home screen alone."""
+    return store.service_stats()
+
+
+@router.get("/activity")
+def activity(user: OfficerUser, limit: int = 100):
+    """The admin audit log — recent mutations and sign-ins, newest first."""
+    return {"entries": store.recent_admin_log(limit)}
+
+
+@router.get("/sessions")
+def sessions(user: AdminUser):
+    """Every unexpired officer session, with the digest id the admin
+    panel uses as a revoke handle. Requires `manage_users` because
+    the list exposes which accounts are currently signed in."""
+    return {"sessions": store.list_sessions()}
+
+
+@router.delete("/sessions/{session_id}", status_code=204)
+def revoke_session(session_id: str, admin: AdminUser, request: Request):
+    """Sign one session out, by digest id. Refuses to kill the
+    administrator's OWN cookie — that is handled by Log out."""
+    own = store.digest(request.cookies.get(store.COOKIE, ""))
+    if session_id == own:
+        raise HTTPException(
+            400,
+            "Use Log out to end your own session — this endpoint is for "
+            "ending someone else's.",
+        )
+    store.revoke_session(session_id)
+    store.log_admin_action(admin["username"], "revoke_session", session_id)
+
+
+@router.post("/users/{username}/revoke", status_code=200)
+def revoke_user_sessions(username: str, admin: AdminUser, request: Request):
+    """Sign the user out of every session they currently hold. Used
+    when an account appears compromised and immediate shutdown is
+    worth more than the self-service password-reset flow."""
+    own = store.digest(request.cookies.get(store.COOKIE, ""))
+    try:
+        removed = store.revoke_sessions_for(username)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    # If the current admin was signing themselves out as part of a
+    # bulk revoke, the next request after this one has no cookie, which
+    # is the correct behaviour.
+    _ = own
+    store.log_admin_action(admin["username"], "revoke_all_sessions",
+                           username, {"count": removed})
+    return {"revoked": removed}
 
 
 def _dedup_sources(sources):

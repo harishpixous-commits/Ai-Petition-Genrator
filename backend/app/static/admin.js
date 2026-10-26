@@ -129,43 +129,269 @@
 
   // -------- dashboard ----------------------------------------------
 
-  function dashboardScreen() {
-    const cards = [];
-    if (has("manage_users")) cards.push({
-      href: "/admin/users", title: "Officers",
-      text: "Add officers, change their roles, reset their passwords. The last administrator cannot be removed.",
-    });
-    if (has("manage_roles")) cards.push({
-      href: "/admin/roles", title: "Roles",
-      text: "Define custom roles with any mix of privileges. Built-in roles ship with the service.",
-    });
-    if (has("manage_features")) cards.push({
-      href: "/admin/features", title: "Features",
-      text: "Turn parts of the service on and off — citizen voice dictation, attachment uploads, the operator screen, and more.",
-    });
-    cards.push({
-      href: "/admin/account", title: "My account",
-      text: "Change your own password. Current password is required.",
-    });
-
+  async function dashboardScreen() {
+    // Render the shell immediately so a slow stats call does not
+    // stall the whole page — then populate the cards as the data
+    // arrives. Fails open: an error on either fetch leaves a dash in
+    // the matching metric rather than taking the dashboard down.
     main.innerHTML = `
       <section class="panel admin-home">
         <header class="admin-head">
           <div>
             <p class="eyebrow">ADMIN PORTAL</p>
             <h2>Welcome, ${esc(user.name)}</h2>
-            <p class="muted">Signed in as ${roleBadge(user.role, user.title)}. Choose what to manage.</p>
+            <p class="muted">Signed in as ${roleBadge(user.role, user.title)}. Here is what the service looks like right now.</p>
           </div>
         </header>
-        <div class="admin-cards">
-          ${cards.map((c) => `
-            <a class="admin-card" href="${c.href}" data-go>
-              <h3>${esc(c.title)} →</h3>
-              <p>${esc(c.text)}</p>
-            </a>`).join("")}
+
+        <div class="metrics">
+          ${metricTile("officers", "Officers", "The accounts that can sign in")}
+          ${metricTile("roles", "Roles", "Built-in plus custom roles")}
+          ${metricTile("features", "Features on", "Of the toggleable switches")}
+          ${metricTile("sessions", "Active sessions", "Signed-in right now")}
+          ${metricTile("logins", "Sign-ins today", "Successful logins since 00:00 UTC")}
+          ${metricTile("build", "Build", "The commit this container is on")}
+        </div>
+
+        <div class="dashboard-grid">
+          <section class="dashboard-col">
+            <h3>Quick actions</h3>
+            <div class="action-cards">
+              ${quickActionCards()}
+            </div>
+          </section>
+
+          <section class="dashboard-col">
+            <h3>Recent activity <small><a href="/admin/activity" data-go>View all →</a></small></h3>
+            <div id="recentActivity" class="activity-feed loading">Loading…</div>
+          </section>
         </div>
       </section>
       <div id="adminDialog"></div>`;
+
+    try {
+      const [stats, health, activity] = await Promise.all([
+        api("/stats"),
+        fetch("/api/health", { cache: "no-store" }).then((r) => r.ok ? r.json() : null).catch(() => null),
+        api("/activity?limit=10").catch(() => ({ entries: [] })),
+      ]);
+      setMetric("officers",
+        `${stats.officers.enabled}`,
+        `of ${stats.officers.total} total`);
+      setMetric("roles",
+        `${stats.roles.total}`,
+        `${stats.roles.custom} custom`);
+      setMetric("features",
+        `${stats.features.enabled}`,
+        `of ${stats.features.total}`);
+      setMetric("sessions", `${stats.active_sessions}`, "signed in now");
+      setMetric("logins", `${stats.logins_today}`, "today");
+      if (health && health.build) {
+        setMetric("build",
+          `<span class="monospace">${esc(String(health.build).slice(0, 7))}</span>`,
+          `started ${timeAgo(health.started_at || "")}`);
+      }
+      renderActivityFeed(
+        document.getElementById("recentActivity"),
+        (activity.entries || []).slice(0, 8),
+        { compact: true });
+    } catch (e) {
+      notify(e.message || "Could not load the dashboard.", "err");
+    }
+  }
+
+  function metricTile(key, label, sublabel) {
+    return `
+      <div class="metric" data-metric="${key}">
+        <small>${esc(label)}</small>
+        <strong>—</strong>
+        <span class="muted small">${esc(sublabel)}</span>
+      </div>`;
+  }
+
+  function setMetric(key, value, sub) {
+    const el = main.querySelector(`[data-metric="${key}"]`);
+    if (!el) return;
+    el.querySelector("strong").innerHTML = value;
+    const sm = el.querySelector(".muted.small");
+    if (sm && sub) sm.textContent = sub;
+  }
+
+  function quickActionCards() {
+    const cards = [];
+    if (has("manage_users")) cards.push({
+      href: "/admin/users", title: "Officers",
+      text: "Add, edit, or remove officer accounts.",
+    });
+    if (has("manage_roles")) cards.push({
+      href: "/admin/roles", title: "Roles",
+      text: "Compose roles out of privileges.",
+    });
+    if (has("manage_features")) cards.push({
+      href: "/admin/features", title: "Features",
+      text: "Turn parts of the service on and off.",
+    });
+    if (has("manage_users")) cards.push({
+      href: "/admin/sessions", title: "Sessions",
+      text: "See who is signed in. Revoke if needed.",
+    });
+    cards.push({
+      href: "/admin/activity", title: "Activity",
+      text: "Who did what and when.",
+    });
+    cards.push({
+      href: "/admin/account", title: "My account",
+      text: "Change your own password.",
+    });
+    return cards.map((c) => `
+      <a class="admin-card" href="${c.href}" data-go>
+        <h4>${esc(c.title)} →</h4>
+        <p>${esc(c.text)}</p>
+      </a>`).join("");
+  }
+
+  // -------- Activity -----------------------------------------------
+
+  async function activityScreen() {
+    let entries = [];
+    try { entries = (await api("/activity?limit=200")).entries || []; }
+    catch (e) { return bodyError(e.message); }
+    main.innerHTML = adminShell("Activity",
+      `The audit log of administrator actions and sign-ins — newest first.`, `
+      <div class="section-head"><div></div>
+        <button class="hbtn ghost small" id="activityReload">Reload</button></div>
+      <div id="activityFeed" class="activity-feed"></div>`);
+    renderActivityFeed(document.getElementById("activityFeed"), entries);
+    document.getElementById("activityReload").onclick = activityScreen;
+  }
+
+  function renderActivityFeed(host, entries, opts) {
+    opts = opts || {};
+    if (!host) return;
+    if (!entries.length) {
+      host.innerHTML = '<p class="muted small">No activity yet.</p>';
+      return;
+    }
+    host.innerHTML = entries.map((e) => {
+      const summary = describeAction(e);
+      return `
+        <div class="activity-row">
+          <div class="activity-when">${esc(timeAgo(e.at))}</div>
+          <div class="activity-body">
+            <strong>${esc(e.actor || "unknown")}</strong>
+            ${summary}
+            ${opts.compact ? "" : `<div class="activity-at monospace small muted">${esc(e.at)}</div>`}
+          </div>
+        </div>`;
+    }).join("");
+  }
+
+  function describeAction(e) {
+    const t = (s) => `<code class="pill">${esc(s)}</code>`;
+    switch (e.action) {
+      case "login": return "signed in";
+      case "change_own_password":
+        return "changed their own password";
+      case "create_user":
+        return `created officer ${t(e.target)}${
+          e.detail && e.detail.role ? ` with role ${t(e.detail.role)}` : ""}`;
+      case "edit_user": {
+        const bits = [];
+        if (e.detail && e.detail.new_username && e.detail.new_username !== e.target)
+          bits.push(`renamed to ${t(e.detail.new_username)}`);
+        if (e.detail && e.detail.name) bits.push(`display name → ${t(e.detail.name)}`);
+        if (e.detail && e.detail.role) bits.push(`role → ${t(e.detail.role)}`);
+        return `edited ${t(e.target)}${bits.length ? ` (${bits.join(", ")})` : ""}`;
+      }
+      case "reset_password": return `reset password for ${t(e.target)}`;
+      case "delete_user": return `deleted officer ${t(e.target)}`;
+      case "create_role":
+        return `created role ${t(e.target)}`;
+      case "edit_role":
+        return `edited role ${t(e.target)}`;
+      case "delete_role":
+        return `deleted role ${t(e.target)}`;
+      case "toggle_feature":
+        return `turned ${t(e.target)} ${e.detail && e.detail.enabled ? "ON" : "OFF"}`;
+      case "revoke_session": return `revoked a session (${t(e.target.slice(0, 10))}…)`;
+      case "revoke_all_sessions":
+        return `signed ${t(e.target)} out of all sessions (${
+          e.detail && e.detail.count ? e.detail.count : 0})`;
+      default:
+        return `${t(e.action)} on ${t(e.target || "—")}`;
+    }
+  }
+
+  function timeAgo(when) {
+    if (!when) return "";
+    const t = Date.parse(when);
+    if (!t) return when;
+    const s = Math.round((Date.now() - t) / 1000);
+    if (s < 60) return `${s}s ago`;
+    if (s < 3600) return `${Math.round(s / 60)}m ago`;
+    if (s < 86400) return `${Math.round(s / 3600)}h ago`;
+    return `${Math.round(s / 86400)}d ago`;
+  }
+
+  // -------- Sessions -----------------------------------------------
+
+  async function sessionsScreen() {
+    if (!has("manage_users")) return noAccess();
+    let sessions = [];
+    try { sessions = (await api("/sessions")).sessions || []; }
+    catch (e) { return bodyError(e.message); }
+    const rows = sessions.map((s) => `
+      <tr>
+        <td>${esc(s.name || s.username)}</td>
+        <td class="monospace">${esc(s.username)}</td>
+        <td>${esc(formatRemaining(s.expires_in_seconds))}</td>
+        <td class="row-actions">
+          <button class="hbtn ghost small" data-revoke-user="${esc(s.username)}" ${s.username === user.username ? "disabled title='Use Log out to end your own session'" : ""}>Sign out everywhere</button>
+          <button class="hbtn danger small" data-revoke-id="${esc(s.id)}" ${s.username === user.username ? "disabled title='Use Log out to end your own session'" : ""}>Revoke</button>
+        </td>
+      </tr>`).join("");
+    main.innerHTML = adminShell("Sessions",
+      `Every officer who is signed in right now. Revoke a session to kick a lost laptop; sign-out-everywhere revokes every session that user holds.`, `
+      <div class="section-head"><div></div>
+        <button class="hbtn ghost small" id="sessionsReload">Reload</button></div>
+      <table class="admin-users">
+        <thead><tr><th>Name</th><th>Username</th><th>Expires in</th><th></th></tr></thead>
+        <tbody>${rows || '<tr><td colspan="4" class="muted">No active sessions.</td></tr>'}</tbody>
+      </table>`);
+    document.getElementById("sessionsReload").onclick = sessionsScreen;
+    document.querySelectorAll("[data-revoke-id]").forEach((b) => {
+      if (b.disabled) return;
+      b.onclick = async () => {
+        if (!confirm("Revoke this session?")) return;
+        try {
+          await api(`/sessions/${encodeURIComponent(b.dataset.revokeId)}`,
+            { method: "DELETE" });
+          notify("Session revoked.", "ok");
+          sessionsScreen();
+        } catch (e) { notify(e.message, "err"); }
+      };
+    });
+    document.querySelectorAll("[data-revoke-user]").forEach((b) => {
+      if (b.disabled) return;
+      b.onclick = async () => {
+        if (!confirm(`Sign ${b.dataset.revokeUser} out of ALL sessions?`)) return;
+        try {
+          const r = await api(`/users/${encodeURIComponent(b.dataset.revokeUser)}/revoke`,
+            { method: "POST" });
+          notify(`Signed out ${(r && r.revoked) || 0} session(s).`, "ok");
+          sessionsScreen();
+        } catch (e) { notify(e.message, "err"); }
+      };
+    });
+  }
+
+  function formatRemaining(seconds) {
+    if (!seconds || seconds < 0) return "expired";
+    if (seconds < 60) return `${seconds}s`;
+    if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
+    const h = Math.floor(seconds / 3600);
+    const m = Math.round((seconds % 3600) / 60);
+    return m ? `${h}h ${m}m` : `${h}h`;
   }
 
   // -------- users page ---------------------------------------------
@@ -578,6 +804,8 @@
     if (has("manage_users")) tabs.push(["users", "Officers"]);
     if (has("manage_roles")) tabs.push(["roles", "Roles"]);
     if (has("manage_features")) tabs.push(["features", "Features"]);
+    if (has("manage_users")) tabs.push(["sessions", "Sessions"]);
+    tabs.push(["activity", "Activity"]);
     tabs.push(["account", "My account"]);
     const active = location.pathname.split("/")[2] || "";
     return `
@@ -632,6 +860,8 @@
       if (path === "/admin/users") return usersScreen();
       if (path === "/admin/roles") return rolesScreen();
       if (path === "/admin/features") return featuresScreen();
+      if (path === "/admin/sessions") return sessionsScreen();
+      if (path === "/admin/activity") return activityScreen();
       if (path === "/admin/account") return accountScreen();
       // Fallback: back to dashboard.
       return dashboardScreen();
